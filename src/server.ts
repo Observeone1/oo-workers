@@ -255,6 +255,11 @@ export function buildApp(connection: Redis) {
     if (!existsSync(p)) return c.text('// not built', 404);
     return c.body(readFileSync(p), 200, { 'content-type': 'application/javascript' });
   });
+  app.get('/docs', (c) => {
+    const p = join(PUBLIC_DIR, 'docs.html');
+    if (!existsSync(p)) return c.text('docs not built', 500);
+    return c.html(readFileSync(p, 'utf8'));
+  });
 
   return { app, close: async () => { await Promise.all([urlQ.close(), apiQ.close(), qaQ.close()]); } };
 }

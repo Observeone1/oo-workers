@@ -71,6 +71,8 @@
     .form-row > div { flex: 1; }
     .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+    .hint { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-left: 6px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); font-size: 10px; font-style: italic; text-decoration: none; line-height: 1; cursor: help; vertical-align: middle; }
+    .hint:hover { color: var(--link); border-color: var(--link); text-decoration: none; }
 
     /* detail view */
     .detail-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
@@ -117,7 +119,7 @@
       </div>
 
       <div id="url-fields">
-        <label>Expected status code</label>
+        <label>Expected status code <a href="/docs#assertions-url" target="_blank" class="hint" title="URL assertions reference">?</a></label>
         <input name="url_status" type="number" value="200" />
       </div>
 
@@ -126,12 +128,12 @@
         <select name="api_method">
           <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
         </select>
-        <label>Assertions (JSON)</label>
+        <label>Assertions (JSON) <a href="/docs#assertions-api" target="_blank" class="hint" title="API assertions reference">?</a></label>
         <textarea name="api_assertions" placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'></textarea>
       </div>
 
       <div id="qa-fields" hidden>
-        <label>Playwright script (.spec.ts inline)</label>
+        <label>Playwright script (.spec.ts inline) <a href="/docs#playwright" target="_blank" class="hint" title="Playwright script reference">?</a></label>
         <textarea name="qa_script" placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"></textarea>
       </div>
 
@@ -145,7 +147,7 @@
   <!-- Import dialog -->
   <dialog id="import-dialog">
     <h2>Import from JSON</h2>
-    <p class="meta">Schema: <code>{"version":1, "url_monitors":[...], "api_checks":[...], "qa_projects":[...]}</code></p>
+    <p class="meta">Schema: <code>{"version":1, "url_monitors":[...], "api_checks":[...], "qa_projects":[...]}</code> <a href="/docs#import" target="_blank" class="hint" title="Full schema reference">?</a></p>
     <label>JSON</label>
     <textarea id="import-text" placeholder='{ "version": 1, "url_monitors": [...] }'></textarea>
     <div class="dialog-actions">
