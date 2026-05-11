@@ -4,6 +4,7 @@ import { logger } from './utils/logger.ts';
 import { apiCheckProcessor } from './processors/api-check.processor.ts';
 import { urlMonitorProcessor } from './processors/url-monitor.processor.ts';
 import { qaProjectProcessor } from './processors/qa-project.processor.ts';
+import { startScheduler } from './scheduler.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -37,8 +38,11 @@ urlMonitorWorker.on('failed', (job, err) => logger.error(`❌ url-monitor #${job
 qaProjectWorker.on('completed', (job) => logger.info(`✅ qa-project #${job.id} completed`));
 qaProjectWorker.on('failed', (job, err) => logger.error(`❌ qa-project #${job?.id} failed: ${err.message}`));
 
+const stopScheduler = startScheduler(connection);
+
 process.on('SIGTERM', async () => {
   logger.info('Shutting down workers...');
+  await stopScheduler();
   await Promise.all([
     apiCheckWorker.close(),
     urlMonitorWorker.close(),
