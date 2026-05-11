@@ -1,101 +1,132 @@
 # oo-workers
 
-Self-hosted monitoring workers. HTTP / API / Playwright browser checks, queued via BullMQ + Redis, results in Postgres. The OSS slice of ObserveOne, packaged for `docker compose up`.
+Self-hosted monitoring. HTTP uptime checks, API checks with JSONPath assertions, and full Playwright browser flows. Runs in one `docker compose up`. Apache-2.0.
 
-**Status:** pre-alpha · private repo until v0.1.
+The open-source slice of [ObserveOne](https://observeone.com) — the engine, the scheduler, and a minimal admin UI.
 
 ---
 
 ## Quickstart
 
 ```bash
-git clone git@github.com:Observeone1/oo-workers.git
+git clone https://github.com/Observeone1/oo-workers.git
 cd oo-workers
 cp .env.example .env
 docker compose up -d
-docker compose logs -f worker
 ```
 
-That's it. The worker connects to Postgres + Redis, runs migrations on first boot, and listens on three queues (`url-monitor`, `api-check`, `qa-project`).
+Open **http://localhost:3001** and click *+ Add monitor*. That's it.
 
-## What it does
+The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTTP + admin dashboard), `postgres`, `redis`. Schema migrations run automatically on first boot.
 
-This is the **engine**. It does not have a UI in v0.1, and it does not pick which monitors to run — it processes jobs you push to its queues.
+## What you can monitor
 
-For each monitor type, the worker:
+| Type | Checks |
+|------|--------|
+| **HTTP uptime** | Is the URL up? Expected status code. |
+| **API** | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents. |
+| **Browser** | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests. |
 
-- Picks up a BullMQ job from its queue
-- Executes the check (fetch URL, hit API, run Playwright script)
-- Evaluates assertions
-- Writes the result to Postgres
-- Retries on failure per BullMQ retry policy
+Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues anything that's due. Workers process jobs concurrently (tunable via env).
 
-### Monitor types
+## Screenshots
 
-| Type | Queue | Table (config) | Table (results) | Assertions |
-|------|-------|----------------|-----------------|------------|
-| HTTP uptime | `url-monitor` | `url_monitors` | `url_monitor_executions` | status code |
-| API check | `api-check` | `api_checks` | `api_executions` | status, response time, JSONPath, headers, text |
-| Browser check | `qa-project` | `qa_projects` + `qa_generated_tests` | `qa_test_executions` | full Playwright script |
+*(coming with the public launch post)*
 
-## How to feed it work (v0.1)
+## Documentation
 
-There's no scheduler or HTTP API yet (Phase 2). To run a check manually:
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering:
 
-1. Insert a monitor row into Postgres (e.g. `INSERT INTO url_monitors (name, url) VALUES ('example', 'https://example.com')`).
-2. Insert an execution row with `status='pending'`.
-3. Push a BullMQ job to the appropriate queue with `{ executionId, monitor, assertions }`.
-
-A scheduler that does steps 2 and 3 on a cron-like interval is on the Phase 2 roadmap.
+- API assertion type × operator matrix
+- JSONPath quick reference
+- Playwright skeletons (login flow, checkout flow)
+- Bulk JSON import schema
 
 ## Stack
 
-- **Runtime:** Bun (`bun:sql` built-in Postgres client, no separate compile step)
-- **Queue:** BullMQ + Redis
-- **DB:** Postgres 16
-- **Browser:** Playwright (Chromium)
-- **Migrations:** plain `.sql` files in `migrations/`, applied by `src/db/migrate.ts`
+- **Runtime:** Bun
+- **Queue:** BullMQ + Redis 8
+- **DB:** Postgres 18 (via `bun:sql` — no `pg` client dep)
+- **Browser:** Playwright (Chromium, headless)
+- **HTTP:** Hono
+- **UI:** plain HTML + TS bundled by `bun build` (no framework)
+- **Migrations:** plain `.sql` files run by a tiny custom runner
+
+## Configuration
+
+All via environment variables (see `.env.example`):
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `UI_PORT` | `3001` | Host port for the admin dashboard |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `oo` / `oo` / `oo_workers` | Postgres credentials |
+| `URL_MONITOR_CONCURRENCY` | `20` | Parallel HTTP checks |
+| `API_CHECK_CONCURRENCY` | `10` | Parallel API checks |
+| `QA_PROJECT_CONCURRENCY` | `5` | Parallel browser checks |
+| `LOG_LEVEL` | `info` | Worker log level |
+
+## Bulk import
+
+The dashboard has an **Import JSON** button. Schema:
+
+```json
+{
+  "version": 1,
+  "url_monitors": [
+    { "name": "site",   "url": "https://example.com", "interval_seconds": 60,
+      "assertions": [{ "operator": "equals", "status_code": 200 }] }
+  ],
+  "api_checks": [...],
+  "qa_projects": [...]
+}
+```
+
+Full schema at `/docs#import`.
+
+## Develop without Docker
+
+```bash
+bun install
+# point at your own postgres + redis
+export DATABASE_URL=postgres://oo:oo@localhost:5432/oo_workers
+export REDIS_URL=redis://localhost:6379
+bun src/db/migrate.ts
+bun --watch src/index.ts    # worker + scheduler
+bun --watch src/ui-server.ts # in another shell — HTTP + UI on $PORT
+```
 
 ## Project layout
 
 ```
 src/
-├── index.ts                          # entry: starts 3 BullMQ workers
-├── config/db.ts                      # bun:sql client (DATABASE_URL)
-├── db/migrate.ts                     # tiny .sql runner with schema_migrations tracking
-├── processors/
-│   ├── url-monitor.processor.ts
-│   ├── api-check.processor.ts
-│   └── qa-project.processor.ts
-├── services/
-│   ├── assertion.service.ts          # JSONPath-aware assertion engine
-│   └── playwright.service.ts         # Playwright child-process runner
-└── utils/logger.ts
+├── index.ts                 # worker entrypoint (BullMQ + scheduler, no HTTP)
+├── ui-server.ts             # UI entrypoint (Hono + serves dashboard)
+├── server.ts                # REST API + static UI handlers
+├── scheduler.ts             # interval-based job enqueueing
+├── config/db.ts             # bun:sql client
+├── db/migrate.ts            # .sql runner with schema_migrations tracking
+├── processors/              # url-monitor, api-check, qa-project
+├── services/                # assertion engine, Playwright runner
+└── ui/                      # index.html + app.ts + docs.html
 migrations/
-└── 0001_init.sql                     # schema: monitors, assertions, executions
-docker-compose.yml
-Dockerfile
-.env.example
+├── 0001_init.sql            # core schema
+└── 0002_scheduler.sql       # interval_seconds + enabled
+scripts/
+├── smoke.ts                 # 3-monitor end-to-end smoke
+├── load.ts                  # concurrency + failure modes + assertion breadth
+└── scheduler-test.ts        # scheduler tick verification
 ```
 
 ## Roadmap
 
-- **v0.1 (current):** worker engine + Postgres + Redis, `docker compose up`. HTTP / API / browser checks. Manual job pushing.
-- **v0.2:** thin admin UI (monitor CRUD, history, live status, manual "run now"), scheduler.
-- **v0.3:** TCP / UDP / database-protocol checks (the gap Uptime Kuma doesn't cover well).
-- **v0.4+:** multi-region result tagging, alert channels, status pages.
+- **v0.2** *(current)* — workers + scheduler + UI + bulk import + docs.
+- **v0.3** — TCP / UDP / database-protocol checks (the gap Uptime Kuma doesn't cover well).
+- **v0.4+** — multi-region result tagging, alert channels (Discord/Slack/webhook/email), status pages.
 
-## Develop without docker
+## Contributing
 
-```bash
-bun install
-# (run a postgres + redis however you like)
-export DATABASE_URL=postgres://oo:oo@localhost:5432/oo_workers
-export REDIS_URL=redis://localhost:6379
-bun src/db/migrate.ts
-bun --watch src/index.ts
-```
+Issues + PRs welcome once we get past v0.2 polish. For now, kick the tires and tell us what breaks.
 
 ## License
 
-TBD before public release.
+[Apache-2.0](./LICENSE).
