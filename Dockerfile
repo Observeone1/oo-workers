@@ -1,20 +1,26 @@
-# Single-stage Bun + Playwright image.
-# Base: Playwright's official image (includes Chromium + system deps), with Bun layered on top.
+# oo-workers — multi-stage build.
+# Stage 1: oven/bun (Docker Hub) installs deps with a real Bun.
+# Stage 2: mcr playwright (has Chromium + system deps), gets Bun binary + node_modules copied in.
+
+# ---------- Stage 1: deps ----------
+FROM oven/bun:1-debian AS deps
+
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile
+
+# ---------- Stage 2: runtime ----------
 FROM mcr.microsoft.com/playwright:v1.57.0-jammy
 
 WORKDIR /app
 
-# Install Bun
-RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -fsSL https://bun.sh/install | bash \
-    && ln -s /root/.bun/bin/bun /usr/local/bin/bun
+# Copy Bun binary from stage 1 — no install needed on this layer
+COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
 
-# Install deps
-COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
+# Copy node_modules from stage 1
+COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source
+# Copy app source
 COPY . .
 
 ENV NODE_ENV=production

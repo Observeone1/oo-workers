@@ -26,7 +26,7 @@ export const urlMonitorProcessor = async (job: Job) => {
       SET status            = ${status},
           status_code       = ${response.status},
           response_time_ms  = ${responseTime},
-          assertion_results = ${sql.json(assertionResults)},
+          assertion_results = ${assertionResults}::jsonb,
           end_time          = NOW()
       WHERE id = ${executionId}
     `;

@@ -70,8 +70,8 @@ export const apiCheckProcessor = async (job: Job) => {
           response_status   = ${response.status},
           response_time_ms  = ${responseTime},
           response_body     = ${body.substring(0, 5000)},
-          response_headers  = ${sql.json(responseHeaders)},
-          assertion_results = ${sql.json(assertionResults)},
+          response_headers  = ${responseHeaders}::jsonb,
+          assertion_results = ${assertionResults}::jsonb,
           error_message     = ${allAssertionsPassed ? null : 'One or more assertions failed'},
           end_time          = NOW()
       WHERE id = ${executionId}
