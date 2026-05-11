@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>oo-workers</title>
+  <style>
+    :root {
+      /* ObserveOne brand tokens (mirrors frontend/src/index.css) */
+      --bg: #070c0a;
+      --panel: #0e1713;
+      --panel-2: #17211c;
+      --border: #203029;
+      --border-strong: #2a3f37;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --muted-2: #64748b;
+      --link: #34d399;
+      --accent: #10b981;       /* brand-500, success */
+      --accent-hover: #059669; /* brand-600 */
+      --accent-glow: #34d399;
+      --up: #10b981;
+      --down: #ef4444;
+      --error: #f59e0b;
+      --unknown: #64748b;
+      --radius: 0.5rem;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header { padding: 14px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.3px; }
+    h1 .tag { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 12px; }
+    main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+    .actions-bar { display: flex; gap: 8px; }
+    button, .btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: var(--radius); cursor: pointer; font: inherit; transition: border-color 0.12s, background 0.12s; }
+    button:hover { border-color: var(--border-strong); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #062019; font-weight: 500; }
+    button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    button.danger { color: var(--down); }
+    .tabs { display: flex; gap: 4px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); }
+    .tab { padding: 8px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab .count { color: var(--muted); margin-left: 4px; font-size: 12px; }
+    .empty { padding: 48px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 0.75rem; overflow: hidden; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    th { font-weight: 500; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tr:last-child td { border-bottom: none; }
+    tr.disabled { opacity: 0.5; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+    .dot.SUCCESS, .dot.up, .dot.passed { background: var(--up); }
+    .dot.FAILED, .dot.down, .dot.failed { background: var(--down); }
+    .dot.error { background: var(--error); }
+    .dot.pending, .dot.running, .dot.unknown { background: var(--unknown); }
+    .name { font-weight: 500; }
+    .url { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+    .meta { color: var(--muted); font-size: 12px; }
+    .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+    .row-actions button { padding: 4px 8px; font-size: 12px; }
+
+    dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 0.75rem; padding: 24px; min-width: 560px; max-width: 720px; }
+    dialog::backdrop { background: rgba(0,0,0,0.6); }
+    dialog h2 { margin: 0 0 16px; font-size: 18px; }
+    label { display: block; margin: 12px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    input, select, textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { font-family: ui-monospace, monospace; min-height: 140px; resize: vertical; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row > div { flex: 1; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+
+    /* detail view */
+    .detail-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+    .meta-card { background: var(--panel); border: 1px solid var(--border); border-radius: 0.75rem; padding: 12px; }
+    .meta-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    .meta-card .value { font-size: 18px; font-weight: 500; margin-top: 4px; }
+    .sparkline { width: 100%; height: 60px; }
+    .back-link { display: inline-block; margin-bottom: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>oo-workers <span class="tag">self-host</span></h1>
+    <div class="actions-bar">
+      <button id="import-btn">Import JSON</button>
+      <button id="add-btn" class="primary">+ Add monitor</button>
+    </div>
+  </header>
+  <main id="main"></main>
+
+  <!-- Add monitor dialog -->
+  <dialog id="add-dialog">
+    <h2>New monitor</h2>
+    <form id="add-form">
+      <label>Type</label>
+      <select name="type" id="type-select">
+        <option value="url">HTTP — simple URL ping</option>
+        <option value="api">API — request + assertions</option>
+        <option value="qa">Browser — Playwright script</option>
+      </select>
+
+      <label>Name</label>
+      <input name="name" required placeholder="My check" />
+
+      <div class="form-row">
+        <div>
+          <label>URL / target</label>
+          <input name="url" required placeholder="https://example.com" />
+        </div>
+        <div>
+          <label>Interval (sec)</label>
+          <input name="interval_seconds" type="number" value="60" min="10" />
+        </div>
+      </div>
+
+      <div id="url-fields">
+        <label>Expected status code</label>
+        <input name="url_status" type="number" value="200" />
+      </div>
+
+      <div id="api-fields" hidden>
+        <label>Method</label>
+        <select name="api_method">
+          <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
+        </select>
+        <label>Assertions (JSON)</label>
+        <textarea name="api_assertions" placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'></textarea>
+      </div>
+
+      <div id="qa-fields" hidden>
+        <label>Playwright script (.spec.ts inline)</label>
+        <textarea name="qa_script" placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"></textarea>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" id="cancel-btn">Cancel</button>
+        <button type="submit" class="primary">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Import dialog -->
+  <dialog id="import-dialog">
+    <h2>Import from JSON</h2>
+    <p class="meta">Schema: <code>{"version":1, "url_monitors":[...], "api_checks":[...], "qa_projects":[...]}</code></p>
+    <label>JSON</label>
+    <textarea id="import-text" placeholder='{ "version": 1, "url_monitors": [...] }'></textarea>
+    <div class="dialog-actions">
+      <button type="button" id="import-cancel">Cancel</button>
+      <button type="button" id="import-submit" class="primary">Import</button>
+    </div>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

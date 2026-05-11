@@ -1,3 +1,8 @@
+/**
+ * Worker entrypoint — BullMQ workers + scheduler. No HTTP server.
+ * The UI lives in a separate service (src/ui-server.ts).
+ */
+
 import { Redis } from 'ioredis';
 import { Worker } from 'bullmq';
 import { logger } from './utils/logger.ts';
@@ -8,7 +13,7 @@ import { startScheduler } from './scheduler.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
-logger.info('🚀 Starting oo-workers');
+logger.info('🚀 Starting oo-workers (worker)');
 
 const connection = new Redis(redisUrl, {
   maxRetriesPerRequest: null,

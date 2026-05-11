@@ -23,6 +23,10 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy app source
 COPY . .
 
+# Bundle the UI into ./public so the server can serve it
+RUN bun run build:ui
+
 ENV NODE_ENV=production
+EXPOSE 3001
 
 CMD ["bun", "src/index.ts"]

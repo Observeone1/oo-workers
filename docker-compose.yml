@@ -50,7 +50,28 @@ services:
       API_CHECK_CONCURRENCY: ${API_CHECK_CONCURRENCY:-10}
       URL_MONITOR_CONCURRENCY: ${URL_MONITOR_CONCURRENCY:-20}
       QA_PROJECT_CONCURRENCY: ${QA_PROJECT_CONCURRENCY:-5}
+    # Run migrations once, then start the worker + scheduler. No HTTP server here.
     command: ["sh", "-c", "bun src/db/migrate.ts && bun src/index.ts"]
+
+  ui:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        # wait for worker (which runs migrations) so schema exists before UI hits the DB
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
+      REDIS_URL: redis://redis:6379
+      PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${UI_PORT:-3001}:3001"
+    command: ["bun", "src/ui-server.ts"]
 
 volumes:
   postgres_data:

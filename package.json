@@ -8,12 +8,14 @@
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
     "migrate": "bun src/db/migrate.ts",
+    "build:ui": "mkdir -p public && cp src/ui/index.html public/ && bun build src/ui/app.ts --outdir public --target browser",
     "test": "bun test"
   },
   "dependencies": {
     "@playwright/test": "1.57.0",
     "axios": "^1.16.0",
     "bullmq": "^5.76.7",
+    "hono": "^4.12.18",
     "ioredis": "^5.10.1",
     "jsonpath": "^1.3.0",
     "playwright": "1.57.0"
