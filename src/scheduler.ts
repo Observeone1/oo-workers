@@ -12,7 +12,9 @@
 
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
-import { sql } from './config/db.ts';
+import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
+import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
+import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? 5_000);
@@ -47,23 +49,13 @@ export function startScheduler(connection: Redis) {
 
 // ---------------- url-monitor ----------------
 async function tickUrlMonitors(queue: Queue) {
-  const due = await sql`
-    SELECT m.id, m.url, m.timeout_ms, m.interval_seconds,
-           (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(start_time)))::bigint
-              FROM url_monitor_executions WHERE url_monitor_id = m.id) AS age_seconds
-    FROM url_monitors m
-    WHERE m.enabled = TRUE
-  `;
+  const due = await urlMonitorRepo.findDue();
 
-  for (const m of due as any[]) {
+  for (const m of due) {
     if (m.age_seconds !== null && m.age_seconds < m.interval_seconds) continue;
 
-    const assertions = await sql`
-      SELECT id, operator, status_code FROM url_monitor_assertions WHERE url_monitor_id = ${m.id}
-    `;
-    const [exec] = await sql`
-      INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${m.id}, 'pending') RETURNING id
-    `;
+    const assertions = await urlMonitorRepo.findAssertionsByMonitorId(m.id);
+    const [exec] = await urlMonitorRepo.createExecution(m.id, 'pending');
 
     const bucket = Math.floor(Date.now() / (m.interval_seconds * 1000));
     await queue.add(
@@ -81,23 +73,13 @@ async function tickUrlMonitors(queue: Queue) {
 
 // ---------------- api-check ----------------
 async function tickApiChecks(queue: Queue) {
-  const due = await sql`
-    SELECT c.id, c.url, c.method, c.headers, c.body, c.timeout_ms, c.interval_seconds,
-           (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(start_time)))::bigint
-              FROM api_executions WHERE api_check_id = c.id) AS age_seconds
-    FROM api_checks c
-    WHERE c.enabled = TRUE
-  `;
+  const due = await apiCheckRepo.findDue();
 
-  for (const c of due as any[]) {
+  for (const c of due) {
     if (c.age_seconds !== null && c.age_seconds < c.interval_seconds) continue;
 
-    const assertions = await sql`
-      SELECT id, type, operator, path, value FROM api_assertions WHERE api_check_id = ${c.id}
-    `;
-    const [exec] = await sql`
-      INSERT INTO api_executions (api_check_id, status) VALUES (${c.id}, 'pending') RETURNING id
-    `;
+    const assertions = await apiCheckRepo.findAssertionsByCheckId(c.id);
+    const [exec] = await apiCheckRepo.createExecution(c.id, 'pending');
 
     const bucket = Math.floor(Date.now() / (c.interval_seconds * 1000));
     await queue.add(
@@ -118,19 +100,12 @@ async function tickApiChecks(queue: Queue) {
 
 // ---------------- qa-project ----------------
 async function tickQaProjects(queue: Queue) {
-  const due = await sql`
-    SELECT p.id, p.target_url, p.credentials, p.config, p.interval_seconds, p.last_run_at,
-           EXTRACT(EPOCH FROM (NOW() - p.last_run_at))::bigint AS age_seconds
-    FROM qa_projects p
-    WHERE p.enabled = TRUE
-  `;
+  const due = await qaProjectRepo.findDue();
 
-  for (const p of due as any[]) {
+  for (const p of due) {
     if (p.age_seconds !== null && p.age_seconds < p.interval_seconds) continue;
 
-    const tests = await sql`
-      SELECT id, test_name AS name, script FROM qa_generated_tests WHERE project_id = ${p.id}
-    `;
+    const tests = await qaProjectRepo.findTestsWithScriptByProjectId(p.id);
     if (tests.length === 0) continue;
 
     const bucket = Math.floor(Date.now() / (p.interval_seconds * 1000));
