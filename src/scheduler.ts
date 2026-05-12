@@ -2,7 +2,7 @@
  * Scheduler — picks monitors whose interval has elapsed and enqueues jobs.
  *
  * Runs in the same process as the BullMQ workers. Ticks every TICK_MS, checks
- * each enabled monitor's last execution timestamp against its interval_seconds,
+ * each enabled monitor's last execution timestamp against its intervalSeconds,
  * and pushes a new execution row + BullMQ job for the due ones.
  *
  * Deduplication: BullMQ jobId includes a minute-bucket timestamp so a slow
@@ -55,7 +55,7 @@ async function tickUrlMonitors(queue: Queue) {
     if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
 
     const assertions = await urlMonitorRepo.findAssertionsByMonitorId(m.id);
-    const [exec] = await urlMonitorRepo.createExecution(m.id, 'pending');
+    const [exec] = await urlMonitorRepo.createExecution(m.id, 'PENDING');
 
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
     await queue.add(
@@ -79,7 +79,7 @@ async function tickApiChecks(queue: Queue) {
     if (c.ageSeconds !== null && c.ageSeconds < c.intervalSeconds) continue;
 
     const assertions = await apiCheckRepo.findAssertionsByCheckId(c.id);
-    const [exec] = await apiCheckRepo.createExecution(c.id, 'pending');
+    const [exec] = await apiCheckRepo.createExecution(c.id, 'PENDING');
 
     const bucket = Math.floor(Date.now() / (c.intervalSeconds * 1000));
     await queue.add(

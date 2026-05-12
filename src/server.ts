@@ -15,6 +15,16 @@ import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
 
+function loadText(name: string): string | null {
+  const p = join(PUBLIC_DIR, name);
+  return existsSync(p) ? readFileSync(p, 'utf8') : null;
+}
+const ASSETS = {
+  indexHtml: loadText('index.html'),
+  appJs:     loadText('app.js'),
+  docsHtml:  loadText('docs.html'),
+};
+
 export function buildApp(connection: Redis) {
   const app = new Hono();
   const urlQ = new Queue('url-monitor', { connection });
@@ -155,7 +165,7 @@ export function buildApp(connection: Redis) {
       const [m] = await urlMonitorRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
       const assertions = await urlMonitorRepo.findAssertionsByMonitorId(id);
-      const [exec] = await urlMonitorRepo.createExecution(id, 'pending');
+      const [exec] = await urlMonitorRepo.createExecution(id, 'PENDING');
       await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeout_ms: m.timeoutMs }, assertions });
       return c.json({ executionId: exec.id });
     }
@@ -163,7 +173,7 @@ export function buildApp(connection: Redis) {
       const [m] = await apiCheckRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
       const assertions = await apiCheckRepo.findAssertionsByCheckId(id);
-      const [exec] = await apiCheckRepo.createExecution(id, 'pending');
+      const [exec] = await apiCheckRepo.createExecution(id, 'PENDING');
       await apiQ.add('check', { executionId: exec.id, apiCheck: m, assertions });
       return c.json({ executionId: exec.id });
     }
@@ -252,21 +262,15 @@ export function buildApp(connection: Redis) {
   });
 
   // ---------- static UI ----------
-  app.get('/', (c) => {
-    const p = join(PUBLIC_DIR, 'index.html');
-    if (!existsSync(p)) return c.text('UI not built — run `bun run build:ui`', 500);
-    return c.html(readFileSync(p, 'utf8'));
-  });
-  app.get('/app.js', (c) => {
-    const p = join(PUBLIC_DIR, 'app.js');
-    if (!existsSync(p)) return c.text('// not built', 404);
-    return c.body(readFileSync(p), 200, { 'content-type': 'application/javascript' });
-  });
-  app.get('/docs', (c) => {
-    const p = join(PUBLIC_DIR, 'docs.html');
-    if (!existsSync(p)) return c.text('docs not built', 500);
-    return c.html(readFileSync(p, 'utf8'));
-  });
+  app.get('/', (c) => ASSETS.indexHtml
+    ? c.html(ASSETS.indexHtml)
+    : c.text('UI not built — run `bun run build:ui`', 500));
+  app.get('/app.js', (c) => ASSETS.appJs
+    ? c.body(ASSETS.appJs, 200, { 'content-type': 'application/javascript' })
+    : c.text('// not built', 404));
+  app.get('/docs', (c) => ASSETS.docsHtml
+    ? c.html(ASSETS.docsHtml)
+    : c.text('docs not built', 500));
 
   return { app, close: async () => { await Promise.all([urlQ.close(), apiQ.close(), qaQ.close()]); } };
 }

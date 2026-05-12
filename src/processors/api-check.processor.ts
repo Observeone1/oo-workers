@@ -9,18 +9,7 @@ export const apiCheckProcessor = async (job: Job) => {
   logger.info(`Processing API Check job ${job.id} (Execution: ${executionId})`);
 
   try {
-    const headers: Record<string, string> = {};
-
-    if (apiCheck.headers) {
-      try {
-        const parsedHeaders = typeof apiCheck.headers === 'string'
-          ? JSON.parse(apiCheck.headers)
-          : apiCheck.headers;
-        Object.assign(headers, parsedHeaders);
-      } catch {
-        logger.warn(`Failed to parse headers for API check ${apiCheck.id}`);
-      }
-    }
+    const headers: Record<string, string> = { ...(apiCheck.headers ?? {}) };
 
     const requestOptions: RequestInit = {
       method: apiCheck.method || 'GET',

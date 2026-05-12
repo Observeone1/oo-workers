@@ -208,17 +208,14 @@ const evaluateJsonPath = (assertion: ApiAssertion, responseBody: string): Assert
  */
 const evaluateTextContains = (assertion: ApiAssertion, responseBody: string): AssertionResult => {
     const expectedText = assertion.value || '';
-    const actualText = responseBody.toLowerCase();
-    const searchText = expectedText.toLowerCase();
-
     let passed = false;
 
     switch (assertion.operator) {
         case 'contains':
-            passed = actualText.includes(searchText);
+            passed = responseBody.toLowerCase().includes(expectedText.toLowerCase());
             break;
         case 'not_contains':
-            passed = !actualText.includes(searchText);
+            passed = !responseBody.toLowerCase().includes(expectedText.toLowerCase());
             break;
         case 'equals':
             passed = responseBody === expectedText;
@@ -280,6 +277,8 @@ const evaluateHeader = (assertion: ApiAssertion, headers: Record<string, string>
  */
 const compareValues = (actual: any, expected: any, operator: string): boolean => {
     switch (operator) {
+        // == / != on purpose: assertion `value` is stored as TEXT, so a numeric
+        // status of 200 must match the string "200". Don't switch to ===.
         case 'equals':
             return actual == expected;
 
