@@ -8,7 +8,7 @@ import { Worker } from 'bullmq';
 import { logger } from './utils/logger.ts';
 import { apiCheckProcessor } from './processors/api-check.processor.ts';
 import { urlMonitorProcessor } from './processors/url-monitor.processor.ts';
-import { qaProjectProcessor } from './processors/qa-project.processor.ts';
+import { createQaProjectProcessor } from './processors/qa-project.processor.ts';
 import { startScheduler } from './scheduler.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -29,7 +29,7 @@ const urlMonitorWorker = new Worker('url-monitor', urlMonitorProcessor, {
   concurrency: parseInt(process.env.URL_MONITOR_CONCURRENCY || '20'),
 });
 
-const qaProjectWorker = new Worker('qa-project', qaProjectProcessor, {
+const qaProjectWorker = new Worker('qa-project', createQaProjectProcessor(connection), {
   connection,
   concurrency: parseInt(process.env.QA_PROJECT_CONCURRENCY || '5'),
 });

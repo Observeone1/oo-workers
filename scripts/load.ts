@@ -67,7 +67,7 @@ async function concurrencyBurst() {
   for (let i = 0; i < N; i++) {
     const [e] = await sql`
       INSERT INTO url_monitor_executions (url_monitor_id, status)
-      VALUES (${monitor.id}, 'pending')
+      VALUES (${monitor.id}, 'PENDING')
       RETURNING id
     `;
     execs.push(e.id);
@@ -87,7 +87,7 @@ async function concurrencyBurst() {
 
   const done = await waitFor(async () => {
     const rows = await sql`
-      SELECT COUNT(*) FILTER (WHERE status != 'pending') AS done
+      SELECT COUNT(*) FILTER (WHERE status != 'PENDING') AS done
       FROM url_monitor_executions
       WHERE url_monitor_id = ${monitor.id}
     `;
@@ -123,7 +123,7 @@ async function failureModes() {
     VALUES ('dns-fail', 'https://this-host-does-not-exist-xyz-12345.invalid', 5000)
     RETURNING *
   `;
-  const [dnsExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${dnsMon.id}, 'pending') RETURNING id`;
+  const [dnsExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${dnsMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: dnsExec.id,
     monitor: { id: dnsMon.id, url: dnsMon.url, timeout_ms: dnsMon.timeout_ms },
@@ -137,7 +137,7 @@ async function failureModes() {
     VALUES ('timeout', 'http://10.255.255.1', 2000)
     RETURNING *
   `;
-  const [toExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${toMon.id}, 'pending') RETURNING id`;
+  const [toExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${toMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: toExec.id,
     monitor: { id: toMon.id, url: toMon.url, timeout_ms: toMon.timeout_ms },
@@ -150,7 +150,7 @@ async function failureModes() {
     VALUES ('wrong-status-assert', 'https://example.com', 5000)
     RETURNING *
   `;
-  const [wrongExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${wrongMon.id}, 'pending') RETURNING id`;
+  const [wrongExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${wrongMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: wrongExec.id,
     monitor: { id: wrongMon.id, url: wrongMon.url, timeout_ms: wrongMon.timeout_ms },
@@ -161,7 +161,7 @@ async function failureModes() {
 
   const wait = (id: number) => waitFor(async () => {
     const [r] = await sql`SELECT * FROM url_monitor_executions WHERE id = ${id}`;
-    return r?.status !== 'pending' ? r : null;
+    return r?.status !== 'PENDING' ? r : null;
   }, 30_000);
 
   const dnsR = await wait(dnsExec.id);
@@ -188,7 +188,7 @@ async function assertionVariety() {
     VALUES ('multi-assert', 'https://example.com', 'GET', '{}'::jsonb, 10000)
     RETURNING *
   `;
-  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'pending') RETURNING *`;
+  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
 
   const assertions = [
     { type: 'status_code',     operator: 'equals',       path: null,           value: '200' },
@@ -206,7 +206,7 @@ async function assertionVariety() {
 
   const r: any = await waitFor(async () => {
     const [row] = await sql`SELECT * FROM api_executions WHERE id = ${exec.id}`;
-    return row?.status !== 'pending' ? row : null;
+    return row?.status !== 'PENDING' ? row : null;
   }, 30_000);
 
   const passCount = r?.assertion_results?.filter((a: any) => a.passed).length ?? 0;
@@ -225,7 +225,7 @@ async function jsonPathAssertion() {
     VALUES ('json-test', 'https://jsonplaceholder.typicode.com/posts/1', 'GET', '{"Accept":"application/json"}'::jsonb, 10000)
     RETURNING *
   `;
-  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'pending') RETURNING *`;
+  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
 
   const assertions = [
     { type: 'status_code', operator: 'equals', path: null,        value: '200' },
@@ -241,7 +241,7 @@ async function jsonPathAssertion() {
 
   const r: any = await waitFor(async () => {
     const [row] = await sql`SELECT * FROM api_executions WHERE id = ${exec.id}`;
-    return row?.status !== 'pending' ? row : null;
+    return row?.status !== 'PENDING' ? row : null;
   }, 30_000);
 
   const passCount = r?.assertion_results?.filter((a: any) => a.passed).length ?? 0;
