@@ -1,18 +1,21 @@
 import { Job } from 'bullmq';
+import { DEFAULTS } from '../constants.ts';
 import { urlMonitorRepo } from '../db/repositories/url-monitor.repo.ts';
 import { logger } from '../utils/logger.ts';
+import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateUrlMonitorAssertions } from '../services/assertion.service.ts';
 
 export const urlMonitorProcessor = async (job: Job) => {
   const { executionId, monitor, assertions } = job.data;
   const startTime = Date.now();
+  const timeoutMs = monitor.timeoutMs || DEFAULTS.URL_TIMEOUT_MS;
 
   logger.info(`Processing URL Monitor job ${job.id} (Execution: ${executionId})`);
 
   try {
     const response = await fetch(monitor.url, {
       method: 'HEAD',
-      signal: AbortSignal.timeout(monitor.timeoutMs || 30000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const responseTime = Date.now() - startTime;
 
@@ -37,25 +40,9 @@ export const urlMonitorProcessor = async (job: Job) => {
   } catch (error: unknown) {
     const responseTime = Date.now() - startTime;
     const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
-    const err = error as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+    const detailedMessage = classifyFetchError(error, monitor.url, timeoutMs);
 
-    logger.error(`URL monitor execution ${executionId} failed: ${err.message}`);
-
-    let detailedMessage = err.message ?? 'Unknown error';
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      detailedMessage = `Request timed out after ${monitor.timeoutMs || 30000}ms`;
-    } else if (err.cause) {
-      const cause = err.cause;
-      if (cause.code === 'ENOTFOUND') {
-        detailedMessage = `DNS resolution failed: Host not found (${monitor.url})`;
-      } else if (cause.code === 'ECONNREFUSED') {
-        detailedMessage = `Connection refused: Target machine actively refused it (${monitor.url})`;
-      } else if (cause.code === 'ETIMEDOUT') {
-        detailedMessage = `Connection timed out (${monitor.url})`;
-      } else if (cause.message) {
-        detailedMessage = `Network error: ${cause.message}`;
-      }
-    }
+    logger.error(`URL monitor execution ${executionId} failed: ${detailedMessage}`);
 
     await urlMonitorRepo.updateExecution(executionId, {
       status: isFinalAttempt ? 'FAILED' : 'PENDING',

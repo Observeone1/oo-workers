@@ -63,6 +63,11 @@ export const urlMonitorRepo = {
     return db.insert(urlMonitorAssertions).values({ urlMonitorId, ...assertion }).returning();
   },
 
+  createAssertions(urlMonitorId: number, rows: Array<{ operator: string; statusCode: number }>) {
+    if (rows.length === 0) return Promise.resolve([] as never[]);
+    return db.insert(urlMonitorAssertions).values(rows.map((r) => ({ urlMonitorId, ...r }))).returning();
+  },
+
   createExecution(urlMonitorId: number, status: string) {
     return db.insert(urlMonitorExecutions).values({ urlMonitorId, status }).returning();
   },

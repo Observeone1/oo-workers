@@ -1,10 +1,13 @@
 import { Job } from 'bullmq';
+import { DEFAULTS } from '../constants.ts';
 import { apiCheckRepo } from '../db/repositories/api-check.repo.ts';
 import { logger } from '../utils/logger.ts';
+import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateAssertions } from '../services/assertion.service.ts';
 
 export const apiCheckProcessor = async (job: Job) => {
   const { executionId, apiCheck, assertions } = job.data;
+  const timeoutMs = apiCheck.timeoutMs || DEFAULTS.API_TIMEOUT_MS;
 
   logger.info(`Processing API Check job ${job.id} (Execution: ${executionId})`);
 
@@ -17,7 +20,7 @@ export const apiCheckProcessor = async (job: Job) => {
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), apiCheck.timeoutMs || 5000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     requestOptions.signal = controller.signal;
 
     if (apiCheck.body && ['POST', 'PUT', 'PATCH'].includes(apiCheck.method)) {
@@ -57,7 +60,7 @@ export const apiCheckProcessor = async (job: Job) => {
       status,
       responseStatus: response.status,
       responseTimeMs: responseTime,
-      responseBody: body.substring(0, 5000),
+      responseBody: body.substring(0, DEFAULTS.RESPONSE_BODY_TRUNCATE_CHARS),
       responseHeaders,
       assertionResults,
       errorMessage: allAssertionsPassed ? null : 'One or more assertions failed',
@@ -70,25 +73,8 @@ export const apiCheckProcessor = async (job: Job) => {
 
     return { success: true };
   } catch (error) {
-    let errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
-
-    if (error instanceof Error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-        errorMessage = `Request timed out after ${apiCheck.timeoutMs || 5000}ms`;
-      } else if ('cause' in error && error.cause) {
-        const cause = error.cause as { code?: string; message?: string };
-        if (cause.code === 'ENOTFOUND') {
-          errorMessage = `DNS resolution failed: Host not found (${apiCheck.url})`;
-        } else if (cause.code === 'ECONNREFUSED') {
-          errorMessage = `Connection refused: Target machine actively refused it (${apiCheck.url})`;
-        } else if (cause.code === 'ETIMEDOUT') {
-          errorMessage = `Connection timed out (${apiCheck.url})`;
-        } else if (cause.message) {
-          errorMessage = `Network error: ${cause.message}`;
-        }
-      }
-    }
+    const errorMessage = classifyFetchError(error, apiCheck.url, timeoutMs);
 
     logger.error(`API check execution ${executionId} failed: ${errorMessage}`);
 

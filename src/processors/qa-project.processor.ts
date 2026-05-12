@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.ts';
 import { executePlaywrightTest } from '../services/playwright.service.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { DEFAULTS } from '../constants.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
 // Avoids process.cwd() so the worker still works if started from a different dir.
@@ -132,7 +133,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
           targetUrl,
           credentials,
           {
-            timeout: (config?.timeout as number) || 30000,
+            timeout: (config?.timeout as number) || DEFAULTS.QA_RUN_TIMEOUT_MS,
             headless: true,
             viewport: (config?.viewport as { width: number; height: number }) || { width: 1280, height: 720 },
           },

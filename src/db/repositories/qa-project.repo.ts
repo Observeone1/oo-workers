@@ -53,22 +53,21 @@ export const qaProjectRepo = {
     return db.select().from(qaProjects).where(eq(qaProjects.id, id)).limit(1);
   },
 
-  findTestsByProjectId(projectId: number) {
-    return db.select({
-      id: qaGeneratedTests.id,
-      testName: qaGeneratedTests.testName,
-      testType: qaGeneratedTests.testType,
-      description: qaGeneratedTests.description,
-      scriptSize: sql<number>`length(${qaGeneratedTests.script})`.as('script_size'),
-    }).from(qaGeneratedTests).where(eq(qaGeneratedTests.projectId, projectId));
-  },
-
-  findTestsWithScriptByProjectId(projectId: number) {
-    return db.select({
-      id: qaGeneratedTests.id,
-      name: qaGeneratedTests.testName,
-      script: qaGeneratedTests.script,
-    }).from(qaGeneratedTests).where(eq(qaGeneratedTests.projectId, projectId));
+  findTestsByProjectId(projectId: number, opts: { includeScript?: boolean } = {}) {
+    const cols = opts.includeScript
+      ? {
+          id: qaGeneratedTests.id,
+          name: qaGeneratedTests.testName,
+          script: qaGeneratedTests.script,
+        }
+      : {
+          id: qaGeneratedTests.id,
+          testName: qaGeneratedTests.testName,
+          testType: qaGeneratedTests.testType,
+          description: qaGeneratedTests.description,
+          scriptSize: sql<number>`length(${qaGeneratedTests.script})`.as('script_size'),
+        };
+    return db.select(cols as any).from(qaGeneratedTests).where(eq(qaGeneratedTests.projectId, projectId));
   },
 
   findExecutionsByProjectId(projectId: number, limit = 100) {
@@ -92,6 +91,11 @@ export const qaProjectRepo = {
 
   createTest(projectId: number, test: { testName: string; testType?: string; script: string; description?: string | null }) {
     return db.insert(qaGeneratedTests).values({ projectId, ...test }).returning();
+  },
+
+  createTests(projectId: number, rows: Array<{ testName: string; testType?: string; script: string; description?: string | null }>) {
+    if (rows.length === 0) return Promise.resolve([] as never[]);
+    return db.insert(qaGeneratedTests).values(rows.map((r) => ({ projectId, ...r }))).returning();
   },
 
   createExecution(testId: number, projectId: number, status: string) {

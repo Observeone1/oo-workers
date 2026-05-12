@@ -8,6 +8,7 @@ import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { DEFAULTS } from './constants.ts';
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
@@ -84,13 +85,12 @@ export function buildApp(connection: Redis) {
     const [m] = await urlMonitorRepo.create({
       name: body.name,
       url: body.url,
-      timeoutMs: body.timeoutMs ?? 30000,
+      timeoutMs: body.timeoutMs ?? DEFAULTS.URL_TIMEOUT_MS,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    for (const a of (body.assertions ?? []) as Array<{ operator: string; statusCode: number }>) {
-      await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.statusCode });
-    }
+    const assertions = (body.assertions ?? []) as Array<{ operator: string; statusCode: number }>;
+    await urlMonitorRepo.createAssertions(m.id, assertions.map((a) => ({ operator: a.operator, statusCode: a.statusCode })));
     return c.json(m, 201);
   });
 
@@ -103,13 +103,12 @@ export function buildApp(connection: Redis) {
       method: body.method ?? 'GET',
       headers: body.headers ?? {},
       body: body.body ?? null,
-      timeoutMs: body.timeoutMs ?? 10000,
+      timeoutMs: body.timeoutMs ?? DEFAULTS.API_TIMEOUT_IMPORT_DEFAULT_MS,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    for (const a of (body.assertions ?? []) as Array<{ type: string; operator: string; path?: string; value?: string }>) {
-      await apiCheckRepo.createAssertion(m.id, { type: a.type, operator: a.operator, path: a.path ?? null, value: a.value ?? null });
-    }
+    const assertions = (body.assertions ?? []) as Array<{ type: string; operator: string; path?: string; value?: string }>;
+    await apiCheckRepo.createAssertions(m.id, assertions.map((a) => ({ type: a.type, operator: a.operator, path: a.path ?? null, value: a.value ?? null })));
     return c.json(m, 201);
   });
 
@@ -123,13 +122,12 @@ export function buildApp(connection: Redis) {
       targetUrl: body.targetUrl,
       credentials: body.credentials ?? null,
       config: body.config ?? {},
-      intervalSeconds: body.intervalSeconds ?? 300,
+      intervalSeconds: body.intervalSeconds ?? DEFAULTS.QA_INTERVAL_SECONDS,
       enabled: body.enabled ?? true,
       status: 'active',
     });
-    for (const t of body.tests as Array<{ name: string; script: string; description?: string }>) {
-      await qaProjectRepo.createTest(m.id, { testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null });
-    }
+    const tests = body.tests as Array<{ name: string; script: string; description?: string }>;
+    await qaProjectRepo.createTests(m.id, tests.map((t) => ({ testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null })));
     return c.json(m, 201);
   });
 
@@ -180,7 +178,7 @@ export function buildApp(connection: Redis) {
     if (type === 'qa') {
       const [m] = await qaProjectRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const tests = await qaProjectRepo.findTestsWithScriptByProjectId(id);
+      const tests = await qaProjectRepo.findTestsByProjectId(id, { includeScript: true });
       if (tests.length === 0) return c.json({ error: 'no tests on this project' }, 400);
       await qaQ.add('run', {
         type: 'qa-project-run',
@@ -207,13 +205,11 @@ export function buildApp(connection: Redis) {
         const [m] = await urlMonitorRepo.create({
           name: u.name,
           url: u.url,
-          timeoutMs: u.timeoutMs ?? 30000,
+          timeoutMs: u.timeoutMs ?? DEFAULTS.URL_TIMEOUT_MS,
           intervalSeconds: u.intervalSeconds ?? 60,
           enabled: u.enabled ?? true,
         });
-        for (const a of u.assertions ?? []) {
-          await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.statusCode });
-        }
+        await urlMonitorRepo.createAssertions(m.id, (u.assertions ?? []).map((a: any) => ({ operator: a.operator, statusCode: a.statusCode })));
         created.url++;
       } catch (err) {
         created.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -227,13 +223,11 @@ export function buildApp(connection: Redis) {
           method: a.method ?? 'GET',
           headers: a.headers ?? {},
           body: a.body ?? null,
-          timeoutMs: a.timeoutMs ?? 10000,
+          timeoutMs: a.timeoutMs ?? DEFAULTS.API_TIMEOUT_IMPORT_DEFAULT_MS,
           intervalSeconds: a.intervalSeconds ?? 60,
           enabled: a.enabled ?? true,
         });
-        for (const ass of a.assertions ?? []) {
-          await apiCheckRepo.createAssertion(m.id, { type: ass.type, operator: ass.operator, path: ass.path ?? null, value: ass.value ?? null });
-        }
+        await apiCheckRepo.createAssertions(m.id, (a.assertions ?? []).map((ass: any) => ({ type: ass.type, operator: ass.operator, path: ass.path ?? null, value: ass.value ?? null })));
         created.api++;
       } catch (err) {
         created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -246,13 +240,11 @@ export function buildApp(connection: Redis) {
           targetUrl: q.targetUrl,
           credentials: q.credentials ?? null,
           config: q.config ?? {},
-          intervalSeconds: q.intervalSeconds ?? 300,
+          intervalSeconds: q.intervalSeconds ?? DEFAULTS.QA_INTERVAL_SECONDS,
           enabled: q.enabled ?? true,
           status: 'active',
         });
-        for (const t of q.tests ?? []) {
-          await qaProjectRepo.createTest(m.id, { testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null });
-        }
+        await qaProjectRepo.createTests(m.id, (q.tests ?? []).map((t: any) => ({ testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null })));
         created.qa++;
       } catch (err) {
         created.skipped.push(`qa ${q.name}: ${err instanceof Error ? err.message : String(err)}`);
