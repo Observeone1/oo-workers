@@ -16,8 +16,8 @@ import { SQL } from 'bun';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://oo:oo@localhost:5432/oo_workers';
 const sql = new SQL(DATABASE_URL);
 
-const INTERVAL = 10;     // seconds — tight so the test doesn't drag
-const WAIT_TICKS = 3;    // expect at least this many executions after WAIT_FOR_S
+const INTERVAL = 10; // seconds — tight so the test doesn't drag
+const WAIT_TICKS = 3; // expect at least this many executions after WAIT_FOR_S
 
 async function main() {
   console.log('=== scheduler test ===');

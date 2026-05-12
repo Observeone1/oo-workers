@@ -29,11 +29,7 @@ export function startScheduler(connection: Redis) {
 
   const tick = async () => {
     try {
-      await Promise.all([
-        tickUrlMonitors(urlQ),
-        tickApiChecks(apiQ),
-        tickQaProjects(qaQ),
-      ]);
+      await Promise.all([tickUrlMonitors(urlQ), tickApiChecks(apiQ), tickQaProjects(qaQ)]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -88,8 +84,12 @@ async function tickApiChecks(queue: Queue) {
       {
         executionId: exec.id,
         apiCheck: {
-          id: c.id, url: c.url, method: c.method, headers: c.headers,
-          body: c.body, timeoutMs: c.timeoutMs,
+          id: c.id,
+          url: c.url,
+          method: c.method,
+          headers: c.headers,
+          body: c.body,
+          timeoutMs: c.timeoutMs,
         },
         assertions,
       },

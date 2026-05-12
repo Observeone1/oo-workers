@@ -27,16 +27,17 @@ export const apiCheckRepo = {
     return rows.map(({ api_checks: c, latest: l }) => ({
       ...c,
       type: 'api' as const,
-      latest: l && l.id !== null
-        ? {
-            id: l.id,
-            status: l.status,
-            statusCode: l.statusCode,
-            responseTimeMs: l.responseTimeMs,
-            errorMessage: l.errorMessage,
-            startTime: l.startTime,
-          }
-        : null,
+      latest:
+        l && l.id !== null
+          ? {
+              id: l.id,
+              status: l.status,
+              statusCode: l.statusCode,
+              responseTimeMs: l.responseTimeMs,
+              errorMessage: l.errorMessage,
+              startTime: l.startTime,
+            }
+          : null,
     }));
   },
 
@@ -49,7 +50,9 @@ export const apiCheckRepo = {
   },
 
   findExecutionsByCheckId(apiCheckId: number, limit = 100) {
-    return db.select().from(apiExecutions)
+    return db
+      .select()
+      .from(apiExecutions)
       .where(eq(apiExecutions.apiCheckId, apiCheckId))
       .orderBy(desc(apiExecutions.startTime))
       .limit(limit);
@@ -68,13 +71,25 @@ export const apiCheckRepo = {
     return db.insert(apiChecks).values(data).returning();
   },
 
-  createAssertion(apiCheckId: number, assertion: { type: string; operator: string; path?: string | null; value?: string | null }) {
-    return db.insert(apiAssertions).values({ apiCheckId, ...assertion }).returning();
+  createAssertion(
+    apiCheckId: number,
+    assertion: { type: string; operator: string; path?: string | null; value?: string | null },
+  ) {
+    return db
+      .insert(apiAssertions)
+      .values({ apiCheckId, ...assertion })
+      .returning();
   },
 
-  createAssertions(apiCheckId: number, rows: Array<{ type: string; operator: string; path?: string | null; value?: string | null }>) {
+  createAssertions(
+    apiCheckId: number,
+    rows: Array<{ type: string; operator: string; path?: string | null; value?: string | null }>,
+  ) {
     if (rows.length === 0) return Promise.resolve([] as never[]);
-    return db.insert(apiAssertions).values(rows.map((r) => ({ apiCheckId, ...r }))).returning();
+    return db
+      .insert(apiAssertions)
+      .values(rows.map((r) => ({ apiCheckId, ...r })))
+      .returning();
   },
 
   createExecution(apiCheckId: number, status: string) {
@@ -112,7 +127,9 @@ export const apiCheckRepo = {
         body: apiChecks.body,
         timeoutMs: apiChecks.timeoutMs,
         intervalSeconds: apiChecks.intervalSeconds,
-        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as('age_seconds'),
+        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as(
+          'age_seconds',
+        ),
       })
       .from(apiChecks)
       .leftJoin(lastRun, eq(lastRun.checkId, apiChecks.id))

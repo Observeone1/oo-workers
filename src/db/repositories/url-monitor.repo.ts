@@ -27,16 +27,17 @@ export const urlMonitorRepo = {
     return rows.map(({ url_monitors: m, latest: l }) => ({
       ...m,
       type: 'url' as const,
-      latest: l && l.id !== null
-        ? {
-            id: l.id,
-            status: l.status,
-            statusCode: l.statusCode,
-            responseTimeMs: l.responseTimeMs,
-            errorMessage: l.errorMessage,
-            startTime: l.startTime,
-          }
-        : null,
+      latest:
+        l && l.id !== null
+          ? {
+              id: l.id,
+              status: l.status,
+              statusCode: l.statusCode,
+              responseTimeMs: l.responseTimeMs,
+              errorMessage: l.errorMessage,
+              startTime: l.startTime,
+            }
+          : null,
     }));
   },
 
@@ -45,27 +46,44 @@ export const urlMonitorRepo = {
   },
 
   findAssertionsByMonitorId(urlMonitorId: number) {
-    return db.select().from(urlMonitorAssertions).where(eq(urlMonitorAssertions.urlMonitorId, urlMonitorId));
+    return db
+      .select()
+      .from(urlMonitorAssertions)
+      .where(eq(urlMonitorAssertions.urlMonitorId, urlMonitorId));
   },
 
   findExecutionsByMonitorId(urlMonitorId: number, limit = 100) {
-    return db.select().from(urlMonitorExecutions)
+    return db
+      .select()
+      .from(urlMonitorExecutions)
       .where(eq(urlMonitorExecutions.urlMonitorId, urlMonitorId))
       .orderBy(desc(urlMonitorExecutions.startTime))
       .limit(limit);
   },
 
-  create(data: { name: string; url: string; timeoutMs?: number; intervalSeconds?: number; enabled?: boolean }) {
+  create(data: {
+    name: string;
+    url: string;
+    timeoutMs?: number;
+    intervalSeconds?: number;
+    enabled?: boolean;
+  }) {
     return db.insert(urlMonitors).values(data).returning();
   },
 
   createAssertion(urlMonitorId: number, assertion: { operator: string; statusCode: number }) {
-    return db.insert(urlMonitorAssertions).values({ urlMonitorId, ...assertion }).returning();
+    return db
+      .insert(urlMonitorAssertions)
+      .values({ urlMonitorId, ...assertion })
+      .returning();
   },
 
   createAssertions(urlMonitorId: number, rows: Array<{ operator: string; statusCode: number }>) {
     if (rows.length === 0) return Promise.resolve([] as never[]);
-    return db.insert(urlMonitorAssertions).values(rows.map((r) => ({ urlMonitorId, ...r }))).returning();
+    return db
+      .insert(urlMonitorAssertions)
+      .values(rows.map((r) => ({ urlMonitorId, ...r })))
+      .returning();
   },
 
   createExecution(urlMonitorId: number, status: string) {
@@ -100,7 +118,9 @@ export const urlMonitorRepo = {
         url: urlMonitors.url,
         timeoutMs: urlMonitors.timeoutMs,
         intervalSeconds: urlMonitors.intervalSeconds,
-        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as('age_seconds'),
+        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as(
+          'age_seconds',
+        ),
       })
       .from(urlMonitors)
       .leftJoin(lastRun, eq(lastRun.monitorId, urlMonitors.id))

@@ -21,8 +21,8 @@ export const urlMonitorProcessor = async (job: Job) => {
 
     const assertionResults = evaluateUrlMonitorAssertions(assertions || [], response.status);
     const allPassed = assertionResults.every((r: { passed: boolean }) => r.passed);
-    const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
-    const status = allPassed ? 'SUCCESS' : (isFinalAttempt ? 'FAILED' : 'PENDING');
+    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
+    const status = allPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
 
     await urlMonitorRepo.updateExecution(executionId, {
       status,
@@ -39,7 +39,7 @@ export const urlMonitorProcessor = async (job: Job) => {
     return { success: true };
   } catch (error: unknown) {
     const responseTime = Date.now() - startTime;
-    const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
+    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
     const detailedMessage = classifyFetchError(error, monitor.url, timeoutMs);
 
     logger.error(`URL monitor execution ${executionId} failed: ${detailedMessage}`);

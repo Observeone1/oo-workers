@@ -50,4 +50,6 @@ await Bun.write(outPath, JSON.stringify(out, null, 2));
 console.log(`✓ wrote ${outPath}`);
 console.log(`  url_monitors: ${url_monitors.length}`);
 console.log(`  api_checks:   ${api_checks.length}`);
-console.log(`  skipped:      heartbeats=${src.heartbeats?.length ?? 0}, suites=${src.suites?.length ?? 0}, alert_channels=${src.alert_channels?.length ?? 0}, status_pages=${src.status_pages?.length ?? 0}, incidents=${src.incidents?.length ?? 0}`);
+console.log(
+  `  skipped:      heartbeats=${src.heartbeats?.length ?? 0}, suites=${src.suites?.length ?? 0}, alert_channels=${src.alert_channels?.length ?? 0}, status_pages=${src.status_pages?.length ?? 0}, incidents=${src.incidents?.length ?? 0}`,
+);

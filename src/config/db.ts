@@ -4,9 +4,7 @@ import * as schema from '../db/schema.ts';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  throw new Error(
-    'DATABASE_URL is required (e.g. postgres://user:pass@localhost:5432/oo_workers)',
-  );
+  throw new Error('DATABASE_URL is required (e.g. postgres://user:pass@localhost:5432/oo_workers)');
 }
 
 // postgres-js (not bun:sql): the bun-sql Drizzle adapter has an unresolved
