@@ -1,5 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { jsonbCast } from '../jsonb.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 
 export const qaProjectRepo = {
@@ -54,7 +55,11 @@ export const qaProjectRepo = {
     enabled?: boolean;
     status?: string;
   }) {
-    return db.insert(qaProjects).values(data).returning();
+    const { credentials, config, ...rest } = data;
+    const values: Record<string, unknown> = { ...rest };
+    if (credentials !== undefined) values.credentials = credentials === null ? null : jsonbCast(credentials);
+    if (config !== undefined) values.config = jsonbCast(config);
+    return db.insert(qaProjects).values(values as any).returning();
   },
 
   createTest(projectId: number, test: { testName: string; testType?: string; script: string; description?: string | null }) {

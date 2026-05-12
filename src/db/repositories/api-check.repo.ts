@@ -1,5 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { jsonbCast } from '../jsonb.ts';
 import { apiAssertions, apiChecks, apiExecutions } from '../schema.ts';
 
 export const apiCheckRepo = {
@@ -40,7 +41,10 @@ export const apiCheckRepo = {
     intervalSeconds?: number;
     enabled?: boolean;
   }) {
-    return db.insert(apiChecks).values(data).returning();
+    const { headers, ...rest } = data;
+    const values: Record<string, unknown> = { ...rest };
+    if (headers !== undefined) values.headers = jsonbCast(headers);
+    return db.insert(apiChecks).values(values as any).returning();
   },
 
   createAssertion(apiCheckId: number, assertion: { type: string; operator: string; path?: string | null; value?: string | null }) {
@@ -54,8 +58,8 @@ export const apiCheckRepo = {
   updateExecution(id: number, data: Partial<typeof apiExecutions.$inferInsert>) {
     const { assertionResults, responseHeaders, ...rest } = data as any;
     const setClause: Record<string, unknown> = { ...rest };
-    if (assertionResults !== undefined) setClause.assertionResults = sql`${JSON.stringify(assertionResults)}::jsonb`;
-    if (responseHeaders !== undefined)  setClause.responseHeaders  = sql`${JSON.stringify(responseHeaders)}::jsonb`;
+    if (assertionResults !== undefined) setClause.assertionResults = jsonbCast(assertionResults);
+    if (responseHeaders !== undefined)  setClause.responseHeaders  = jsonbCast(responseHeaders);
     return db.update(apiExecutions).set(setClause as any).where(eq(apiExecutions.id, id));
   },
 

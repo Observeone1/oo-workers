@@ -1,5 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { jsonbCast } from '../jsonb.ts';
 import { urlMonitorAssertions, urlMonitorExecutions, urlMonitors } from '../schema.ts';
 
 export const urlMonitorRepo = {
@@ -46,7 +47,7 @@ export const urlMonitorRepo = {
   updateExecution(id: number, data: Partial<typeof urlMonitorExecutions.$inferInsert>) {
     const { assertionResults, ...rest } = data as any;
     const setClause: Record<string, unknown> = { ...rest };
-    if (assertionResults !== undefined) setClause.assertionResults = sql`${JSON.stringify(assertionResults)}::jsonb`;
+    if (assertionResults !== undefined) setClause.assertionResults = jsonbCast(assertionResults);
     return db.update(urlMonitorExecutions).set(setClause as any).where(eq(urlMonitorExecutions.id, id));
   },
 
