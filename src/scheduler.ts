@@ -12,12 +12,13 @@
 
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
+import { DEFAULTS } from './constants.ts';
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { logger } from './utils/logger.ts';
 
-const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? 5_000);
+const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? DEFAULTS.SCHEDULER_TICK_MS);
 
 export function startScheduler(connection: Redis) {
   const urlQ = new Queue('url-monitor', { connection });
@@ -105,7 +106,7 @@ async function tickQaProjects(queue: Queue) {
   for (const p of due) {
     if (p.ageSeconds !== null && p.ageSeconds < p.intervalSeconds) continue;
 
-    const tests = await qaProjectRepo.findTestsWithScriptByProjectId(p.id);
+    const tests = await qaProjectRepo.findTestsByProjectId(p.id, { includeScript: true });
     if (tests.length === 0) continue;
 
     const bucket = Math.floor(Date.now() / (p.intervalSeconds * 1000));

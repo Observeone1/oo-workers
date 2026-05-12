@@ -1,3 +1,6 @@
+// .default() literals below are duplicated in src/constants.ts (DEFAULTS).
+// Drizzle's .default() requires a literal, so the schema can't import them.
+// If you change a default here, update DEFAULTS as well.
 import {
   boolean,
   index,

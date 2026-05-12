@@ -72,6 +72,11 @@ export const apiCheckRepo = {
     return db.insert(apiAssertions).values({ apiCheckId, ...assertion }).returning();
   },
 
+  createAssertions(apiCheckId: number, rows: Array<{ type: string; operator: string; path?: string | null; value?: string | null }>) {
+    if (rows.length === 0) return Promise.resolve([] as never[]);
+    return db.insert(apiAssertions).values(rows.map((r) => ({ apiCheckId, ...r }))).returning();
+  },
+
   createExecution(apiCheckId: number, status: string) {
     return db.insert(apiExecutions).values({ apiCheckId, status }).returning();
   },
