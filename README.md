@@ -15,6 +15,8 @@ cp .env.example .env
 docker compose up -d
 ```
 
+This pulls the pre-built image from `ghcr.io/observeone1/oo-workers:latest` — no local build needed. To build from source instead (for contributors), use `docker compose -f docker-compose.build.yml up -d`.
+
 Open **http://localhost:3001** and click *+ Add monitor*. That's it.
 
 The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTTP + admin dashboard), `postgres`, `redis`. Schema migrations run automatically on first boot.

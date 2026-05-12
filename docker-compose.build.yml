@@ -1,6 +1,6 @@
-# oo-workers — self-host stack (published image variant).
-# Pulls the pre-built image from GHCR. For local development (build from
-# source) use docker-compose.build.yml instead.
+# oo-workers — self-host stack.
+# Three services: worker (this app) + postgres + redis.
+# First boot runs migrations automatically.
 
 services:
   postgres:
@@ -23,6 +23,10 @@ services:
   redis:
     image: redis:8-alpine
     restart: unless-stopped
+    # No host port publish by default — worker talks via compose network.
+    # Uncomment to expose for local debugging:
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -32,7 +36,7 @@ services:
       retries: 10
 
   worker:
-    image: ghcr.io/observeone1/oo-workers:${OO_WORKERS_TAG:-latest}
+    build: .
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,10 +50,11 @@ services:
       API_CHECK_CONCURRENCY: ${API_CHECK_CONCURRENCY:-10}
       URL_MONITOR_CONCURRENCY: ${URL_MONITOR_CONCURRENCY:-20}
       QA_PROJECT_CONCURRENCY: ${QA_PROJECT_CONCURRENCY:-5}
+    # Run migrations once, then start the worker + scheduler. No HTTP server here.
     command: ["sh", "-c", "bun src/db/migrate.ts && bun src/index.ts"]
 
   ui:
-    image: ghcr.io/observeone1/oo-workers:${OO_WORKERS_TAG:-latest}
+    build: .
     restart: unless-stopped
     depends_on:
       postgres:
@@ -57,6 +62,7 @@ services:
       redis:
         condition: service_healthy
       worker:
+        # wait for worker (which runs migrations) so schema exists before UI hits the DB
         condition: service_started
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
