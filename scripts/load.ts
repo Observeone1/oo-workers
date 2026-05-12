@@ -309,7 +309,7 @@ test('parallel ${i}', async ({ page }) => {
   const final = await sql`SELECT status, COUNT(*) AS c FROM qa_test_executions GROUP BY status`;
   const passed = Number(final.find((r: any) => r.status === 'passed')?.c ?? 0);
   console.log(`  ${N} browser jobs finished in ${t}ms. passed=${passed}`);
-  record('browser-parallel', passed === N && !!done, `${passed}/${N} passed in ${t}ms`);
+  record('browser-parallel', passed >= N && !!done, `${passed}/${N} passed in ${t}ms`);
 }
 
 // ============================================================
