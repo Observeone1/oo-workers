@@ -52,7 +52,11 @@ export const apiCheckRepo = {
   },
 
   updateExecution(id: number, data: Partial<typeof apiExecutions.$inferInsert>) {
-    return db.update(apiExecutions).set(data).where(eq(apiExecutions.id, id));
+    const { assertionResults, responseHeaders, ...rest } = data as any;
+    const setClause: Record<string, unknown> = { ...rest };
+    if (assertionResults !== undefined) setClause.assertionResults = sql`${JSON.stringify(assertionResults)}::jsonb`;
+    if (responseHeaders !== undefined)  setClause.responseHeaders  = sql`${JSON.stringify(responseHeaders)}::jsonb`;
+    return db.update(apiExecutions).set(setClause as any).where(eq(apiExecutions.id, id));
   },
 
   updateEnabled(id: number, enabled: boolean) {

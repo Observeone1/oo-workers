@@ -44,7 +44,10 @@ export const urlMonitorRepo = {
   },
 
   updateExecution(id: number, data: Partial<typeof urlMonitorExecutions.$inferInsert>) {
-    return db.update(urlMonitorExecutions).set(data).where(eq(urlMonitorExecutions.id, id));
+    const { assertionResults, ...rest } = data as any;
+    const setClause: Record<string, unknown> = { ...rest };
+    if (assertionResults !== undefined) setClause.assertionResults = sql`${JSON.stringify(assertionResults)}::jsonb`;
+    return db.update(urlMonitorExecutions).set(setClause as any).where(eq(urlMonitorExecutions.id, id));
   },
 
   updateEnabled(id: number, enabled: boolean) {
