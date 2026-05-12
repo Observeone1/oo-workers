@@ -1,6 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
-import { jsonbCast } from '../jsonb.ts';
 import { urlMonitorAssertions, urlMonitorExecutions, urlMonitors } from '../schema.ts';
 
 export const urlMonitorRepo = {
@@ -45,10 +44,7 @@ export const urlMonitorRepo = {
   },
 
   updateExecution(id: number, data: Partial<typeof urlMonitorExecutions.$inferInsert>) {
-    const { assertionResults, ...rest } = data as any;
-    const setClause: Record<string, unknown> = { ...rest };
-    if (assertionResults !== undefined) setClause.assertionResults = jsonbCast(assertionResults);
-    return db.update(urlMonitorExecutions).set(setClause as any).where(eq(urlMonitorExecutions.id, id));
+    return db.update(urlMonitorExecutions).set(data).where(eq(urlMonitorExecutions.id, id));
   },
 
   updateEnabled(id: number, enabled: boolean) {
@@ -60,19 +56,25 @@ export const urlMonitorRepo = {
   },
 
   findDue() {
-    // EXTRACT(EPOCH...) age calc — kept as raw SQL
-    return db.execute<{
-      id: number;
-      url: string;
-      timeout_ms: number;
-      interval_seconds: number;
-      age_seconds: number | null;
-    }>(sql`
-      SELECT m.id, m.url, m.timeout_ms, m.interval_seconds,
-             (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(start_time)))::bigint
-                FROM url_monitor_executions WHERE url_monitor_id = m.id) AS age_seconds
-      FROM url_monitors m
-      WHERE m.enabled = TRUE
-    `);
+    const lastRun = db
+      .select({
+        monitorId: urlMonitorExecutions.urlMonitorId,
+        maxStart: sql<Date>`MAX(${urlMonitorExecutions.startTime})`.as('max_start'),
+      })
+      .from(urlMonitorExecutions)
+      .groupBy(urlMonitorExecutions.urlMonitorId)
+      .as('last_run');
+
+    return db
+      .select({
+        id: urlMonitors.id,
+        url: urlMonitors.url,
+        timeoutMs: urlMonitors.timeoutMs,
+        intervalSeconds: urlMonitors.intervalSeconds,
+        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as('age_seconds'),
+      })
+      .from(urlMonitors)
+      .leftJoin(lastRun, eq(lastRun.monitorId, urlMonitors.id))
+      .where(eq(urlMonitors.enabled, true));
   },
 };

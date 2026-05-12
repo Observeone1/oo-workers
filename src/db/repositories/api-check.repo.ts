@@ -1,6 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
-import { jsonbCast } from '../jsonb.ts';
 import { apiAssertions, apiChecks, apiExecutions } from '../schema.ts';
 
 export const apiCheckRepo = {
@@ -41,10 +40,7 @@ export const apiCheckRepo = {
     intervalSeconds?: number;
     enabled?: boolean;
   }) {
-    const { headers, ...rest } = data;
-    const values: Record<string, unknown> = { ...rest };
-    if (headers !== undefined) values.headers = jsonbCast(headers);
-    return db.insert(apiChecks).values(values as any).returning();
+    return db.insert(apiChecks).values(data).returning();
   },
 
   createAssertion(apiCheckId: number, assertion: { type: string; operator: string; path?: string | null; value?: string | null }) {
@@ -56,11 +52,7 @@ export const apiCheckRepo = {
   },
 
   updateExecution(id: number, data: Partial<typeof apiExecutions.$inferInsert>) {
-    const { assertionResults, responseHeaders, ...rest } = data as any;
-    const setClause: Record<string, unknown> = { ...rest };
-    if (assertionResults !== undefined) setClause.assertionResults = jsonbCast(assertionResults);
-    if (responseHeaders !== undefined)  setClause.responseHeaders  = jsonbCast(responseHeaders);
-    return db.update(apiExecutions).set(setClause as any).where(eq(apiExecutions.id, id));
+    return db.update(apiExecutions).set(data).where(eq(apiExecutions.id, id));
   },
 
   updateEnabled(id: number, enabled: boolean) {
@@ -72,21 +64,28 @@ export const apiCheckRepo = {
   },
 
   findDue() {
-    return db.execute<{
-      id: number;
-      url: string;
-      method: string;
-      headers: Record<string, string>;
-      body: string | null;
-      timeout_ms: number;
-      interval_seconds: number;
-      age_seconds: number | null;
-    }>(sql`
-      SELECT c.id, c.url, c.method, c.headers, c.body, c.timeout_ms, c.interval_seconds,
-             (SELECT EXTRACT(EPOCH FROM (NOW() - MAX(start_time)))::bigint
-                FROM api_executions WHERE api_check_id = c.id) AS age_seconds
-      FROM api_checks c
-      WHERE c.enabled = TRUE
-    `);
+    const lastRun = db
+      .select({
+        checkId: apiExecutions.apiCheckId,
+        maxStart: sql<Date>`MAX(${apiExecutions.startTime})`.as('max_start'),
+      })
+      .from(apiExecutions)
+      .groupBy(apiExecutions.apiCheckId)
+      .as('last_run');
+
+    return db
+      .select({
+        id: apiChecks.id,
+        url: apiChecks.url,
+        method: apiChecks.method,
+        headers: apiChecks.headers,
+        body: apiChecks.body,
+        timeoutMs: apiChecks.timeoutMs,
+        intervalSeconds: apiChecks.intervalSeconds,
+        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as('age_seconds'),
+      })
+      .from(apiChecks)
+      .leftJoin(lastRun, eq(lastRun.checkId, apiChecks.id))
+      .where(eq(apiChecks.enabled, true));
   },
 };

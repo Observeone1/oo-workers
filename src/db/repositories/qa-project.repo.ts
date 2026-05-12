@@ -1,6 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
-import { jsonbCast } from '../jsonb.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 
 export const qaProjectRepo = {
@@ -55,11 +54,7 @@ export const qaProjectRepo = {
     enabled?: boolean;
     status?: string;
   }) {
-    const { credentials, config, ...rest } = data;
-    const values: Record<string, unknown> = { ...rest };
-    if (credentials !== undefined) values.credentials = credentials === null ? null : jsonbCast(credentials);
-    if (config !== undefined) values.config = jsonbCast(config);
-    return db.insert(qaProjects).values(values as any).returning();
+    return db.insert(qaProjects).values(data).returning();
   },
 
   createTest(projectId: number, test: { testName: string; testType?: string; script: string; description?: string | null }) {
@@ -87,19 +82,17 @@ export const qaProjectRepo = {
   },
 
   findDue() {
-    return db.execute<{
-      id: number;
-      target_url: string;
-      credentials: Record<string, string> | null;
-      config: Record<string, unknown>;
-      interval_seconds: number;
-      last_run_at: string | null;
-      age_seconds: number | null;
-    }>(sql`
-      SELECT p.id, p.target_url, p.credentials, p.config, p.interval_seconds, p.last_run_at,
-             EXTRACT(EPOCH FROM (NOW() - p.last_run_at))::bigint AS age_seconds
-      FROM qa_projects p
-      WHERE p.enabled = TRUE
-    `);
+    return db
+      .select({
+        id: qaProjects.id,
+        targetUrl: qaProjects.targetUrl,
+        credentials: qaProjects.credentials,
+        config: qaProjects.config,
+        intervalSeconds: qaProjects.intervalSeconds,
+        lastRunAt: qaProjects.lastRunAt,
+        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${qaProjects.lastRunAt}))::int`.as('age_seconds'),
+      })
+      .from(qaProjects)
+      .where(eq(qaProjects.enabled, true));
   },
 };

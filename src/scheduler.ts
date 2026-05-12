@@ -52,17 +52,17 @@ async function tickUrlMonitors(queue: Queue) {
   const due = await urlMonitorRepo.findDue();
 
   for (const m of due) {
-    if (m.age_seconds !== null && m.age_seconds < m.interval_seconds) continue;
+    if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
 
     const assertions = await urlMonitorRepo.findAssertionsByMonitorId(m.id);
     const [exec] = await urlMonitorRepo.createExecution(m.id, 'pending');
 
-    const bucket = Math.floor(Date.now() / (m.interval_seconds * 1000));
+    const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
     await queue.add(
       'check',
       {
         executionId: exec.id,
-        monitor: { id: m.id, url: m.url, timeout_ms: m.timeout_ms },
+        monitor: { id: m.id, url: m.url, timeout_ms: m.timeoutMs },
         assertions,
       },
       { jobId: `url:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
@@ -76,19 +76,19 @@ async function tickApiChecks(queue: Queue) {
   const due = await apiCheckRepo.findDue();
 
   for (const c of due) {
-    if (c.age_seconds !== null && c.age_seconds < c.interval_seconds) continue;
+    if (c.ageSeconds !== null && c.ageSeconds < c.intervalSeconds) continue;
 
     const assertions = await apiCheckRepo.findAssertionsByCheckId(c.id);
     const [exec] = await apiCheckRepo.createExecution(c.id, 'pending');
 
-    const bucket = Math.floor(Date.now() / (c.interval_seconds * 1000));
+    const bucket = Math.floor(Date.now() / (c.intervalSeconds * 1000));
     await queue.add(
       'check',
       {
         executionId: exec.id,
         apiCheck: {
           id: c.id, url: c.url, method: c.method, headers: c.headers,
-          body: c.body, timeout_ms: c.timeout_ms,
+          body: c.body, timeout_ms: c.timeoutMs,
         },
         assertions,
       },
@@ -103,18 +103,18 @@ async function tickQaProjects(queue: Queue) {
   const due = await qaProjectRepo.findDue();
 
   for (const p of due) {
-    if (p.age_seconds !== null && p.age_seconds < p.interval_seconds) continue;
+    if (p.ageSeconds !== null && p.ageSeconds < p.intervalSeconds) continue;
 
     const tests = await qaProjectRepo.findTestsWithScriptByProjectId(p.id);
     if (tests.length === 0) continue;
 
-    const bucket = Math.floor(Date.now() / (p.interval_seconds * 1000));
+    const bucket = Math.floor(Date.now() / (p.intervalSeconds * 1000));
     await queue.add(
       'run',
       {
         type: 'qa-project-run',
         project_id: p.id,
-        target_url: p.target_url,
+        target_url: p.targetUrl,
         credentials: p.credentials ?? undefined,
         config: p.config ?? {},
         tests,
