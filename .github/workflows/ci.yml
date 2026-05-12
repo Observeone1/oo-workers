@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: oo
+          POSTGRES_PASSWORD: oo
+          POSTGRES_DB: oo_workers
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U oo -d oo_workers"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgres://oo:oo@localhost:5432/oo_workers
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run migrations
+        run: bun src/db/migrate.ts
+
+      - name: Start worker (background)
+        run: bun src/index.ts &
+        env:
+          LOG_LEVEL: info
+
+      - name: Wait for worker to be ready
+        run: sleep 3
+
+      - name: Smoke test
+        run: bun scripts/smoke.ts
+
+      - name: Scheduler test
+        run: bun scripts/scheduler-test.ts
+
+      - name: Load test
+        run: bun scripts/load.ts
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: oo-workers:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

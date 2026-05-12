@@ -239,7 +239,7 @@ $('#import-submit').addEventListener('click', async () => {
   let payload: any;
   try { payload = JSON.parse(text); } catch { alert('Not valid JSON'); return; }
   const res = await fetch('/api/import', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
-  const result = await res.json();
+  const result = await res.json() as { url: number; api: number; qa: number; skipped?: string[] };
   if (!res.ok) { alert(`Failed: ${JSON.stringify(result)}`); return; }
   const skipped = result.skipped?.length ? `\n\nSkipped:\n${result.skipped.join('\n')}` : '';
   alert(`Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`);

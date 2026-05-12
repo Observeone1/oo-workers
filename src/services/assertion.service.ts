@@ -54,7 +54,7 @@ export const evaluateAssertions = async (
             const result = await evaluateAssertion(assertion, responseData);
             results.push(result);
         } catch (error) {
-            logger.error(`Failed to evaluate assertion ${assertion.id}:`, error);
+            logger.error(`Failed to evaluate assertion ${assertion.id}: ${error instanceof Error ? error.message : String(error)}`);
             results.push({
                 type: assertion.type,
                 passed: false,
@@ -353,7 +353,7 @@ export const evaluateUrlMonitorAssertions = (
                 actual: actualStatusCode
             };
         } catch (error) {
-            logger.error('Error evaluating URL monitor assertion:', error);
+            logger.error(`Error evaluating URL monitor assertion: ${error instanceof Error ? error.message : String(error)}`);
             return {
                 operator: assertion.operator,
                 passed: false,
