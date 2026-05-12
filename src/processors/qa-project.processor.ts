@@ -74,6 +74,19 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
   const results: TestResult[] = [];
   const startTime = Date.now();
 
+  // Write all scripts to a per-run directory before any test starts.
+  // Using clean names (no id prefix) so sibling imports like import './auth.spec' resolve correctly.
+  const runDir = path.join(process.cwd(), 'tests', `${project_id}-${startTime}`);
+  await fs.mkdir(runDir, { recursive: true });
+
+  const fileMap = new Map<number, string>(); // test.id → absolute path
+  for (const test of tests) {
+    const safeTestName = test.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const filePath = path.join(runDir, `${safeTestName}.spec.ts`);
+    await fs.writeFile(filePath, test.script);
+    fileMap.set(test.id, filePath);
+  }
+
   try {
     const testPromises = tests.map(async (test) => {
       // INSERT execution row
@@ -117,14 +130,8 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
       });
 
       const testStartTime = Date.now();
-
-      // Write script to temp file (Playwright runs files, not strings)
-      const tempDir = path.join(process.cwd(), 'tests');
-      await fs.mkdir(tempDir, { recursive: true });
-      const safeTestName = test.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const fileName = `${test.id}-${safeTestName}.spec.ts`;
-      const tempFilePath = path.join(tempDir, fileName);
-      await fs.writeFile(tempFilePath, test.script);
+      const filePath = fileMap.get(test.id)!;
+      const fileName = path.relative(process.cwd(), filePath);
 
       try {
         const result = await executePlaywrightTest(
@@ -202,17 +209,13 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
           duration_ms,
           error_message: errorMessage,
         };
-      } finally {
-        try {
-          await fs.unlink(tempFilePath);
-        } catch (e) {
-          logger.warn(`Failed to cleanup temp file ${tempFilePath}: ${e instanceof Error ? e.message : String(e)}`);
-        }
       }
     });
 
     const testResults = await Promise.all(testPromises);
     results.push(...testResults);
+
+    await fs.rm(runDir, { recursive: true, force: true });
 
     const passed = results.filter((r) => r.status === 'passed').length;
     const failed = results.filter((r) => r.status === 'failed').length;
@@ -245,6 +248,7 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error(`QA Project ${project_id} run failed: ${msg}`);
+    await fs.rm(runDir, { recursive: true, force: true });
     throw error;
   }
 };
