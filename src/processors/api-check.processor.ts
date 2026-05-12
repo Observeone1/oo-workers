@@ -17,7 +17,7 @@ export const apiCheckProcessor = async (job: Job) => {
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), apiCheck.timeout_ms || 5000);
+    const timeout = setTimeout(() => controller.abort(), apiCheck.timeoutMs || 5000);
     requestOptions.signal = controller.signal;
 
     if (apiCheck.body && ['POST', 'PUT', 'PATCH'].includes(apiCheck.method)) {
@@ -75,7 +75,7 @@ export const apiCheckProcessor = async (job: Job) => {
 
     if (error instanceof Error) {
       if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-        errorMessage = `Request timed out after ${apiCheck.timeout_ms || 5000}ms`;
+        errorMessage = `Request timed out after ${apiCheck.timeoutMs || 5000}ms`;
       } else if ('cause' in error && error.cause) {
         const cause = error.cause as { code?: string; message?: string };
         if (cause.code === 'ENOTFOUND') {

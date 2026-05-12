@@ -84,12 +84,12 @@ export function buildApp(connection: Redis) {
     const [m] = await urlMonitorRepo.create({
       name: body.name,
       url: body.url,
-      timeoutMs: body.timeout_ms ?? 30000,
-      intervalSeconds: body.interval_seconds ?? 60,
+      timeoutMs: body.timeoutMs ?? 30000,
+      intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    for (const a of (body.assertions ?? []) as Array<{ operator: string; status_code: number }>) {
-      await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.status_code });
+    for (const a of (body.assertions ?? []) as Array<{ operator: string; statusCode: number }>) {
+      await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.statusCode });
     }
     return c.json(m, 201);
   });
@@ -103,8 +103,8 @@ export function buildApp(connection: Redis) {
       method: body.method ?? 'GET',
       headers: body.headers ?? {},
       body: body.body ?? null,
-      timeoutMs: body.timeout_ms ?? 10000,
-      intervalSeconds: body.interval_seconds ?? 60,
+      timeoutMs: body.timeoutMs ?? 10000,
+      intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
     for (const a of (body.assertions ?? []) as Array<{ type: string; operator: string; path?: string; value?: string }>) {
@@ -115,15 +115,15 @@ export function buildApp(connection: Redis) {
 
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
-    if (!body.name || !body.target_url || !Array.isArray(body.tests) || body.tests.length === 0) {
-      return c.json({ error: 'name + target_url + tests[] required' }, 400);
+    if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
+      return c.json({ error: 'name + targetUrl + tests[] required' }, 400);
     }
     const [m] = await qaProjectRepo.create({
       name: body.name,
-      targetUrl: body.target_url,
+      targetUrl: body.targetUrl,
       credentials: body.credentials ?? null,
       config: body.config ?? {},
-      intervalSeconds: body.interval_seconds ?? 300,
+      intervalSeconds: body.intervalSeconds ?? 300,
       enabled: body.enabled ?? true,
       status: 'active',
     });
@@ -166,7 +166,7 @@ export function buildApp(connection: Redis) {
       if (!m) return c.json({ error: 'not found' }, 404);
       const assertions = await urlMonitorRepo.findAssertionsByMonitorId(id);
       const [exec] = await urlMonitorRepo.createExecution(id, 'PENDING');
-      await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeout_ms: m.timeoutMs }, assertions });
+      await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs }, assertions });
       return c.json({ executionId: exec.id });
     }
     if (type === 'api') {
@@ -184,12 +184,12 @@ export function buildApp(connection: Redis) {
       if (tests.length === 0) return c.json({ error: 'no tests on this project' }, 400);
       await qaQ.add('run', {
         type: 'qa-project-run',
-        project_id: m.id,
-        target_url: m.targetUrl,
+        projectId: m.id,
+        targetUrl: m.targetUrl,
         credentials: m.credentials ?? undefined,
         config: m.config ?? {},
         tests,
-        triggered_at: new Date().toISOString(),
+        triggeredAt: new Date().toISOString(),
       });
       return c.json({ ok: true });
     }
@@ -202,24 +202,24 @@ export function buildApp(connection: Redis) {
     if (body.version !== 1) return c.json({ error: 'unsupported import version' }, 400);
     const created = { url: 0, api: 0, qa: 0, skipped: [] as string[] };
 
-    for (const u of (body.url_monitors ?? []) as any[]) {
+    for (const u of (body.urlMonitors ?? []) as any[]) {
       try {
         const [m] = await urlMonitorRepo.create({
           name: u.name,
           url: u.url,
-          timeoutMs: u.timeout_ms ?? 30000,
-          intervalSeconds: u.interval_seconds ?? 60,
+          timeoutMs: u.timeoutMs ?? 30000,
+          intervalSeconds: u.intervalSeconds ?? 60,
           enabled: u.enabled ?? true,
         });
         for (const a of u.assertions ?? []) {
-          await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.status_code });
+          await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.statusCode });
         }
         created.url++;
       } catch (err) {
         created.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    for (const a of (body.api_checks ?? []) as any[]) {
+    for (const a of (body.apiChecks ?? []) as any[]) {
       try {
         const [m] = await apiCheckRepo.create({
           name: a.name,
@@ -227,8 +227,8 @@ export function buildApp(connection: Redis) {
           method: a.method ?? 'GET',
           headers: a.headers ?? {},
           body: a.body ?? null,
-          timeoutMs: a.timeout_ms ?? 10000,
-          intervalSeconds: a.interval_seconds ?? 60,
+          timeoutMs: a.timeoutMs ?? 10000,
+          intervalSeconds: a.intervalSeconds ?? 60,
           enabled: a.enabled ?? true,
         });
         for (const ass of a.assertions ?? []) {
@@ -239,14 +239,14 @@ export function buildApp(connection: Redis) {
         created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    for (const q of (body.qa_projects ?? []) as any[]) {
+    for (const q of (body.qaProjects ?? []) as any[]) {
       try {
         const [m] = await qaProjectRepo.create({
           name: q.name,
-          targetUrl: q.target_url,
+          targetUrl: q.targetUrl,
           credentials: q.credentials ?? null,
           config: q.config ?? {},
-          intervalSeconds: q.interval_seconds ?? 300,
+          intervalSeconds: q.intervalSeconds ?? 300,
           enabled: q.enabled ?? true,
           status: 'active',
         });

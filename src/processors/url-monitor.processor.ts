@@ -12,7 +12,7 @@ export const urlMonitorProcessor = async (job: Job) => {
   try {
     const response = await fetch(monitor.url, {
       method: 'HEAD',
-      signal: AbortSignal.timeout(monitor.timeout_ms || 30000),
+      signal: AbortSignal.timeout(monitor.timeoutMs || 30000),
     });
     const responseTime = Date.now() - startTime;
 
@@ -43,7 +43,7 @@ export const urlMonitorProcessor = async (job: Job) => {
 
     let detailedMessage = err.message ?? 'Unknown error';
     if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      detailedMessage = `Request timed out after ${monitor.timeout_ms || 30000}ms`;
+      detailedMessage = `Request timed out after ${monitor.timeoutMs || 30000}ms`;
     } else if (err.cause) {
       const cause = err.cause;
       if (cause.code === 'ENOTFOUND') {
