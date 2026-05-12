@@ -41,7 +41,7 @@ export async function executePlaywrightTest(
 
         // Construct command
         // Use JSON reporter to easily parse results
-        const command = `npx playwright test headless=true "${scriptPath}" --reporter json`;
+        const command = `npx playwright test "${scriptPath}" --reporter json`;
 
         logs.push(`Executing: ${command}`);
 

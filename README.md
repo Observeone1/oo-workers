@@ -117,6 +117,15 @@ scripts/
 └── scheduler-test.ts        # scheduler tick verification
 ```
 
+## Limitations
+
+Browser checks run against **plain headless Chromium** inside the container — no captcha bypass, no residential proxies, no clean-IP fingerprint rotation. That means:
+
+- Scripts that target your own services (apps behind login, internal dashboards, public pages without bot walls) work great.
+- Scripts that target sites with strong bot detection (Google, Cloudflare-gated pages, sites behind hCaptcha/reCAPTCHA, etc.) will hit consent popups or captchas and fail. There is no clean way to fix this without paying for a managed browser service (E2B, Browserbase, Bright Data, etc.) — which would break the "free self-host" promise.
+
+A starter example you can adapt lives in [`examples/`](./examples).
+
 ## Roadmap
 
 - **v0.2** *(current)* — workers + scheduler + UI + bulk import + docs.
