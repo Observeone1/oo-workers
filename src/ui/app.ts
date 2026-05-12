@@ -205,20 +205,20 @@ addForm.addEventListener('submit', async (e) => {
   const type = fd.get('type') as MonType;
   const name = fd.get('name') as string;
   const url = fd.get('url') as string;
-  const interval_seconds = Number(fd.get('interval_seconds'));
+  const intervalSeconds = Number(fd.get('interval_seconds'));
 
   let body: any;
   let endpoint = '';
   if (type === 'url') {
-    body = { name, url, interval_seconds, assertions: [{operator:'equals', status_code: Number(fd.get('url_status') || 200)}] };
+    body = { name, url, intervalSeconds, assertions: [{operator:'equals', statusCode: Number(fd.get('url_status') || 200)}] };
     endpoint = '/api/monitors/url';
   } else if (type === 'api') {
     let assertions = [];
     try { assertions = JSON.parse((fd.get('api_assertions') as string) || '[]'); } catch { alert('Assertions JSON is invalid'); return; }
-    body = { name, url, method: fd.get('api_method'), interval_seconds, assertions };
+    body = { name, url, method: fd.get('api_method'), intervalSeconds, assertions };
     endpoint = '/api/monitors/api';
   } else {
-    body = { name, target_url: url, interval_seconds, tests: [{ name: name.replace(/\s+/g,'_'), script: fd.get('qa_script') }] };
+    body = { name, targetUrl: url, intervalSeconds, tests: [{ name: name.replace(/\s+/g,'_'), script: fd.get('qa_script') }] };
     endpoint = '/api/monitors/qa';
   }
   const res = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });

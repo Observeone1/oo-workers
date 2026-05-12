@@ -62,7 +62,7 @@ async function tickUrlMonitors(queue: Queue) {
       'check',
       {
         executionId: exec.id,
-        monitor: { id: m.id, url: m.url, timeout_ms: m.timeoutMs },
+        monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
         assertions,
       },
       { jobId: `url:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
@@ -88,7 +88,7 @@ async function tickApiChecks(queue: Queue) {
         executionId: exec.id,
         apiCheck: {
           id: c.id, url: c.url, method: c.method, headers: c.headers,
-          body: c.body, timeout_ms: c.timeoutMs,
+          body: c.body, timeoutMs: c.timeoutMs,
         },
         assertions,
       },
@@ -113,12 +113,12 @@ async function tickQaProjects(queue: Queue) {
       'run',
       {
         type: 'qa-project-run',
-        project_id: p.id,
-        target_url: p.targetUrl,
+        projectId: p.id,
+        targetUrl: p.targetUrl,
         credentials: p.credentials ?? undefined,
         config: p.config ?? {},
         tests,
-        triggered_at: new Date().toISOString(),
+        triggeredAt: new Date().toISOString(),
       },
       { jobId: `qa:${p.id}:${bucket}`, removeOnComplete: 50, removeOnFail: 50 },
     );

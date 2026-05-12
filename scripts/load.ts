@@ -78,7 +78,7 @@ async function concurrencyBurst() {
     execs.map((execId) =>
       urlQ.add('check', {
         executionId: execId,
-        monitor: { id: monitor.id, url: monitor.url, timeout_ms: monitor.timeout_ms },
+        monitor: { id: monitor.id, url: monitor.url, timeoutMs: monitor.timeout_ms },
         assertions: [],
       }),
     ),
@@ -126,7 +126,7 @@ async function failureModes() {
   const [dnsExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${dnsMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: dnsExec.id,
-    monitor: { id: dnsMon.id, url: dnsMon.url, timeout_ms: dnsMon.timeout_ms },
+    monitor: { id: dnsMon.id, url: dnsMon.url, timeoutMs: dnsMon.timeout_ms },
     assertions: [],
   });
 
@@ -140,7 +140,7 @@ async function failureModes() {
   const [toExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${toMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: toExec.id,
-    monitor: { id: toMon.id, url: toMon.url, timeout_ms: toMon.timeout_ms },
+    monitor: { id: toMon.id, url: toMon.url, timeoutMs: toMon.timeout_ms },
     assertions: [],
   });
 
@@ -153,8 +153,8 @@ async function failureModes() {
   const [wrongExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${wrongMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: wrongExec.id,
-    monitor: { id: wrongMon.id, url: wrongMon.url, timeout_ms: wrongMon.timeout_ms },
-    assertions: [{ operator: 'equals', status_code: 404 }],
+    monitor: { id: wrongMon.id, url: wrongMon.url, timeoutMs: wrongMon.timeout_ms },
+    assertions: [{ operator: 'equals', statusCode: 404 }],
   });
 
   console.log('  pushed 3 failure scenarios → waiting for results...');
@@ -200,7 +200,7 @@ async function assertionVariety() {
 
   await apiQ.add('check', {
     executionId: exec.id,
-    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeout_ms: check.timeout_ms },
+    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeoutMs: check.timeout_ms },
     assertions,
   });
 
@@ -235,7 +235,7 @@ async function jsonPathAssertion() {
 
   await apiQ.add('check', {
     executionId: exec.id,
-    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeout_ms: check.timeout_ms },
+    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeoutMs: check.timeout_ms },
     assertions,
   });
 
@@ -288,11 +288,11 @@ test('parallel ${i}', async ({ page }) => {
 
     await qaQ.add('run', {
       type: 'qa-project-run',
-      project_id: project.id,
-      target_url: project.target_url,
+      projectId: project.id,
+      targetUrl: project.target_url,
       config: { timeout: 30_000 },
       tests: [{ id: t.id, name: t.test_name, script }],
-      triggered_at: new Date().toISOString(),
+      triggeredAt: new Date().toISOString(),
     });
   }
 

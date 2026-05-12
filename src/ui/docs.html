@@ -69,17 +69,17 @@
 
       <h3>Shape</h3>
 <pre><code><span class="str">"assertions"</span>: [
-  { <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"status_code"</span>: <span class="num">200</span> }
+  { <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"statusCode"</span>: <span class="num">200</span> }
 ]</code></pre>
 
       <h3>Operators</h3>
       <table>
         <thead><tr><th>Operator</th><th>Meaning</th><th>Example</th></tr></thead>
         <tbody>
-          <tr><td><code>equals</code></td><td>HTTP status equals N</td><td><code>{"operator":"equals","status_code":200}</code></td></tr>
-          <tr><td><code>not_equals</code></td><td>HTTP status is not N</td><td><code>{"operator":"not_equals","status_code":500}</code></td></tr>
-          <tr><td><code>less_than</code></td><td>HTTP status &lt; N</td><td><code>{"operator":"less_than","status_code":400}</code></td></tr>
-          <tr><td><code>greater_than</code></td><td>HTTP status &gt; N</td><td><code>{"operator":"greater_than","status_code":199}</code></td></tr>
+          <tr><td><code>equals</code></td><td>HTTP status equals N</td><td><code>{"operator":"equals","statusCode":200}</code></td></tr>
+          <tr><td><code>not_equals</code></td><td>HTTP status is not N</td><td><code>{"operator":"not_equals","statusCode":500}</code></td></tr>
+          <tr><td><code>less_than</code></td><td>HTTP status &lt; N</td><td><code>{"operator":"less_than","statusCode":400}</code></td></tr>
+          <tr><td><code>greater_than</code></td><td>HTTP status &gt; N</td><td><code>{"operator":"greater_than","statusCode":199}</code></td></tr>
         </tbody>
       </table>
       <div class="note">No assertions? The check is considered SUCCESS as long as the request didn't error out.</div>
@@ -196,26 +196,26 @@ test(<span class="str">'add to cart + checkout'</span>, <span class="kw">async</
 <pre><code>{
   <span class="str">"version"</span>: <span class="num">1</span>,
 
-  <span class="str">"url_monitors"</span>: [
+  <span class="str">"urlMonitors"</span>: [
     {
       <span class="str">"name"</span>: <span class="str">"my-site"</span>,
       <span class="str">"url"</span>: <span class="str">"https://example.com"</span>,
-      <span class="str">"interval_seconds"</span>: <span class="num">60</span>,
-      <span class="str">"timeout_ms"</span>: <span class="num">30000</span>,
+      <span class="str">"intervalSeconds"</span>: <span class="num">60</span>,
+      <span class="str">"timeoutMs"</span>: <span class="num">30000</span>,
       <span class="str">"enabled"</span>: <span class="kw">true</span>,
       <span class="str">"assertions"</span>: [
-        { <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"status_code"</span>: <span class="num">200</span> }
+        { <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"statusCode"</span>: <span class="num">200</span> }
       ]
     }
   ],
 
-  <span class="str">"api_checks"</span>: [
+  <span class="str">"apiChecks"</span>: [
     {
       <span class="str">"name"</span>: <span class="str">"my-api"</span>,
       <span class="str">"url"</span>: <span class="str">"https://api.example.com/health"</span>,
       <span class="str">"method"</span>: <span class="str">"GET"</span>,
       <span class="str">"headers"</span>: { <span class="str">"X-API-Key"</span>: <span class="str">"xxx"</span> },
-      <span class="str">"interval_seconds"</span>: <span class="num">60</span>,
+      <span class="str">"intervalSeconds"</span>: <span class="num">60</span>,
       <span class="str">"assertions"</span>: [
         { <span class="str">"type"</span>: <span class="str">"status_code"</span>, <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"value"</span>: <span class="str">"200"</span> },
         { <span class="str">"type"</span>: <span class="str">"json_path"</span>,   <span class="str">"operator"</span>: <span class="str">"equals"</span>, <span class="str">"path"</span>: <span class="str">"$.status"</span>, <span class="str">"value"</span>: <span class="str">"ok"</span> }
@@ -223,11 +223,11 @@ test(<span class="str">'add to cart + checkout'</span>, <span class="kw">async</
     }
   ],
 
-  <span class="str">"qa_projects"</span>: [
+  <span class="str">"qaProjects"</span>: [
     {
       <span class="str">"name"</span>: <span class="str">"login-flow"</span>,
-      <span class="str">"target_url"</span>: <span class="str">"https://app.example.com"</span>,
-      <span class="str">"interval_seconds"</span>: <span class="num">300</span>,
+      <span class="str">"targetUrl"</span>: <span class="str">"https://app.example.com"</span>,
+      <span class="str">"intervalSeconds"</span>: <span class="num">300</span>,
       <span class="str">"tests"</span>: [
         {
           <span class="str">"name"</span>: <span class="str">"can-login"</span>,
@@ -238,7 +238,7 @@ test(<span class="str">'add to cart + checkout'</span>, <span class="kw">async</
   ]
 }</code></pre>
 
-      <div class="note">Every section is optional — you can import only <code>url_monitors</code> if that's all you have. Failed items are reported in the response's <code>skipped</code> array, the rest still get created.</div>
+      <div class="note">Every section is optional — you can import only <code>urlMonitors</code> if that's all you have. Failed items are reported in the response's <code>skipped</code> array, the rest still get created.</div>
     </section>
   </main>
 </body>

@@ -19,20 +19,20 @@ interface QATest {
 
 interface QAProjectJobData {
   type: 'qa-project-run';
-  project_id: number;
-  target_url: string;
+  projectId: number;
+  targetUrl: string;
   credentials?: Record<string, string>;
   config?: Record<string, unknown>;
   tests: QATest[];
-  triggered_at: string;
+  triggeredAt: string;
 }
 
 interface TestResult {
   testId: number;
   executionId: number;
   status: 'passed' | 'failed' | 'error';
-  duration_ms: number;
-  error_message?: string;
+  durationMs: number;
+  errorMessage?: string;
   logs?: string[];
 }
 
@@ -55,14 +55,16 @@ export const createQaProjectProcessor = (redis: Redis) => {
   };
 
   return async (job: Job<QAProjectJobData>) => {
-  const { project_id, target_url, credentials, config, tests } = job.data;
+  const { projectId, targetUrl, credentials, config, tests } = job.data;
 
-  logger.info(`Processing QA Project job ${job.id} (Project: ${project_id})`);
-  logger.info(`Running ${tests.length} tests for target: ${target_url}`);
+  logger.info(`Processing QA Project job ${job.id} (Project: ${projectId})`);
+  logger.info(`Running ${tests.length} tests for target: ${targetUrl}`);
 
-  await publishUpdate(project_id, {
+  // Redis pub/sub keys stay snake_case for now — separate consumer contract,
+  // tracked as a follow-up cleanup. BullMQ payloads + HTTP API are camelCase.
+  await publishUpdate(projectId, {
     type: 'run_started',
-    project_id,
+    project_id: projectId,
     test_count: tests.length,
   });
 
@@ -71,7 +73,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
 
   // Write all scripts to a per-run directory before any test starts.
   // Using clean names (no id prefix) so sibling imports like import './auth.spec' resolve correctly.
-  const runDir = path.join(TESTS_ROOT, `${project_id}-${startTime}`);
+  const runDir = path.join(TESTS_ROOT, `${projectId}-${startTime}`);
   await fs.mkdir(runDir, { recursive: true });
 
   const fileMap = new Map<number, string>(); // test.id → absolute path
@@ -87,15 +89,15 @@ export const createQaProjectProcessor = (redis: Redis) => {
       // INSERT execution row
       let executionId: number;
       try {
-        const [row] = await qaProjectRepo.createExecution(test.id, project_id, 'running');
+        const [row] = await qaProjectRepo.createExecution(test.id, projectId, 'running');
         executionId = row.id;
       } catch (createError) {
         const msg = createError instanceof Error ? createError.message : String(createError);
         logger.error(`Failed to create execution for test ${test.id}: ${msg}`);
 
-        await publishUpdate(project_id, {
+        await publishUpdate(projectId, {
           type: 'test_update',
-          project_id,
+          project_id: projectId,
           test_id: test.id,
           test_name: test.name,
           status: 'error',
@@ -106,14 +108,14 @@ export const createQaProjectProcessor = (redis: Redis) => {
           testId: test.id,
           executionId: 0,
           status: 'error' as const,
-          duration_ms: 0,
-          error_message: `Failed to create execution record: ${msg}`,
+          durationMs: 0,
+          errorMessage: `Failed to create execution record: ${msg}`,
         };
       }
 
-      await publishUpdate(project_id, {
+      await publishUpdate(projectId, {
         type: 'test_update',
-        project_id,
+        project_id: projectId,
         test_id: test.id,
         test_name: test.name,
         execution_id: executionId,
@@ -127,7 +129,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
       try {
         const result = await executePlaywrightTest(
           fileName,
-          target_url,
+          targetUrl,
           credentials,
           {
             timeout: (config?.timeout as number) || 30000,
@@ -136,25 +138,25 @@ export const createQaProjectProcessor = (redis: Redis) => {
           },
         );
 
-        const duration_ms = result.duration_ms;
+        const durationMs = result.duration_ms;
         const status = result.success ? 'passed' : 'failed';
 
         await qaProjectRepo.updateExecution(executionId, {
           status,
           completedAt: new Date(),
-          durationMs: duration_ms,
+          durationMs,
           errorMessage: result.error ?? null,
           logs: result.logs?.join('\n') ?? null,
         });
 
-        await publishUpdate(project_id, {
+        await publishUpdate(projectId, {
           type: 'test_update',
-          project_id,
+          project_id: projectId,
           test_id: test.id,
           test_name: test.name,
           execution_id: executionId,
           status,
-          duration_ms,
+          duration_ms: durationMs,
           error_message: result.error,
         });
 
@@ -162,30 +164,30 @@ export const createQaProjectProcessor = (redis: Redis) => {
           testId: test.id,
           executionId,
           status: status as 'passed' | 'failed',
-          duration_ms,
-          error_message: result.error,
+          durationMs,
+          errorMessage: result.error,
           logs: result.logs,
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        const duration_ms = Date.now() - testStartTime;
+        const durationMs = Date.now() - testStartTime;
         logger.error(`Test ${test.id} execution failed: ${errorMessage}`);
 
         await qaProjectRepo.updateExecution(executionId, {
           status: 'error',
           completedAt: new Date(),
-          durationMs: duration_ms,
+          durationMs,
           errorMessage,
         });
 
-        await publishUpdate(project_id, {
+        await publishUpdate(projectId, {
           type: 'test_update',
-          project_id,
+          project_id: projectId,
           test_id: test.id,
           test_name: test.name,
           execution_id: executionId,
           status: 'error',
-          duration_ms,
+          duration_ms: durationMs,
           error_message: errorMessage,
         });
 
@@ -193,8 +195,8 @@ export const createQaProjectProcessor = (redis: Redis) => {
           testId: test.id,
           executionId,
           status: 'error' as const,
-          duration_ms,
-          error_message: errorMessage,
+          durationMs,
+          errorMessage,
         };
       }
     });
@@ -209,28 +211,28 @@ export const createQaProjectProcessor = (redis: Redis) => {
     const errors = results.filter((r) => r.status === 'error').length;
     const totalDuration = Date.now() - startTime;
 
-    await qaProjectRepo.touchLastRunAt(project_id);
+    await qaProjectRepo.touchLastRunAt(projectId);
 
     const completionData = {
       type: 'run_completed',
-      project_id,
+      project_id: projectId,
       results: { total: tests.length, passed, failed, errors, duration_ms: totalDuration },
     };
 
-    await publishUpdate(project_id, completionData);
+    await publishUpdate(projectId, completionData);
 
-    logger.info(`QA Project ${project_id} run completed: passed=${passed}, failed=${failed}, errors=${errors}`);
+    logger.info(`QA Project ${projectId} run completed: passed=${passed}, failed=${failed}, errors=${errors}`);
 
     return {
       success: true,
-      project_id,
+      projectId,
       type: 'run_completed',
       results: completionData.results,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    logger.error(`QA Project ${project_id} run failed: ${msg}`);
+    logger.error(`QA Project ${projectId} run failed: ${msg}`);
     await fs.rm(runDir, { recursive: true, force: true });
     throw error;
   }

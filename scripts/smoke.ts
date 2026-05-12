@@ -61,7 +61,7 @@ async function smokeUrlMonitor() {
   const queue = new Queue('url-monitor', { connection });
   const job = await queue.add('check', {
     executionId: exec.id,
-    monitor: { id: monitor.id, url: monitor.url, timeout_ms: monitor.timeout_ms },
+    monitor: { id: monitor.id, url: monitor.url, timeoutMs: monitor.timeout_ms },
     assertions: [{ id: assertion.id, operator: 'equals', statusCode: 200 }],
   });
   console.log(`  job ${job.id} pushed → waiting for worker...`);
@@ -103,7 +103,7 @@ async function smokeApiCheck() {
       url: check.url,
       method: check.method,
       headers: check.headers,
-      timeout_ms: check.timeout_ms,
+      timeoutMs: check.timeout_ms,
     },
     assertions: [{ id: assertion.id, type: 'status_code', operator: 'equals', path: null, value: '200' }],
   });
@@ -146,11 +146,11 @@ test('smoke loads example.com', async ({ page }) => {
   const queue = new Queue('qa-project', { connection });
   const job = await queue.add('run', {
     type: 'qa-project-run',
-    project_id: project.id,
-    target_url: project.target_url,
+    projectId: project.id,
+    targetUrl: project.target_url,
     config: { timeout: 30_000 },
     tests: [{ id: genTest.id, name: genTest.test_name, script }],
-    triggered_at: new Date().toISOString(),
+    triggeredAt: new Date().toISOString(),
   });
   console.log(`  job ${job.id} pushed → waiting for worker (Playwright can take 10-30s)...`);
 
