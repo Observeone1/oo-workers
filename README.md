@@ -130,7 +130,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 - **v0.2** *(current)* — workers + scheduler + UI + bulk import + docs.
 - **v0.3** — TCP / UDP / database-protocol checks (the gap Uptime Kuma doesn't cover well).
-- **v0.4+** — multi-region result tagging, alert channels (Discord/Slack/webhook/email), status pages.
+- **v0.4+** — alert channels (Discord/Slack/webhook/email), status pages.
 
 ## Contributing
 
