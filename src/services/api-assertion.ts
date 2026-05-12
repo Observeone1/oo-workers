@@ -5,7 +5,14 @@ export interface ApiAssertion {
   id?: number;
   api_check_id: number;
   type: 'status_code' | 'response_time' | 'json_path' | 'text_contains' | 'header';
-  operator: 'equals' | 'not_equals' | 'less_than' | 'greater_than' | 'contains' | 'not_contains' | 'exists';
+  operator:
+    | 'equals'
+    | 'not_equals'
+    | 'less_than'
+    | 'greater_than'
+    | 'contains'
+    | 'not_contains'
+    | 'exists';
   path?: string;
   value?: string;
   created_at?: Date;
@@ -40,7 +47,9 @@ export const evaluateAssertions = async (
       const result = await evaluateAssertion(assertion, responseData);
       results.push(result);
     } catch (error) {
-      logger.error(`Failed to evaluate assertion ${assertion.id}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(
+        `Failed to evaluate assertion ${assertion.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       results.push({
         type: assertion.type,
         passed: false,
@@ -54,14 +63,23 @@ export const evaluateAssertions = async (
   return results;
 };
 
-const evaluateAssertion = async (assertion: ApiAssertion, responseData: ResponseData): Promise<AssertionResult> => {
+const evaluateAssertion = async (
+  assertion: ApiAssertion,
+  responseData: ResponseData,
+): Promise<AssertionResult> => {
   switch (assertion.type) {
-    case 'status_code':   return evaluateStatusCode(assertion, responseData.status);
-    case 'response_time': return evaluateResponseTime(assertion, responseData.responseTime);
-    case 'json_path':     return evaluateJsonPath(assertion, responseData.body);
-    case 'text_contains': return evaluateTextContains(assertion, responseData.body);
-    case 'header':        return evaluateHeader(assertion, responseData.headers);
-    default:              throw new Error(`Unknown assertion type: ${assertion.type}`);
+    case 'status_code':
+      return evaluateStatusCode(assertion, responseData.status);
+    case 'response_time':
+      return evaluateResponseTime(assertion, responseData.responseTime);
+    case 'json_path':
+      return evaluateJsonPath(assertion, responseData.body);
+    case 'text_contains':
+      return evaluateTextContains(assertion, responseData.body);
+    case 'header':
+      return evaluateHeader(assertion, responseData.headers);
+    default:
+      throw new Error(`Unknown assertion type: ${assertion.type}`);
   }
 };
 
@@ -186,7 +204,10 @@ const evaluateTextContains = (assertion: ApiAssertion, responseBody: string): As
   };
 };
 
-const evaluateHeader = (assertion: ApiAssertion, headers: Record<string, string>): AssertionResult => {
+const evaluateHeader = (
+  assertion: ApiAssertion,
+  headers: Record<string, string>,
+): AssertionResult => {
   const headerName = assertion.path || '';
   const actualValue = headers[headerName] || headers[headerName.toLowerCase()];
 
@@ -195,9 +216,7 @@ const evaluateHeader = (assertion: ApiAssertion, headers: Record<string, string>
     return {
       type: 'header',
       passed,
-      message: passed
-        ? `Header '${headerName}' exists`
-        : `Header '${headerName}' does not exist`,
+      message: passed ? `Header '${headerName}' exists` : `Header '${headerName}' does not exist`,
       expected: 'exists',
       actual: actualValue || null,
     };
@@ -221,26 +240,42 @@ const compareValues = (actual: any, expected: any, operator: string): boolean =>
   switch (operator) {
     // == / != on purpose: assertion `value` is stored as TEXT, so a numeric
     // status of 200 must match the string "200". Don't switch to ===.
-    case 'equals':         return actual == expected;
-    case 'not_equals':     return actual != expected;
-    case 'greater_than':   return Number(actual) > Number(expected);
-    case 'less_than':      return Number(actual) < Number(expected);
-    case 'contains':       return String(actual).toLowerCase().includes(String(expected).toLowerCase());
-    case 'not_contains':   return !String(actual).toLowerCase().includes(String(expected).toLowerCase());
-    case 'exists':         return actual !== null && actual !== undefined;
-    default:               throw new Error(`Unknown operator: ${operator}`);
+    case 'equals':
+      return actual == expected;
+    case 'not_equals':
+      return actual != expected;
+    case 'greater_than':
+      return Number(actual) > Number(expected);
+    case 'less_than':
+      return Number(actual) < Number(expected);
+    case 'contains':
+      return String(actual).toLowerCase().includes(String(expected).toLowerCase());
+    case 'not_contains':
+      return !String(actual).toLowerCase().includes(String(expected).toLowerCase());
+    case 'exists':
+      return actual !== null && actual !== undefined;
+    default:
+      throw new Error(`Unknown operator: ${operator}`);
   }
 };
 
 const getOperatorText = (operator: string): string => {
   switch (operator) {
-    case 'equals':         return 'equals';
-    case 'not_equals':     return 'does not equal';
-    case 'greater_than':   return 'is greater than';
-    case 'less_than':      return 'is less than';
-    case 'contains':       return 'contains';
-    case 'not_contains':   return 'does not contain';
-    case 'exists':         return 'exists';
-    default:               return operator;
+    case 'equals':
+      return 'equals';
+    case 'not_equals':
+      return 'does not equal';
+    case 'greater_than':
+      return 'is greater than';
+    case 'less_than':
+      return 'is less than';
+    case 'contains':
+      return 'contains';
+    case 'not_contains':
+      return 'does not contain';
+    case 'exists':
+      return 'exists';
+    default:
+      return operator;
   }
 };

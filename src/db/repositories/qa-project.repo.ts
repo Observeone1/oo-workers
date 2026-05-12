@@ -37,15 +37,16 @@ export const qaProjectRepo = {
       ...p,
       type: 'qa' as const,
       testCount: tc?.count ?? 0,
-      latest: l && l.id !== null
-        ? {
-            id: l.id,
-            status: l.status,
-            durationMs: l.durationMs,
-            errorMessage: l.errorMessage,
-            startTime: l.startTime,
-          }
-        : null,
+      latest:
+        l && l.id !== null
+          ? {
+              id: l.id,
+              status: l.status,
+              durationMs: l.durationMs,
+              errorMessage: l.errorMessage,
+              startTime: l.startTime,
+            }
+          : null,
     }));
   },
 
@@ -67,11 +68,16 @@ export const qaProjectRepo = {
           description: qaGeneratedTests.description,
           scriptSize: sql<number>`length(${qaGeneratedTests.script})`.as('script_size'),
         };
-    return db.select(cols as any).from(qaGeneratedTests).where(eq(qaGeneratedTests.projectId, projectId));
+    return db
+      .select(cols as any)
+      .from(qaGeneratedTests)
+      .where(eq(qaGeneratedTests.projectId, projectId));
   },
 
   findExecutionsByProjectId(projectId: number, limit = 100) {
-    return db.select().from(qaTestExecutions)
+    return db
+      .select()
+      .from(qaTestExecutions)
       .where(eq(qaTestExecutions.projectId, projectId))
       .orderBy(desc(qaTestExecutions.startedAt))
       .limit(limit);
@@ -89,13 +95,30 @@ export const qaProjectRepo = {
     return db.insert(qaProjects).values(data).returning();
   },
 
-  createTest(projectId: number, test: { testName: string; testType?: string; script: string; description?: string | null }) {
-    return db.insert(qaGeneratedTests).values({ projectId, ...test }).returning();
+  createTest(
+    projectId: number,
+    test: { testName: string; testType?: string; script: string; description?: string | null },
+  ) {
+    return db
+      .insert(qaGeneratedTests)
+      .values({ projectId, ...test })
+      .returning();
   },
 
-  createTests(projectId: number, rows: Array<{ testName: string; testType?: string; script: string; description?: string | null }>) {
+  createTests(
+    projectId: number,
+    rows: Array<{
+      testName: string;
+      testType?: string;
+      script: string;
+      description?: string | null;
+    }>,
+  ) {
     if (rows.length === 0) return Promise.resolve([] as never[]);
-    return db.insert(qaGeneratedTests).values(rows.map((r) => ({ projectId, ...r }))).returning();
+    return db
+      .insert(qaGeneratedTests)
+      .values(rows.map((r) => ({ projectId, ...r })))
+      .returning();
   },
 
   createExecution(testId: number, projectId: number, status: string) {
@@ -127,7 +150,9 @@ export const qaProjectRepo = {
         config: qaProjects.config,
         intervalSeconds: qaProjects.intervalSeconds,
         lastRunAt: qaProjects.lastRunAt,
-        ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${qaProjects.lastRunAt}))::int`.as('age_seconds'),
+        ageSeconds: sql<
+          number | null
+        >`EXTRACT(EPOCH FROM (NOW() - ${qaProjects.lastRunAt}))::int`.as('age_seconds'),
       })
       .from(qaProjects)
       .where(eq(qaProjects.enabled, true));

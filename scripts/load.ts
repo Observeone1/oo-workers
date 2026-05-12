@@ -123,7 +123,8 @@ async function failureModes() {
     VALUES ('dns-fail', 'https://this-host-does-not-exist-xyz-12345.invalid', 5000)
     RETURNING *
   `;
-  const [dnsExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${dnsMon.id}, 'PENDING') RETURNING id`;
+  const [dnsExec] =
+    await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${dnsMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: dnsExec.id,
     monitor: { id: dnsMon.id, url: dnsMon.url, timeoutMs: dnsMon.timeout_ms },
@@ -137,7 +138,8 @@ async function failureModes() {
     VALUES ('timeout', 'http://10.255.255.1', 2000)
     RETURNING *
   `;
-  const [toExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${toMon.id}, 'PENDING') RETURNING id`;
+  const [toExec] =
+    await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${toMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: toExec.id,
     monitor: { id: toMon.id, url: toMon.url, timeoutMs: toMon.timeout_ms },
@@ -150,7 +152,8 @@ async function failureModes() {
     VALUES ('wrong-status-assert', 'https://example.com', 5000)
     RETURNING *
   `;
-  const [wrongExec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${wrongMon.id}, 'PENDING') RETURNING id`;
+  const [wrongExec] =
+    await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${wrongMon.id}, 'PENDING') RETURNING id`;
   await urlQ.add('check', {
     executionId: wrongExec.id,
     monitor: { id: wrongMon.id, url: wrongMon.url, timeoutMs: wrongMon.timeout_ms },
@@ -159,23 +162,33 @@ async function failureModes() {
 
   console.log('  pushed 3 failure scenarios → waiting for results...');
 
-  const wait = (id: number) => waitFor(async () => {
-    const [r] = await sql`SELECT * FROM url_monitor_executions WHERE id = ${id}`;
-    return r?.status !== 'PENDING' ? r : null;
-  }, 30_000);
+  const wait = (id: number) =>
+    waitFor(async () => {
+      const [r] = await sql`SELECT * FROM url_monitor_executions WHERE id = ${id}`;
+      return r?.status !== 'PENDING' ? r : null;
+    }, 30_000);
 
   const dnsR = await wait(dnsExec.id);
   const toR = await wait(toExec.id);
   const wrongR = await wait(wrongExec.id);
 
-  record('failure-modes', dnsR?.status === 'FAILED',
-    `DNS failure: status=${dnsR?.status}, err="${(dnsR?.error_message ?? '').slice(0, 80)}"`);
+  record(
+    'failure-modes',
+    dnsR?.status === 'FAILED',
+    `DNS failure: status=${dnsR?.status}, err="${(dnsR?.error_message ?? '').slice(0, 80)}"`,
+  );
 
-  record('failure-modes', toR?.status === 'FAILED' && /timed?\s*out|abort/i.test(toR.error_message || ''),
-    `Timeout: status=${toR?.status}, err="${(toR?.error_message ?? '').slice(0, 80)}"`);
+  record(
+    'failure-modes',
+    toR?.status === 'FAILED' && /timed?\s*out|abort/i.test(toR.error_message || ''),
+    `Timeout: status=${toR?.status}, err="${(toR?.error_message ?? '').slice(0, 80)}"`,
+  );
 
-  record('failure-modes', wrongR?.status === 'FAILED',
-    `Wrong status assertion: status=${wrongR?.status} (expected FAILED because 200 != 404)`);
+  record(
+    'failure-modes',
+    wrongR?.status === 'FAILED',
+    `Wrong status assertion: status=${wrongR?.status} (expected FAILED because 200 != 404)`,
+  );
 }
 
 // ============================================================
@@ -188,19 +201,31 @@ async function assertionVariety() {
     VALUES ('multi-assert', 'https://example.com', 'GET', '{}'::jsonb, 10000)
     RETURNING *
   `;
-  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
+  const [exec] =
+    await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
 
   const assertions = [
-    { type: 'status_code',     operator: 'equals',       path: null,           value: '200' },
-    { type: 'response_time',   operator: 'less_than',    path: null,           value: '10000' },
-    { type: 'text_contains',   operator: 'contains',     path: null,           value: 'Example Domain' },
-    { type: 'text_contains',   operator: 'not_contains', path: null,           value: 'this-string-not-in-page' },
-    { type: 'header',          operator: 'contains',     path: 'content-type', value: 'text/html' },
+    { type: 'status_code', operator: 'equals', path: null, value: '200' },
+    { type: 'response_time', operator: 'less_than', path: null, value: '10000' },
+    { type: 'text_contains', operator: 'contains', path: null, value: 'Example Domain' },
+    {
+      type: 'text_contains',
+      operator: 'not_contains',
+      path: null,
+      value: 'this-string-not-in-page',
+    },
+    { type: 'header', operator: 'contains', path: 'content-type', value: 'text/html' },
   ];
 
   await apiQ.add('check', {
     executionId: exec.id,
-    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeoutMs: check.timeout_ms },
+    apiCheck: {
+      id: check.id,
+      url: check.url,
+      method: check.method,
+      headers: check.headers,
+      timeoutMs: check.timeout_ms,
+    },
     assertions,
   });
 
@@ -211,8 +236,11 @@ async function assertionVariety() {
 
   const passCount = r?.assertion_results?.filter((a: any) => a.passed).length ?? 0;
   console.log(`  result: status=${r?.status}, passed assertions=${passCount}/${assertions.length}`);
-  record('assertion-variety', r?.status === 'SUCCESS' && passCount === 5,
-    `${passCount}/${assertions.length} passed`);
+  record(
+    'assertion-variety',
+    r?.status === 'SUCCESS' && passCount === 5,
+    `${passCount}/${assertions.length} passed`,
+  );
 }
 
 // ============================================================
@@ -225,17 +253,24 @@ async function jsonPathAssertion() {
     VALUES ('json-test', 'https://jsonplaceholder.typicode.com/posts/1', 'GET', '{"Accept":"application/json"}'::jsonb, 10000)
     RETURNING *
   `;
-  const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
+  const [exec] =
+    await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${check.id}, 'PENDING') RETURNING *`;
 
   const assertions = [
-    { type: 'status_code', operator: 'equals', path: null,        value: '200' },
-    { type: 'json_path',   operator: 'equals', path: '$.userId',  value: '1' },
-    { type: 'json_path',   operator: 'exists', path: '$.title',   value: null },
+    { type: 'status_code', operator: 'equals', path: null, value: '200' },
+    { type: 'json_path', operator: 'equals', path: '$.userId', value: '1' },
+    { type: 'json_path', operator: 'exists', path: '$.title', value: null },
   ];
 
   await apiQ.add('check', {
     executionId: exec.id,
-    apiCheck: { id: check.id, url: check.url, method: check.method, headers: check.headers, timeoutMs: check.timeout_ms },
+    apiCheck: {
+      id: check.id,
+      url: check.url,
+      method: check.method,
+      headers: check.headers,
+      timeoutMs: check.timeout_ms,
+    },
     assertions,
   });
 
@@ -251,7 +286,11 @@ async function jsonPathAssertion() {
       console.log(`     ${a.passed ? '✅' : '❌'} ${a.type} ${a.operator}: ${a.message}`);
     }
   }
-  record('json-path', r?.status === 'SUCCESS' && passCount === 3, `${passCount}/${assertions.length}`);
+  record(
+    'json-path',
+    r?.status === 'SUCCESS' && passCount === 3,
+    `${passCount}/${assertions.length}`,
+  );
 }
 
 // ============================================================
@@ -264,9 +303,12 @@ async function browserParallel() {
   const targets = ['https://example.com', 'https://example.com', 'https://example.com'];
   const titles = ['Example Domain', 'Example Domain', 'Example Domain'];
 
-  const projects = await Promise.all(targets.map((url, i) =>
-    sql`INSERT INTO qa_projects (name, target_url, status) VALUES (${'parallel-' + i}, ${url}, 'active') RETURNING *`
-  ));
+  const projects = await Promise.all(
+    targets.map(
+      (url, i) =>
+        sql`INSERT INTO qa_projects (name, target_url, status) VALUES (${'parallel-' + i}, ${url}, 'active') RETURNING *`,
+    ),
+  );
 
   const t0 = Date.now();
   for (let i = 0; i < N; i++) {
@@ -322,12 +364,14 @@ await jsonPathAssertion();
 await browserParallel();
 
 console.log('\n========================= SUMMARY =========================');
-let totalP = 0, totalF = 0;
+let totalP = 0,
+  totalF = 0;
 for (const [name, r] of Object.entries(results)) {
   const passed = r.failed === 0;
   console.log(`\n${passed ? '✅' : '❌'} ${name}  (passed=${r.passed} failed=${r.failed})`);
   for (const d of r.details) console.log(`     ${d}`);
-  totalP += r.passed; totalF += r.failed;
+  totalP += r.passed;
+  totalF += r.failed;
 }
 console.log(`\n========================================`);
 console.log(`  TOTAL: ${totalP} passed / ${totalF} failed`);

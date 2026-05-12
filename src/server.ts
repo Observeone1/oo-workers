@@ -22,8 +22,8 @@ function loadText(name: string): string | null {
 }
 const ASSETS = {
   indexHtml: loadText('index.html'),
-  appJs:     loadText('app.js'),
-  docsHtml:  loadText('docs.html'),
+  appJs: loadText('app.js'),
+  docsHtml: loadText('docs.html'),
 };
 
 export function buildApp(connection: Redis) {
@@ -90,7 +90,10 @@ export function buildApp(connection: Redis) {
       enabled: body.enabled ?? true,
     });
     const assertions = (body.assertions ?? []) as Array<{ operator: string; statusCode: number }>;
-    await urlMonitorRepo.createAssertions(m.id, assertions.map((a) => ({ operator: a.operator, statusCode: a.statusCode })));
+    await urlMonitorRepo.createAssertions(
+      m.id,
+      assertions.map((a) => ({ operator: a.operator, statusCode: a.statusCode })),
+    );
     return c.json(m, 201);
   });
 
@@ -107,8 +110,21 @@ export function buildApp(connection: Redis) {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    const assertions = (body.assertions ?? []) as Array<{ type: string; operator: string; path?: string; value?: string }>;
-    await apiCheckRepo.createAssertions(m.id, assertions.map((a) => ({ type: a.type, operator: a.operator, path: a.path ?? null, value: a.value ?? null })));
+    const assertions = (body.assertions ?? []) as Array<{
+      type: string;
+      operator: string;
+      path?: string;
+      value?: string;
+    }>;
+    await apiCheckRepo.createAssertions(
+      m.id,
+      assertions.map((a) => ({
+        type: a.type,
+        operator: a.operator,
+        path: a.path ?? null,
+        value: a.value ?? null,
+      })),
+    );
     return c.json(m, 201);
   });
 
@@ -127,7 +143,15 @@ export function buildApp(connection: Redis) {
       status: 'active',
     });
     const tests = body.tests as Array<{ name: string; script: string; description?: string }>;
-    await qaProjectRepo.createTests(m.id, tests.map((t) => ({ testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null })));
+    await qaProjectRepo.createTests(
+      m.id,
+      tests.map((t) => ({
+        testName: t.name,
+        testType: 'browser',
+        script: t.script,
+        description: t.description ?? null,
+      })),
+    );
     return c.json(m, 201);
   });
 
@@ -135,9 +159,9 @@ export function buildApp(connection: Redis) {
   app.delete('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
-    if (type === 'url')      await urlMonitorRepo.deleteById(id);
+    if (type === 'url') await urlMonitorRepo.deleteById(id);
     else if (type === 'api') await apiCheckRepo.deleteById(id);
-    else if (type === 'qa')  await qaProjectRepo.deleteById(id);
+    else if (type === 'qa') await qaProjectRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -148,9 +172,9 @@ export function buildApp(connection: Redis) {
     const id = Number(c.req.param('id'));
     const body = await c.req.json();
     if (typeof body.enabled !== 'boolean') return c.json({ error: 'enabled (bool) required' }, 400);
-    if (type === 'url')      await urlMonitorRepo.updateEnabled(id, body.enabled);
+    if (type === 'url') await urlMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'api') await apiCheckRepo.updateEnabled(id, body.enabled);
-    else if (type === 'qa')  await qaProjectRepo.updateEnabled(id, body.enabled);
+    else if (type === 'qa') await qaProjectRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -164,7 +188,11 @@ export function buildApp(connection: Redis) {
       if (!m) return c.json({ error: 'not found' }, 404);
       const assertions = await urlMonitorRepo.findAssertionsByMonitorId(id);
       const [exec] = await urlMonitorRepo.createExecution(id, 'PENDING');
-      await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs }, assertions });
+      await urlQ.add('check', {
+        executionId: exec.id,
+        monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
+        assertions,
+      });
       return c.json({ executionId: exec.id });
     }
     if (type === 'api') {
@@ -209,7 +237,13 @@ export function buildApp(connection: Redis) {
           intervalSeconds: u.intervalSeconds ?? 60,
           enabled: u.enabled ?? true,
         });
-        await urlMonitorRepo.createAssertions(m.id, (u.assertions ?? []).map((a: any) => ({ operator: a.operator, statusCode: a.statusCode })));
+        await urlMonitorRepo.createAssertions(
+          m.id,
+          (u.assertions ?? []).map((a: any) => ({
+            operator: a.operator,
+            statusCode: a.statusCode,
+          })),
+        );
         created.url++;
       } catch (err) {
         created.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -227,7 +261,15 @@ export function buildApp(connection: Redis) {
           intervalSeconds: a.intervalSeconds ?? 60,
           enabled: a.enabled ?? true,
         });
-        await apiCheckRepo.createAssertions(m.id, (a.assertions ?? []).map((ass: any) => ({ type: ass.type, operator: ass.operator, path: ass.path ?? null, value: ass.value ?? null })));
+        await apiCheckRepo.createAssertions(
+          m.id,
+          (a.assertions ?? []).map((ass: any) => ({
+            type: ass.type,
+            operator: ass.operator,
+            path: ass.path ?? null,
+            value: ass.value ?? null,
+          })),
+        );
         created.api++;
       } catch (err) {
         created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -244,7 +286,15 @@ export function buildApp(connection: Redis) {
           enabled: q.enabled ?? true,
           status: 'active',
         });
-        await qaProjectRepo.createTests(m.id, (q.tests ?? []).map((t: any) => ({ testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null })));
+        await qaProjectRepo.createTests(
+          m.id,
+          (q.tests ?? []).map((t: any) => ({
+            testName: t.name,
+            testType: 'browser',
+            script: t.script,
+            description: t.description ?? null,
+          })),
+        );
         created.qa++;
       } catch (err) {
         created.skipped.push(`qa ${q.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -254,22 +304,34 @@ export function buildApp(connection: Redis) {
   });
 
   // ---------- static UI ----------
-  app.get('/', (c) => ASSETS.indexHtml
-    ? c.html(ASSETS.indexHtml)
-    : c.text('UI not built — run `bun run build:ui`', 500));
-  app.get('/app.js', (c) => ASSETS.appJs
-    ? c.body(ASSETS.appJs, 200, { 'content-type': 'application/javascript' })
-    : c.text('// not built', 404));
-  app.get('/docs', (c) => ASSETS.docsHtml
-    ? c.html(ASSETS.docsHtml)
-    : c.text('docs not built', 500));
+  app.get('/', (c) =>
+    ASSETS.indexHtml
+      ? c.html(ASSETS.indexHtml)
+      : c.text('UI not built — run `bun run build:ui`', 500),
+  );
+  app.get('/app.js', (c) =>
+    ASSETS.appJs
+      ? c.body(ASSETS.appJs, 200, { 'content-type': 'application/javascript' })
+      : c.text('// not built', 404),
+  );
+  app.get('/docs', (c) =>
+    ASSETS.docsHtml ? c.html(ASSETS.docsHtml) : c.text('docs not built', 500),
+  );
 
-  return { app, close: async () => { await Promise.all([urlQ.close(), apiQ.close(), qaQ.close()]); } };
+  return {
+    app,
+    close: async () => {
+      await Promise.all([urlQ.close(), apiQ.close(), qaQ.close()]);
+    },
+  };
 }
 
 export function startServer(connection: Redis, port: number) {
   const { app, close } = buildApp(connection);
   const server = Bun.serve({ port, fetch: app.fetch });
   logger.info(`🌐 server listening on http://localhost:${port}`);
-  return async () => { server.stop(); await close(); };
+  return async () => {
+    server.stop();
+    await close();
+  };
 }

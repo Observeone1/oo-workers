@@ -24,9 +24,8 @@ export const apiCheckProcessor = async (job: Job) => {
     requestOptions.signal = controller.signal;
 
     if (apiCheck.body && ['POST', 'PUT', 'PATCH'].includes(apiCheck.method)) {
-      requestOptions.body = typeof apiCheck.body === 'string'
-        ? apiCheck.body
-        : JSON.stringify(apiCheck.body);
+      requestOptions.body =
+        typeof apiCheck.body === 'string' ? apiCheck.body : JSON.stringify(apiCheck.body);
 
       if (!headers['Content-Type']) {
         headers['Content-Type'] = 'application/json';
@@ -52,9 +51,10 @@ export const apiCheckProcessor = async (job: Job) => {
       headers: responseHeaders,
     });
 
-    const allAssertionsPassed = assertionResults.length === 0 || assertionResults.every(r => r.passed);
-    const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
-    const status = allAssertionsPassed ? 'SUCCESS' : (isFinalAttempt ? 'FAILED' : 'PENDING');
+    const allAssertionsPassed =
+      assertionResults.length === 0 || assertionResults.every((r) => r.passed);
+    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
+    const status = allAssertionsPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
 
     await apiCheckRepo.updateExecution(executionId, {
       status,
@@ -73,7 +73,7 @@ export const apiCheckProcessor = async (job: Job) => {
 
     return { success: true };
   } catch (error) {
-    const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
+    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
     const errorMessage = classifyFetchError(error, apiCheck.url, timeoutMs);
 
     logger.error(`API check execution ${executionId} failed: ${errorMessage}`);

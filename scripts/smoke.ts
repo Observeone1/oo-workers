@@ -24,7 +24,11 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const sql = new SQL(DATABASE_URL);
 const connection = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
 
-async function pollUntilDone(execId: number, table: 'url_monitor_executions' | 'api_executions', timeoutMs = 30_000) {
+async function pollUntilDone(
+  execId: number,
+  table: 'url_monitor_executions' | 'api_executions',
+  timeoutMs = 30_000,
+) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const rows = await sql.unsafe(`SELECT * FROM ${table} WHERE id = $1`, [execId]);
@@ -67,7 +71,9 @@ async function smokeUrlMonitor() {
   console.log(`  job ${job.id} pushed → waiting for worker...`);
 
   const result = await pollUntilDone(exec.id, 'url_monitor_executions');
-  console.log(`  ✅ result: status=${result.status}, http=${result.status_code}, ${result.response_time_ms}ms`);
+  console.log(
+    `  ✅ result: status=${result.status}, http=${result.status_code}, ${result.response_time_ms}ms`,
+  );
   await queue.close();
   return result.status === 'SUCCESS';
 }
@@ -105,12 +111,16 @@ async function smokeApiCheck() {
       headers: check.headers,
       timeoutMs: check.timeout_ms,
     },
-    assertions: [{ id: assertion.id, type: 'status_code', operator: 'equals', path: null, value: '200' }],
+    assertions: [
+      { id: assertion.id, type: 'status_code', operator: 'equals', path: null, value: '200' },
+    ],
   });
   console.log(`  job ${job.id} pushed → waiting for worker...`);
 
   const result = await pollUntilDone(exec.id, 'api_executions');
-  console.log(`  ✅ result: status=${result.status}, http=${result.response_status}, ${result.response_time_ms}ms`);
+  console.log(
+    `  ✅ result: status=${result.status}, http=${result.response_status}, ${result.response_time_ms}ms`,
+  );
   await queue.close();
   return result.status === 'SUCCESS';
 }

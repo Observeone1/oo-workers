@@ -38,11 +38,16 @@ const compareValues = (actual: any, expected: any, operator: string): boolean =>
 
 const getOperatorText = (operator: string): string => {
   switch (operator) {
-    case 'equals':         return 'equals';
-    case 'not_equals':     return 'does not equal';
-    case 'greater_than':   return 'is greater than';
-    case 'less_than':      return 'is less than';
-    default:               return operator;
+    case 'equals':
+      return 'equals';
+    case 'not_equals':
+      return 'does not equal';
+    case 'greater_than':
+      return 'is greater than';
+    case 'less_than':
+      return 'is less than';
+    default:
+      return operator;
   }
 };
 
@@ -68,7 +73,9 @@ export const evaluateUrlMonitorAssertions = (
         actual: actualStatusCode,
       };
     } catch (error) {
-      logger.error(`Error evaluating URL monitor assertion: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(
+        `Error evaluating URL monitor assertion: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return {
         operator: assertion.operator,
         passed: false,

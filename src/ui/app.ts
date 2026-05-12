@@ -28,68 +28,109 @@ interface Monitor {
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
-const $$ = <T extends HTMLElement = HTMLElement>(sel: string) => Array.from(document.querySelectorAll(sel)) as T[];
+const $$ = <T extends HTMLElement = HTMLElement>(sel: string) =>
+  Array.from(document.querySelectorAll(sel)) as T[];
 const main = $('#main');
 
-const esc = (s: string) => (s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const esc = (s: string) =>
+  (s ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+  );
 const fmtAge = (iso?: string | null) => {
   if (!iso) return 'never';
   const d = (Date.now() - new Date(iso).getTime()) / 1000;
   if (d < 60) return `${Math.floor(d)}s ago`;
-  if (d < 3600) return `${Math.floor(d/60)}m ago`;
-  if (d < 86400) return `${Math.floor(d/3600)}h ago`;
-  return `${Math.floor(d/86400)}d ago`;
+  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
+  return `${Math.floor(d / 86400)}d ago`;
 };
 
 // ------------- list view -------------
 let activeTab: MonType = 'url';
 
 async function renderList() {
-  const data = await (await fetch('/api/monitors')).json() as { url: Monitor[]; api: Monitor[]; qa: Monitor[] };
+  const data = (await (await fetch('/api/monitors')).json()) as {
+    url: Monitor[];
+    api: Monitor[];
+    qa: Monitor[];
+  };
   const counts = { url: data.url.length, api: data.api.length, qa: data.qa.length };
   const monitors = data[activeTab];
   main.innerHTML = `
     <div class="tabs">
-      ${(['url','api','qa'] as const).map(t =>
-        `<div class="tab ${t===activeTab?'active':''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></div>`
-      ).join('')}
+      ${(['url', 'api', 'qa'] as const)
+        .map(
+          (t) =>
+            `<div class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></div>`,
+        )
+        .join('')}
     </div>
-    ${monitors.length === 0
-      ? `<div class="empty">No ${activeTab.toUpperCase()} monitors yet. Click <b>+ Add monitor</b> to create one.</div>`
-      : `<table>
+    ${
+      monitors.length === 0
+        ? `<div class="empty">No ${activeTab.toUpperCase()} monitors yet. Click <b>+ Add monitor</b> to create one.</div>`
+        : `<table>
           <thead><tr><th></th><th>Name</th><th>Interval</th><th>Last run</th><th>Latency</th><th></th></tr></thead>
           <tbody>${monitors.map(rowFor).join('')}</tbody>
-        </table>`}
+        </table>`
+    }
   `;
-  $$('.tab').forEach(t => t.addEventListener('click', () => { activeTab = t.dataset.tab as MonType; renderList(); }));
-  $$('[data-run]').forEach(b => b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const {type, id} = (e.currentTarget as HTMLElement).dataset;
-    await fetch(`/api/monitors/${type}/${id}/run`, {method:'POST'});
-    setTimeout(renderList, 800);
-  }));
-  $$('[data-toggle]').forEach(b => b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const {type, id, enabled} = (e.currentTarget as HTMLElement).dataset;
-    await fetch(`/api/monitors/${type}/${id}`, {method:'PATCH', headers:{'content-type':'application/json'}, body: JSON.stringify({enabled: enabled === 'false'})});
-    renderList();
-  }));
-  $$('[data-del]').forEach(b => b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    if (!confirm('Delete this monitor?')) return;
-    const {type, id} = (e.currentTarget as HTMLElement).dataset;
-    await fetch(`/api/monitors/${type}/${id}`, {method:'DELETE'});
-    renderList();
-  }));
-  $$('[data-open]').forEach(b => b.addEventListener('click', () => {
-    const {type, id} = (b as HTMLElement).dataset;
-    location.hash = `#/${type}/${id}`;
-  }));
+  $$('.tab').forEach((t) =>
+    t.addEventListener('click', () => {
+      activeTab = t.dataset.tab as MonType;
+      renderList();
+    }),
+  );
+  $$('[data-run]').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { type, id } = (e.currentTarget as HTMLElement).dataset;
+      await fetch(`/api/monitors/${type}/${id}/run`, { method: 'POST' });
+      setTimeout(renderList, 800);
+    }),
+  );
+  $$('[data-toggle]').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { type, id, enabled } = (e.currentTarget as HTMLElement).dataset;
+      await fetch(`/api/monitors/${type}/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled === 'false' }),
+      });
+      renderList();
+    }),
+  );
+  $$('[data-del]').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this monitor?')) return;
+      const { type, id } = (e.currentTarget as HTMLElement).dataset;
+      await fetch(`/api/monitors/${type}/${id}`, { method: 'DELETE' });
+      renderList();
+    }),
+  );
+  $$('[data-open]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const { type, id } = (b as HTMLElement).dataset;
+      location.hash = `#/${type}/${id}`;
+    }),
+  );
 }
 
 function rowFor(m: Monitor): string {
   const status = m.latest?.status ?? 'unknown';
-  const cls = ({SUCCESS:'SUCCESS', FAILED:'FAILED', passed:'passed', failed:'failed', error:'error', running:'running'} as Record<string,string>)[status] ?? 'unknown';
+  const cls =
+    (
+      {
+        SUCCESS: 'SUCCESS',
+        FAILED: 'FAILED',
+        passed: 'passed',
+        failed: 'failed',
+        error: 'error',
+        running: 'running',
+      } as Record<string, string>
+    )[status] ?? 'unknown';
   const latency = m.latest?.responseTimeMs ?? m.latest?.durationMs;
   const url = m.url ?? m.targetUrl ?? '';
   return `
@@ -113,20 +154,24 @@ function rowFor(m: Monitor): string {
 // ------------- detail view -------------
 async function renderDetail(type: MonType, id: number) {
   const data = await (await fetch(`/api/monitors/${type}/${id}`)).json();
-  if (data.error) { main.innerHTML = `<div class="empty">${esc(data.error)}</div>`; return; }
+  if (data.error) {
+    main.innerHTML = `<div class="empty">${esc(data.error)}</div>`;
+    return;
+  }
   const m = data.monitor;
   const runs: RunLite[] = data.runs;
   const url = m.url ?? m.targetUrl ?? '';
 
   const latencyValues = runs
-    .map(r => r.responseTimeMs ?? r.durationMs)
+    .map((r) => r.responseTimeMs ?? r.durationMs)
     .filter((v): v is number => typeof v === 'number')
     .reverse()
     .slice(-30);
   const sparkline = sparklineSvg(latencyValues, 480, 60);
 
-  const successCount = runs.filter(r => ['SUCCESS','passed'].includes(r.status)).length;
-  const successRate = runs.length === 0 ? '—' : `${Math.round((successCount / runs.length) * 100)}%`;
+  const successCount = runs.filter((r) => ['SUCCESS', 'passed'].includes(r.status)).length;
+  const successRate =
+    runs.length === 0 ? '—' : `${Math.round((successCount / runs.length) * 100)}%`;
   const lastLatency = runs[0]?.responseTimeMs ?? runs[0]?.durationMs;
 
   main.innerHTML = `
@@ -153,22 +198,33 @@ async function renderDetail(type: MonType, id: number) {
     <table>
       <thead><tr><th></th><th>When</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead>
       <tbody>
-        ${runs.map(r => {
-          const cls = ({SUCCESS:'SUCCESS', FAILED:'FAILED', passed:'passed', failed:'failed', error:'error'} as Record<string,string>)[r.status] ?? 'unknown';
-          const latency = r.responseTimeMs ?? r.durationMs;
-          return `<tr>
+        ${runs
+          .map((r) => {
+            const cls =
+              (
+                {
+                  SUCCESS: 'SUCCESS',
+                  FAILED: 'FAILED',
+                  passed: 'passed',
+                  failed: 'failed',
+                  error: 'error',
+                } as Record<string, string>
+              )[r.status] ?? 'unknown';
+            const latency = r.responseTimeMs ?? r.durationMs;
+            return `<tr>
             <td><span class="dot ${cls}"></span></td>
             <td class="meta">${fmtAge(r.startTime)}</td>
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
             <td class="meta">${latency != null ? `${latency}ms` : '—'}</td>
-            <td class="meta">${esc((r.errorMessage ?? '').slice(0,120))}</td>
+            <td class="meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>
           </tr>`;
-        }).join('')}
+          })
+          .join('')}
       </tbody>
     </table>
   `;
   $('#detail-run').addEventListener('click', async () => {
-    await fetch(`/api/monitors/${type}/${id}/run`, {method:'POST'});
+    await fetch(`/api/monitors/${type}/${id}/run`, { method: 'POST' });
     setTimeout(() => renderDetail(type, id), 1000);
   });
 }
@@ -179,7 +235,9 @@ function sparklineSvg(values: number[], w: number, h: number): string {
   const min = Math.min(...values);
   const range = Math.max(1, max - min);
   const step = w / Math.max(1, values.length - 1);
-  const pts = values.map((v, i) => `${i * step},${h - ((v - min) / range) * (h - 8) - 4}`).join(' ');
+  const pts = values
+    .map((v, i) => `${i * step},${h - ((v - min) / range) * (h - 8) - 4}`)
+    .join(' ');
   return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <polyline points="${pts}" fill="none" stroke="#10b981" stroke-width="1.5" />
   </svg>`;
@@ -196,7 +254,10 @@ function syncFields() {
   $('#qa-fields').hidden = typeSelect.value !== 'qa';
 }
 typeSelect.addEventListener('change', syncFields);
-$('#add-btn').addEventListener('click', () => { syncFields(); addDialog.showModal(); });
+$('#add-btn').addEventListener('click', () => {
+  syncFields();
+  addDialog.showModal();
+});
 $('#cancel-btn').addEventListener('click', () => addDialog.close());
 
 addForm.addEventListener('submit', async (e) => {
@@ -210,19 +271,41 @@ addForm.addEventListener('submit', async (e) => {
   let body: any;
   let endpoint = '';
   if (type === 'url') {
-    body = { name, url, intervalSeconds, assertions: [{operator:'equals', statusCode: Number(fd.get('url_status') || 200)}] };
+    body = {
+      name,
+      url,
+      intervalSeconds,
+      assertions: [{ operator: 'equals', statusCode: Number(fd.get('url_status') || 200) }],
+    };
     endpoint = '/api/monitors/url';
   } else if (type === 'api') {
     let assertions = [];
-    try { assertions = JSON.parse((fd.get('api_assertions') as string) || '[]'); } catch { alert('Assertions JSON is invalid'); return; }
+    try {
+      assertions = JSON.parse((fd.get('api_assertions') as string) || '[]');
+    } catch {
+      alert('Assertions JSON is invalid');
+      return;
+    }
     body = { name, url, method: fd.get('api_method'), intervalSeconds, assertions };
     endpoint = '/api/monitors/api';
   } else {
-    body = { name, targetUrl: url, intervalSeconds, tests: [{ name: name.replace(/\s+/g,'_'), script: fd.get('qa_script') }] };
+    body = {
+      name,
+      targetUrl: url,
+      intervalSeconds,
+      tests: [{ name: name.replace(/\s+/g, '_'), script: fd.get('qa_script') }],
+    };
     endpoint = '/api/monitors/qa';
   }
-  const res = await fetch(endpoint, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-  if (!res.ok) { alert(`Failed: ${await res.text()}`); return; }
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    alert(`Failed: ${await res.text()}`);
+    return;
+  }
   addDialog.close();
   addForm.reset();
   syncFields();
@@ -237,10 +320,22 @@ $('#import-cancel').addEventListener('click', () => importDialog.close());
 $('#import-submit').addEventListener('click', async () => {
   const text = $<HTMLTextAreaElement>('#import-text').value.trim();
   let payload: any;
-  try { payload = JSON.parse(text); } catch { alert('Not valid JSON'); return; }
-  const res = await fetch('/api/import', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(payload) });
-  const result = await res.json() as { url: number; api: number; qa: number; skipped?: string[] };
-  if (!res.ok) { alert(`Failed: ${JSON.stringify(result)}`); return; }
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    alert('Not valid JSON');
+    return;
+  }
+  const res = await fetch('/api/import', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const result = (await res.json()) as { url: number; api: number; qa: number; skipped?: string[] };
+  if (!res.ok) {
+    alert(`Failed: ${JSON.stringify(result)}`);
+    return;
+  }
   const skipped = result.skipped?.length ? `\n\nSkipped:\n${result.skipped.join('\n')}` : '';
   alert(`Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`);
   importDialog.close();
@@ -256,4 +351,11 @@ function route() {
 }
 window.addEventListener('hashchange', route);
 route();
-setInterval(() => { if (!location.hash.startsWith('#/url/') && !location.hash.startsWith('#/api/') && !location.hash.startsWith('#/qa/')) renderList(); }, 5000);
+setInterval(() => {
+  if (
+    !location.hash.startsWith('#/url/') &&
+    !location.hash.startsWith('#/api/') &&
+    !location.hash.startsWith('#/qa/')
+  )
+    renderList();
+}, 5000);

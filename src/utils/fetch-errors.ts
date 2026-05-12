@@ -10,10 +10,11 @@ export function classifyFetchError(err: unknown, url: string, timeoutMs: number)
   }
   const cause = (err as { cause?: { code?: string; message?: string } }).cause;
   if (cause) {
-    if (cause.code === 'ENOTFOUND')    return `DNS resolution failed: Host not found (${url})`;
-    if (cause.code === 'ECONNREFUSED') return `Connection refused: Target machine actively refused it (${url})`;
-    if (cause.code === 'ETIMEDOUT')    return `Connection timed out (${url})`;
-    if (cause.message)                 return `Network error: ${cause.message}`;
+    if (cause.code === 'ENOTFOUND') return `DNS resolution failed: Host not found (${url})`;
+    if (cause.code === 'ECONNREFUSED')
+      return `Connection refused: Target machine actively refused it (${url})`;
+    if (cause.code === 'ETIMEDOUT') return `Connection timed out (${url})`;
+    if (cause.message) return `Network error: ${cause.message}`;
   }
   return err.message ?? 'Unknown error';
 }

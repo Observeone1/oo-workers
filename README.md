@@ -17,23 +17,23 @@ docker compose up -d
 
 This pulls the pre-built image from `observeone/oo-workers:latest` on Docker Hub — no local build needed. To build from source instead (for contributors), use `docker compose -f docker-compose.build.yml up -d`.
 
-Open **http://localhost:3001** and click *+ Add monitor*. That's it.
+Open **http://localhost:3001** and click _+ Add monitor_. That's it.
 
 The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTTP + admin dashboard), `postgres`, `redis`. Schema migrations run automatically on first boot.
 
 ## What you can monitor
 
-| Type | Checks |
-|------|--------|
-| **HTTP uptime** | Is the URL up? Expected status code. |
-| **API** | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents. |
-| **Browser** | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests. |
+| Type            | Checks                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **HTTP uptime** | Is the URL up? Expected status code.                                                                                           |
+| **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents. |
+| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.           |
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues anything that's due. Workers process jobs concurrently (tunable via env).
 
 ## Screenshots
 
-*(coming with the public launch post)*
+_(coming with the public launch post)_
 
 ## Documentation
 
@@ -58,14 +58,14 @@ The dashboard ships a built-in reference at **http://localhost:3001/docs** cover
 
 All via environment variables (see `.env.example`):
 
-| Var | Default | Purpose |
-|-----|---------|---------|
-| `UI_PORT` | `3001` | Host port for the admin dashboard |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `oo` / `oo` / `oo_workers` | Postgres credentials |
-| `URL_MONITOR_CONCURRENCY` | `20` | Parallel HTTP checks |
-| `API_CHECK_CONCURRENCY` | `10` | Parallel API checks |
-| `QA_PROJECT_CONCURRENCY` | `5` | Parallel browser checks |
-| `LOG_LEVEL` | `info` | Worker log level |
+| Var                                                   | Default                    | Purpose                           |
+| ----------------------------------------------------- | -------------------------- | --------------------------------- |
+| `UI_PORT`                                             | `3001`                     | Host port for the admin dashboard |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `oo` / `oo` / `oo_workers` | Postgres credentials              |
+| `URL_MONITOR_CONCURRENCY`                             | `20`                       | Parallel HTTP checks              |
+| `API_CHECK_CONCURRENCY`                               | `10`                       | Parallel API checks               |
+| `QA_PROJECT_CONCURRENCY`                              | `5`                        | Parallel browser checks           |
+| `LOG_LEVEL`                                           | `info`                     | Worker log level                  |
 
 ## Bulk import
 
@@ -130,7 +130,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Roadmap
 
-- **v0.2** *(current)* — workers + scheduler + UI + bulk import + docs.
+- **v0.2** _(current)_ — workers + scheduler + UI + bulk import + docs.
 - **v0.3** — TCP / UDP / database-protocol checks (the gap Uptime Kuma doesn't cover well).
 - **v0.4+** — alert channels (Discord/Slack/webhook/email), status pages.
 

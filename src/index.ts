@@ -35,23 +35,25 @@ const qaProjectWorker = new Worker('qa-project', createQaProjectProcessor(connec
 });
 
 apiCheckWorker.on('completed', (job) => logger.info(`✅ api-check #${job.id} completed`));
-apiCheckWorker.on('failed', (job, err) => logger.error(`❌ api-check #${job?.id} failed: ${err.message}`));
+apiCheckWorker.on('failed', (job, err) =>
+  logger.error(`❌ api-check #${job?.id} failed: ${err.message}`),
+);
 
 urlMonitorWorker.on('completed', (job) => logger.info(`✅ url-monitor #${job.id} completed`));
-urlMonitorWorker.on('failed', (job, err) => logger.error(`❌ url-monitor #${job?.id} failed: ${err.message}`));
+urlMonitorWorker.on('failed', (job, err) =>
+  logger.error(`❌ url-monitor #${job?.id} failed: ${err.message}`),
+);
 
 qaProjectWorker.on('completed', (job) => logger.info(`✅ qa-project #${job.id} completed`));
-qaProjectWorker.on('failed', (job, err) => logger.error(`❌ qa-project #${job?.id} failed: ${err.message}`));
+qaProjectWorker.on('failed', (job, err) =>
+  logger.error(`❌ qa-project #${job?.id} failed: ${err.message}`),
+);
 
 const stopScheduler = startScheduler(connection);
 
 process.on('SIGTERM', async () => {
   logger.info('Shutting down workers...');
   await stopScheduler();
-  await Promise.all([
-    apiCheckWorker.close(),
-    urlMonitorWorker.close(),
-    qaProjectWorker.close(),
-  ]);
+  await Promise.all([apiCheckWorker.close(), urlMonitorWorker.close(), qaProjectWorker.close()]);
   process.exit(0);
 });

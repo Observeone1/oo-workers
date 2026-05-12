@@ -13,9 +13,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oo} -d ${POSTGRES_DB:-oo_workers}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-oo} -d ${POSTGRES_DB:-oo_workers}']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -26,7 +26,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -46,7 +46,7 @@ services:
       API_CHECK_CONCURRENCY: ${API_CHECK_CONCURRENCY:-10}
       URL_MONITOR_CONCURRENCY: ${URL_MONITOR_CONCURRENCY:-20}
       QA_PROJECT_CONCURRENCY: ${QA_PROJECT_CONCURRENCY:-5}
-    command: ["sh", "-c", "bun src/db/migrate.ts && bun src/index.ts"]
+    command: ['sh', '-c', 'bun src/db/migrate.ts && bun src/index.ts']
 
   ui:
     image: observeone/oo-workers:${OO_WORKERS_TAG:-0.2.0}
@@ -64,8 +64,8 @@ services:
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "${UI_PORT:-3001}:3001"
-    command: ["bun", "src/ui-server.ts"]
+      - '${UI_PORT:-3001}:3001'
+    command: ['bun', 'src/ui-server.ts']
 
 volumes:
   postgres_data:
