@@ -26,7 +26,7 @@ const ASSETS = {
   docsHtml: loadText('docs.html'),
 };
 
-export function buildApp(connection: Redis) {
+function buildApp(connection: Redis) {
   const app = new Hono();
   const urlQ = new Queue('url-monitor', { connection });
   const apiQ = new Queue('api-check', { connection });

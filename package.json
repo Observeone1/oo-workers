@@ -11,11 +11,13 @@
     "build:ui": "mkdir -p public && cp src/ui/index.html src/ui/docs.html public/ && bun build src/ui/app.ts --outdir public --target browser",
     "test": "bun test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "eslint src scripts",
+    "lint:fix": "eslint src scripts --fix",
+    "knip": "knip"
   },
   "dependencies": {
     "@playwright/test": "1.57.0",
-    "axios": "^1.16.0",
     "bullmq": "^5.76.7",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
@@ -27,6 +29,11 @@
   "devDependencies": {
     "@types/bun": "^1.3.13",
     "@types/jsonpath": "^0.2.4",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
+    "@typescript-eslint/parser": "^8.59.3",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "knip": "^6.13.1",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   }
