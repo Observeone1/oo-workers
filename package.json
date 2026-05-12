@@ -15,10 +15,12 @@
     "@playwright/test": "1.57.0",
     "axios": "^1.16.0",
     "bullmq": "^5.76.7",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
     "ioredis": "^5.10.1",
     "jsonpath": "^1.3.0",
-    "playwright": "1.57.0"
+    "playwright": "1.57.0",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/bun": "^1.3.13",

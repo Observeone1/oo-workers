@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { sql } from '../config/db.ts';
 
@@ -25,9 +25,10 @@ async function listMigrationFiles(): Promise<string[]> {
 
 async function applyMigration(filename: string) {
   const path = join(MIGRATIONS_DIR, filename);
+  const contents = await readFile(path, 'utf8');
   console.log(`→ applying ${filename}`);
   await sql.begin(async (tx) => {
-    await tx.file(path);
+    await tx.unsafe(contents);
     await tx`INSERT INTO schema_migrations (name) VALUES (${filename})`;
   });
   console.log(`✓ ${filename}`);

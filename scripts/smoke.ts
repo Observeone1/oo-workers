@@ -62,7 +62,7 @@ async function smokeUrlMonitor() {
   const job = await queue.add('check', {
     executionId: exec.id,
     monitor: { id: monitor.id, url: monitor.url, timeout_ms: monitor.timeout_ms },
-    assertions: [{ id: assertion.id, operator: 'equals', status_code: 200 }],
+    assertions: [{ id: assertion.id, operator: 'equals', statusCode: 200 }],
   });
   console.log(`  job ${job.id} pushed → waiting for worker...`);
 

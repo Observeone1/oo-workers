@@ -8,7 +8,9 @@ import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { sql } from './config/db.ts';
+import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
+import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
+import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
@@ -21,34 +23,11 @@ export function buildApp(connection: Redis) {
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const urls = await sql`
-      SELECT m.*, 'url' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, status_code, response_time_ms, error_message, start_time
-          FROM url_monitor_executions
-          WHERE url_monitor_id = m.id ORDER BY start_time DESC LIMIT 1
-        ) e) AS latest
-      FROM url_monitors m ORDER BY id DESC
-    `;
-    const apis = await sql`
-      SELECT c.*, 'api' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, response_status AS status_code, response_time_ms, error_message, start_time
-          FROM api_executions
-          WHERE api_check_id = c.id ORDER BY start_time DESC LIMIT 1
-        ) e) AS latest
-      FROM api_checks c ORDER BY id DESC
-    `;
-    const qas = await sql`
-      SELECT p.*, 'qa' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, duration_ms, error_message, started_at AS start_time
-          FROM qa_test_executions
-          WHERE project_id = p.id ORDER BY started_at DESC LIMIT 1
-        ) e) AS latest,
-        (SELECT COUNT(*) FROM qa_generated_tests WHERE project_id = p.id) AS test_count
-      FROM qa_projects p ORDER BY id DESC
-    `;
+    const [urls, apis, qas] = await Promise.all([
+      urlMonitorRepo.findAllWithLatest(),
+      apiCheckRepo.findAllWithLatest(),
+      qaProjectRepo.findAllWithLatest(),
+    ]);
     return c.json({ url: urls, api: apis, qa: qas });
   });
 
@@ -59,24 +38,30 @@ export function buildApp(connection: Redis) {
     if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
 
     if (type === 'url') {
-      const [m] = await sql`SELECT * FROM url_monitors WHERE id = ${id}`;
+      const [m] = await urlMonitorRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const assertions = await sql`SELECT * FROM url_monitor_assertions WHERE url_monitor_id = ${id}`;
-      const runs = await sql`SELECT * FROM url_monitor_executions WHERE url_monitor_id = ${id} ORDER BY start_time DESC LIMIT 100`;
+      const [assertions, runs] = await Promise.all([
+        urlMonitorRepo.findAssertionsByMonitorId(id),
+        urlMonitorRepo.findExecutionsByMonitorId(id),
+      ]);
       return c.json({ monitor: { ...m, type: 'url' }, assertions, runs });
     }
     if (type === 'api') {
-      const [m] = await sql`SELECT * FROM api_checks WHERE id = ${id}`;
+      const [m] = await apiCheckRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const assertions = await sql`SELECT * FROM api_assertions WHERE api_check_id = ${id}`;
-      const runs = await sql`SELECT * FROM api_executions WHERE api_check_id = ${id} ORDER BY start_time DESC LIMIT 100`;
+      const [assertions, runs] = await Promise.all([
+        apiCheckRepo.findAssertionsByCheckId(id),
+        apiCheckRepo.findExecutionsByCheckId(id),
+      ]);
       return c.json({ monitor: { ...m, type: 'api' }, assertions, runs });
     }
     if (type === 'qa') {
-      const [m] = await sql`SELECT * FROM qa_projects WHERE id = ${id}`;
+      const [m] = await qaProjectRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const tests = await sql`SELECT id, test_name, test_type, description, length(script) AS script_size FROM qa_generated_tests WHERE project_id = ${id}`;
-      const runs = await sql`SELECT * FROM qa_test_executions WHERE project_id = ${id} ORDER BY started_at DESC LIMIT 100`;
+      const [tests, runs] = await Promise.all([
+        qaProjectRepo.findTestsByProjectId(id),
+        qaProjectRepo.findExecutionsByProjectId(id),
+      ]);
       return c.json({ monitor: { ...m, type: 'qa' }, tests, runs });
     }
     return c.json({ error: 'bad type' }, 400);
@@ -86,13 +71,15 @@ export function buildApp(connection: Redis) {
   app.post('/api/monitors/url', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
-    const [m] = await sql`
-      INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
-      VALUES (${body.name}, ${body.url}, ${body.timeout_ms ?? 30000}, ${body.interval_seconds ?? 60}, ${body.enabled ?? true})
-      RETURNING *
-    `;
+    const [m] = await urlMonitorRepo.create({
+      name: body.name,
+      url: body.url,
+      timeoutMs: body.timeout_ms ?? 30000,
+      intervalSeconds: body.interval_seconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
     for (const a of (body.assertions ?? []) as Array<{ operator: string; status_code: number }>) {
-      await sql`INSERT INTO url_monitor_assertions (url_monitor_id, operator, status_code) VALUES (${m.id}, ${a.operator}, ${a.status_code})`;
+      await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.status_code });
     }
     return c.json(m, 201);
   });
@@ -100,13 +87,18 @@ export function buildApp(connection: Redis) {
   app.post('/api/monitors/api', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
-    const [m] = await sql`
-      INSERT INTO api_checks (name, url, method, headers, body, timeout_ms, interval_seconds, enabled)
-      VALUES (${body.name}, ${body.url}, ${body.method ?? 'GET'}, ${body.headers ?? {}}, ${body.body ?? null}, ${body.timeout_ms ?? 10000}, ${body.interval_seconds ?? 60}, ${body.enabled ?? true})
-      RETURNING *
-    `;
+    const [m] = await apiCheckRepo.create({
+      name: body.name,
+      url: body.url,
+      method: body.method ?? 'GET',
+      headers: body.headers ?? {},
+      body: body.body ?? null,
+      timeoutMs: body.timeout_ms ?? 10000,
+      intervalSeconds: body.interval_seconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
     for (const a of (body.assertions ?? []) as Array<{ type: string; operator: string; path?: string; value?: string }>) {
-      await sql`INSERT INTO api_assertions (api_check_id, type, operator, path, value) VALUES (${m.id}, ${a.type}, ${a.operator}, ${a.path ?? null}, ${a.value ?? null})`;
+      await apiCheckRepo.createAssertion(m.id, { type: a.type, operator: a.operator, path: a.path ?? null, value: a.value ?? null });
     }
     return c.json(m, 201);
   });
@@ -116,13 +108,17 @@ export function buildApp(connection: Redis) {
     if (!body.name || !body.target_url || !Array.isArray(body.tests) || body.tests.length === 0) {
       return c.json({ error: 'name + target_url + tests[] required' }, 400);
     }
-    const [m] = await sql`
-      INSERT INTO qa_projects (name, target_url, credentials, config, interval_seconds, enabled, status)
-      VALUES (${body.name}, ${body.target_url}, ${body.credentials ?? null}, ${body.config ?? {}}, ${body.interval_seconds ?? 300}, ${body.enabled ?? true}, 'active')
-      RETURNING *
-    `;
+    const [m] = await qaProjectRepo.create({
+      name: body.name,
+      targetUrl: body.target_url,
+      credentials: body.credentials ?? null,
+      config: body.config ?? {},
+      intervalSeconds: body.interval_seconds ?? 300,
+      enabled: body.enabled ?? true,
+      status: 'active',
+    });
     for (const t of body.tests as Array<{ name: string; script: string; description?: string }>) {
-      await sql`INSERT INTO qa_generated_tests (project_id, test_name, test_type, script, description) VALUES (${m.id}, ${t.name}, 'browser', ${t.script}, ${t.description ?? null})`;
+      await qaProjectRepo.createTest(m.id, { testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null });
     }
     return c.json(m, 201);
   });
@@ -131,9 +127,9 @@ export function buildApp(connection: Redis) {
   app.delete('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
-    if (type === 'url')      await sql`DELETE FROM url_monitors WHERE id = ${id}`;
-    else if (type === 'api') await sql`DELETE FROM api_checks WHERE id = ${id}`;
-    else if (type === 'qa')  await sql`DELETE FROM qa_projects WHERE id = ${id}`;
+    if (type === 'url')      await urlMonitorRepo.deleteById(id);
+    else if (type === 'api') await apiCheckRepo.deleteById(id);
+    else if (type === 'qa')  await qaProjectRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -144,9 +140,9 @@ export function buildApp(connection: Redis) {
     const id = Number(c.req.param('id'));
     const body = await c.req.json();
     if (typeof body.enabled !== 'boolean') return c.json({ error: 'enabled (bool) required' }, 400);
-    if (type === 'url')      await sql`UPDATE url_monitors SET enabled = ${body.enabled} WHERE id = ${id}`;
-    else if (type === 'api') await sql`UPDATE api_checks SET enabled = ${body.enabled} WHERE id = ${id}`;
-    else if (type === 'qa')  await sql`UPDATE qa_projects SET enabled = ${body.enabled} WHERE id = ${id}`;
+    if (type === 'url')      await urlMonitorRepo.updateEnabled(id, body.enabled);
+    else if (type === 'api') await apiCheckRepo.updateEnabled(id, body.enabled);
+    else if (type === 'qa')  await qaProjectRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -156,30 +152,30 @@ export function buildApp(connection: Redis) {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
     if (type === 'url') {
-      const [m] = await sql`SELECT * FROM url_monitors WHERE id = ${id}`;
+      const [m] = await urlMonitorRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const assertions = await sql`SELECT id, operator, status_code FROM url_monitor_assertions WHERE url_monitor_id = ${id}`;
-      const [exec] = await sql`INSERT INTO url_monitor_executions (url_monitor_id, status) VALUES (${id}, 'pending') RETURNING id`;
-      await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeout_ms: m.timeout_ms }, assertions });
+      const assertions = await urlMonitorRepo.findAssertionsByMonitorId(id);
+      const [exec] = await urlMonitorRepo.createExecution(id, 'pending');
+      await urlQ.add('check', { executionId: exec.id, monitor: { id: m.id, url: m.url, timeout_ms: m.timeoutMs }, assertions });
       return c.json({ executionId: exec.id });
     }
     if (type === 'api') {
-      const [m] = await sql`SELECT * FROM api_checks WHERE id = ${id}`;
+      const [m] = await apiCheckRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const assertions = await sql`SELECT id, type, operator, path, value FROM api_assertions WHERE api_check_id = ${id}`;
-      const [exec] = await sql`INSERT INTO api_executions (api_check_id, status) VALUES (${id}, 'pending') RETURNING id`;
+      const assertions = await apiCheckRepo.findAssertionsByCheckId(id);
+      const [exec] = await apiCheckRepo.createExecution(id, 'pending');
       await apiQ.add('check', { executionId: exec.id, apiCheck: m, assertions });
       return c.json({ executionId: exec.id });
     }
     if (type === 'qa') {
-      const [m] = await sql`SELECT * FROM qa_projects WHERE id = ${id}`;
+      const [m] = await qaProjectRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
-      const tests = await sql`SELECT id, test_name AS name, script FROM qa_generated_tests WHERE project_id = ${id}`;
+      const tests = await qaProjectRepo.findTestsWithScriptByProjectId(id);
       if (tests.length === 0) return c.json({ error: 'no tests on this project' }, 400);
       await qaQ.add('run', {
         type: 'qa-project-run',
         project_id: m.id,
-        target_url: m.target_url,
+        target_url: m.targetUrl,
         credentials: m.credentials ?? undefined,
         config: m.config ?? {},
         tests,
@@ -198,13 +194,15 @@ export function buildApp(connection: Redis) {
 
     for (const u of (body.url_monitors ?? []) as any[]) {
       try {
-        const [m] = await sql`
-          INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
-          VALUES (${u.name}, ${u.url}, ${u.timeout_ms ?? 30000}, ${u.interval_seconds ?? 60}, ${u.enabled ?? true})
-          RETURNING id
-        `;
+        const [m] = await urlMonitorRepo.create({
+          name: u.name,
+          url: u.url,
+          timeoutMs: u.timeout_ms ?? 30000,
+          intervalSeconds: u.interval_seconds ?? 60,
+          enabled: u.enabled ?? true,
+        });
         for (const a of u.assertions ?? []) {
-          await sql`INSERT INTO url_monitor_assertions (url_monitor_id, operator, status_code) VALUES (${m.id}, ${a.operator}, ${a.status_code})`;
+          await urlMonitorRepo.createAssertion(m.id, { operator: a.operator, statusCode: a.status_code });
         }
         created.url++;
       } catch (err) {
@@ -213,13 +211,18 @@ export function buildApp(connection: Redis) {
     }
     for (const a of (body.api_checks ?? []) as any[]) {
       try {
-        const [m] = await sql`
-          INSERT INTO api_checks (name, url, method, headers, body, timeout_ms, interval_seconds, enabled)
-          VALUES (${a.name}, ${a.url}, ${a.method ?? 'GET'}, ${a.headers ?? {}}, ${a.body ?? null}, ${a.timeout_ms ?? 10000}, ${a.interval_seconds ?? 60}, ${a.enabled ?? true})
-          RETURNING id
-        `;
+        const [m] = await apiCheckRepo.create({
+          name: a.name,
+          url: a.url,
+          method: a.method ?? 'GET',
+          headers: a.headers ?? {},
+          body: a.body ?? null,
+          timeoutMs: a.timeout_ms ?? 10000,
+          intervalSeconds: a.interval_seconds ?? 60,
+          enabled: a.enabled ?? true,
+        });
         for (const ass of a.assertions ?? []) {
-          await sql`INSERT INTO api_assertions (api_check_id, type, operator, path, value) VALUES (${m.id}, ${ass.type}, ${ass.operator}, ${ass.path ?? null}, ${ass.value ?? null})`;
+          await apiCheckRepo.createAssertion(m.id, { type: ass.type, operator: ass.operator, path: ass.path ?? null, value: ass.value ?? null });
         }
         created.api++;
       } catch (err) {
@@ -228,13 +231,17 @@ export function buildApp(connection: Redis) {
     }
     for (const q of (body.qa_projects ?? []) as any[]) {
       try {
-        const [m] = await sql`
-          INSERT INTO qa_projects (name, target_url, credentials, config, interval_seconds, enabled, status)
-          VALUES (${q.name}, ${q.target_url}, ${q.credentials ?? null}, ${q.config ?? {}}, ${q.interval_seconds ?? 300}, ${q.enabled ?? true}, 'active')
-          RETURNING id
-        `;
+        const [m] = await qaProjectRepo.create({
+          name: q.name,
+          targetUrl: q.target_url,
+          credentials: q.credentials ?? null,
+          config: q.config ?? {},
+          intervalSeconds: q.interval_seconds ?? 300,
+          enabled: q.enabled ?? true,
+          status: 'active',
+        });
         for (const t of q.tests ?? []) {
-          await sql`INSERT INTO qa_generated_tests (project_id, test_name, test_type, script, description) VALUES (${m.id}, ${t.name}, 'browser', ${t.script}, ${t.description ?? null})`;
+          await qaProjectRepo.createTest(m.id, { testName: t.name, testType: 'browser', script: t.script, description: t.description ?? null });
         }
         created.qa++;
       } catch (err) {

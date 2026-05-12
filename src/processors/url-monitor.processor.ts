@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { sql } from '../config/db.ts';
+import { urlMonitorRepo } from '../db/repositories/url-monitor.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { evaluateUrlMonitorAssertions } from '../services/assertion.service.ts';
 
@@ -21,15 +21,13 @@ export const urlMonitorProcessor = async (job: Job) => {
     const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
     const status = allPassed ? 'SUCCESS' : (isFinalAttempt ? 'FAILED' : 'PENDING');
 
-    await sql`
-      UPDATE url_monitor_executions
-      SET status            = ${status},
-          status_code       = ${response.status},
-          response_time_ms  = ${responseTime},
-          assertion_results = ${assertionResults}::jsonb,
-          end_time          = NOW()
-      WHERE id = ${executionId}
-    `;
+    await urlMonitorRepo.updateExecution(executionId, {
+      status,
+      statusCode: response.status,
+      responseTimeMs: responseTime,
+      assertionResults,
+      endTime: new Date(),
+    });
 
     if (!allPassed) {
       throw new Error('Assertions failed');
@@ -59,14 +57,12 @@ export const urlMonitorProcessor = async (job: Job) => {
       }
     }
 
-    await sql`
-      UPDATE url_monitor_executions
-      SET status            = ${isFinalAttempt ? 'FAILED' : 'PENDING'},
-          error_message     = ${detailedMessage},
-          response_time_ms  = ${responseTime},
-          end_time          = NOW()
-      WHERE id = ${executionId}
-    `;
+    await urlMonitorRepo.updateExecution(executionId, {
+      status: isFinalAttempt ? 'FAILED' : 'PENDING',
+      errorMessage: detailedMessage,
+      responseTimeMs: responseTime,
+      endTime: new Date(),
+    });
 
     throw new Error(detailedMessage);
   }

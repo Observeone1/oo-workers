@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { sql } from '../config/db.ts';
+import { apiCheckRepo } from '../db/repositories/api-check.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { evaluateAssertions } from '../services/assertion.service.ts';
 
@@ -64,18 +64,16 @@ export const apiCheckProcessor = async (job: Job) => {
     const isFinalAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 1);
     const status = allAssertionsPassed ? 'SUCCESS' : (isFinalAttempt ? 'FAILED' : 'PENDING');
 
-    await sql`
-      UPDATE api_executions
-      SET status            = ${status},
-          response_status   = ${response.status},
-          response_time_ms  = ${responseTime},
-          response_body     = ${body.substring(0, 5000)},
-          response_headers  = ${responseHeaders}::jsonb,
-          assertion_results = ${assertionResults}::jsonb,
-          error_message     = ${allAssertionsPassed ? null : 'One or more assertions failed'},
-          end_time          = NOW()
-      WHERE id = ${executionId}
-    `;
+    await apiCheckRepo.updateExecution(executionId, {
+      status,
+      responseStatus: response.status,
+      responseTimeMs: responseTime,
+      responseBody: body.substring(0, 5000),
+      responseHeaders,
+      assertionResults,
+      errorMessage: allAssertionsPassed ? null : 'One or more assertions failed',
+      endTime: new Date(),
+    });
 
     if (!allAssertionsPassed) {
       throw new Error('One or more assertions failed');
@@ -105,13 +103,11 @@ export const apiCheckProcessor = async (job: Job) => {
 
     logger.error(`API check execution ${executionId} failed: ${errorMessage}`);
 
-    await sql`
-      UPDATE api_executions
-      SET status        = ${isFinalAttempt ? 'FAILED' : 'PENDING'},
-          error_message = ${errorMessage},
-          end_time      = NOW()
-      WHERE id = ${executionId}
-    `;
+    await apiCheckRepo.updateExecution(executionId, {
+      status: isFinalAttempt ? 'FAILED' : 'PENDING',
+      errorMessage,
+      endTime: new Date(),
+    });
 
     throw new Error(errorMessage);
   }

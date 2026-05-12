@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 import { Redis } from 'ioredis';
-import { sql } from '../config/db.ts';
+import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { executePlaywrightTest } from '../services/playwright.service.ts';
 import fs from 'node:fs/promises';
@@ -9,7 +9,7 @@ import path from 'node:path';
 interface QATest {
   id: number;
   name: string;
-  script: string; // inline Playwright spec content (was: script_url)
+  script: string;
 }
 
 interface QAProjectJobData {
@@ -92,11 +92,7 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
       // INSERT execution row
       let executionId: number;
       try {
-        const [row] = await sql<{ id: number }[]>`
-          INSERT INTO qa_test_executions (test_id, project_id, status)
-          VALUES (${test.id}, ${project_id}, 'running')
-          RETURNING id
-        `;
+        const [row] = await qaProjectRepo.createExecution(test.id, project_id, 'running');
         executionId = row.id;
       } catch (createError) {
         const msg = createError instanceof Error ? createError.message : String(createError);
@@ -148,15 +144,13 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
         const duration_ms = result.duration_ms;
         const status = result.success ? 'passed' : 'failed';
 
-        await sql`
-          UPDATE qa_test_executions
-          SET status        = ${status},
-              completed_at  = NOW(),
-              duration_ms   = ${duration_ms},
-              error_message = ${result.error || null},
-              logs          = ${result.logs?.join('\n') || null}
-          WHERE id = ${executionId}
-        `;
+        await qaProjectRepo.updateExecution(executionId, {
+          status,
+          completedAt: new Date(),
+          durationMs: duration_ms,
+          errorMessage: result.error ?? null,
+          logs: result.logs?.join('\n') ?? null,
+        });
 
         await publishUpdate(project_id, {
           type: 'test_update',
@@ -182,14 +176,12 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
         const duration_ms = Date.now() - testStartTime;
         logger.error(`Test ${test.id} execution failed: ${errorMessage}`);
 
-        await sql`
-          UPDATE qa_test_executions
-          SET status        = 'error',
-              completed_at  = NOW(),
-              duration_ms   = ${duration_ms},
-              error_message = ${errorMessage}
-          WHERE id = ${executionId}
-        `;
+        await qaProjectRepo.updateExecution(executionId, {
+          status: 'error',
+          completedAt: new Date(),
+          durationMs: duration_ms,
+          errorMessage,
+        });
 
         await publishUpdate(project_id, {
           type: 'test_update',
@@ -222,11 +214,7 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
     const errors = results.filter((r) => r.status === 'error').length;
     const totalDuration = Date.now() - startTime;
 
-    await sql`
-      UPDATE qa_projects
-      SET last_run_at = NOW()
-      WHERE id = ${project_id}
-    `;
+    await qaProjectRepo.touchLastRunAt(project_id);
 
     const completionData = {
       type: 'run_completed',
