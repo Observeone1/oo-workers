@@ -14,7 +14,13 @@
     "format:check": "prettier --check .",
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
-    "knip": "knip"
+    "knip": "knip",
+    "test:integration": "sh scripts/run-integration.sh",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js,json,md,yml,yaml}": "prettier --write",
+    "*.ts": "eslint --fix"
   },
   "dependencies": {
     "@playwright/test": "1.57.0",
@@ -33,7 +39,9 @@
     "@typescript-eslint/parser": "^8.59.3",
     "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
     "knip": "^6.13.1",
+    "lint-staged": "^17.0.4",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   }

@@ -6,6 +6,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch: # manual integration run
 
 jobs:
   typecheck:
@@ -18,7 +19,41 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
 
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+
+  knip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run knip
+
   integration:
+    # Runs on push to main, on version tags, and manual dispatch.
+    # Skipped on PR builds — fast feedback loop. Run manually via
+    # the Actions tab "Run workflow" button before merging anything risky.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -79,7 +114,7 @@ jobs:
 
   publish:
     runs-on: ubuntu-latest
-    needs: [typecheck, integration]
+    needs: [typecheck, format-check, lint, knip]
     if: github.event_name == 'push'
     permissions:
       contents: read

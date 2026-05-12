@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Run the integration suite before pushing. Requires local Postgres + Redis
+# reachable (e.g. via `docker compose up -d postgres redis`).
+# Skip with `git push --no-verify` only if you have a strong reason —
+# don't let CI be the first thing that catches breakage.
+
+PG_PORT="${POSTGRES_PORT:-5442}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+
+# Portable TCP probe — works in bash without needing pg_isready/redis-cli.
+probe_tcp() {
+  host=$1
+  port=$2
+  (echo > "/dev/tcp/$host/$port") 2>/dev/null
+}
+
+if ! probe_tcp localhost "$PG_PORT"; then
+  echo "[pre-push] Postgres not reachable on localhost:$PG_PORT."
+  echo "           Run 'docker compose up -d postgres redis', or 'git push --no-verify' to skip."
+  exit 1
+fi
+
+if ! probe_tcp localhost "$REDIS_PORT"; then
+  echo "[pre-push] Redis not reachable on localhost:$REDIS_PORT."
+  echo "           Run 'docker compose up -d redis', or 'git push --no-verify' to skip."
+  exit 1
+fi
+
+bun run test:integration
