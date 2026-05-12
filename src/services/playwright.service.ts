@@ -1,5 +1,4 @@
 import { exec } from 'child_process';
-import { logger } from '../utils/logger.ts';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -28,9 +27,9 @@ interface TestConfig {
  */
 export async function executePlaywrightTest(
   scriptPath: string,
-  targetUrl: string, // Not directly used in native mode unless injected into script
-  credentials?: Record<string, string>, // Would need to be injected or handled via env vars
-  config?: TestConfig,
+  _targetUrl: string, // Not directly used in native mode unless injected into script
+  _credentials?: Record<string, string>, // Would need to be injected or handled via env vars
+  _config?: TestConfig,
 ): Promise<PlaywrightTestResult> {
   const logs: string[] = [];
   const startTime = Date.now();
@@ -79,7 +78,7 @@ export async function executePlaywrightTest(
         const jsonStr = stdout.substring(jsonStart, jsonEnd + 1);
         parsedResult = JSON.parse(jsonStr);
       }
-    } catch (parseError) {
+    } catch {
       logs.push('Failed to parse Playwright JSON output');
     }
 
