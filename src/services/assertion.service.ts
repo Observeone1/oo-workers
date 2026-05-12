@@ -21,10 +21,9 @@ export interface AssertionResult {
 
 export interface UrlMonitorAssertion {
     id?: number;
-    url_monitor_id: number;
+    urlMonitorId?: number;
     operator: 'equals' | 'not_equals' | 'less_than' | 'greater_than';
-    status_code: number;
-    created_at?: Date;
+    statusCode: number;
 }
 
 export interface UrlMonitorAssertionResult {
@@ -340,7 +339,7 @@ export const evaluateUrlMonitorAssertions = (
 ): UrlMonitorAssertionResult[] => {
     return assertions.map(assertion => {
         try {
-            const { operator, status_code: expectedStatusCode } = assertion;
+            const { operator, statusCode: expectedStatusCode } = assertion;
             const passed = compareValues(actualStatusCode, expectedStatusCode, operator);
 
             return {
@@ -358,7 +357,7 @@ export const evaluateUrlMonitorAssertions = (
                 operator: assertion.operator,
                 passed: false,
                 message: `Error evaluating assertion: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                expected: assertion.status_code,
+                expected: assertion.statusCode,
                 actual: actualStatusCode
             };
         }
