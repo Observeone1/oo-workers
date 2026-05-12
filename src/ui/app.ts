@@ -9,22 +9,22 @@ type MonType = 'url' | 'api' | 'qa';
 interface RunLite {
   id: number;
   status: string;
-  status_code?: number | null;
-  response_time_ms?: number | null;
-  duration_ms?: number | null;
-  error_message?: string | null;
-  start_time: string;
+  statusCode?: number | null;
+  responseTimeMs?: number | null;
+  durationMs?: number | null;
+  errorMessage?: string | null;
+  startTime: string;
 }
 interface Monitor {
   id: number;
   name: string;
   type: MonType;
   enabled: boolean;
-  interval_seconds: number;
+  intervalSeconds: number;
   url?: string;
-  target_url?: string;
+  targetUrl?: string;
   latest?: RunLite | null;
-  test_count?: number;
+  testCount?: number;
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -90,17 +90,17 @@ async function renderList() {
 function rowFor(m: Monitor): string {
   const status = m.latest?.status ?? 'unknown';
   const cls = ({SUCCESS:'SUCCESS', FAILED:'FAILED', passed:'passed', failed:'failed', error:'error', running:'running'} as Record<string,string>)[status] ?? 'unknown';
-  const latency = m.latest?.response_time_ms ?? m.latest?.duration_ms;
-  const url = m.url ?? m.target_url ?? '';
+  const latency = m.latest?.responseTimeMs ?? m.latest?.durationMs;
+  const url = m.url ?? m.targetUrl ?? '';
   return `
     <tr class="${m.enabled ? '' : 'disabled'}" data-open data-type="${m.type}" data-id="${m.id}" style="cursor:pointer">
       <td><span class="dot ${cls}"></span></td>
       <td>
         <div class="name">${esc(m.name)}</div>
-        <div class="url">${esc(url)}${m.type === 'qa' ? ` · ${m.test_count ?? 0} test(s)` : ''}</div>
+        <div class="url">${esc(url)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</div>
       </td>
-      <td><span class="pill">every ${m.interval_seconds}s</span></td>
-      <td class="meta">${fmtAge(m.latest?.start_time)}</td>
+      <td><span class="pill">every ${m.intervalSeconds}s</span></td>
+      <td class="meta">${fmtAge(m.latest?.startTime)}</td>
       <td class="meta">${latency != null ? `${latency}ms` : '—'}</td>
       <td class="row-actions">
         <button data-run data-type="${m.type}" data-id="${m.id}">Run</button>
@@ -116,10 +116,10 @@ async function renderDetail(type: MonType, id: number) {
   if (data.error) { main.innerHTML = `<div class="empty">${esc(data.error)}</div>`; return; }
   const m = data.monitor;
   const runs: RunLite[] = data.runs;
-  const url = m.url ?? m.target_url ?? '';
+  const url = m.url ?? m.targetUrl ?? '';
 
   const latencyValues = runs
-    .map(r => r.response_time_ms ?? r.duration_ms)
+    .map(r => r.responseTimeMs ?? r.durationMs)
     .filter((v): v is number => typeof v === 'number')
     .reverse()
     .slice(-30);
@@ -127,14 +127,14 @@ async function renderDetail(type: MonType, id: number) {
 
   const successCount = runs.filter(r => ['SUCCESS','passed'].includes(r.status)).length;
   const successRate = runs.length === 0 ? '—' : `${Math.round((successCount / runs.length) * 100)}%`;
-  const lastLatency = runs[0]?.response_time_ms ?? runs[0]?.duration_ms;
+  const lastLatency = runs[0]?.responseTimeMs ?? runs[0]?.durationMs;
 
   main.innerHTML = `
     <a class="back-link" href="#/">← back</a>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <h1 style="margin:0;font-size:20px">${esc(m.name)}</h1>
-        <div class="url" style="margin-top:4px">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.interval_seconds}s</div>
+        <div class="url" style="margin-top:4px">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.intervalSeconds}s</div>
       </div>
       <div class="actions-bar">
         <button id="detail-run" class="primary">Run now</button>
@@ -155,13 +155,13 @@ async function renderDetail(type: MonType, id: number) {
       <tbody>
         ${runs.map(r => {
           const cls = ({SUCCESS:'SUCCESS', FAILED:'FAILED', passed:'passed', failed:'failed', error:'error'} as Record<string,string>)[r.status] ?? 'unknown';
-          const latency = r.response_time_ms ?? r.duration_ms;
+          const latency = r.responseTimeMs ?? r.durationMs;
           return `<tr>
             <td><span class="dot ${cls}"></span></td>
-            <td class="meta">${fmtAge(r.start_time)}</td>
-            <td>${r.status}${r.status_code ? ' · ' + r.status_code : ''}</td>
+            <td class="meta">${fmtAge(r.startTime)}</td>
+            <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
             <td class="meta">${latency != null ? `${latency}ms` : '—'}</td>
-            <td class="meta">${esc((r.error_message ?? '').slice(0,120))}</td>
+            <td class="meta">${esc((r.errorMessage ?? '').slice(0,120))}</td>
           </tr>`;
         }).join('')}
       </tbody>

@@ -3,17 +3,50 @@ import { db } from '../../config/db.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 
 export const qaProjectRepo = {
-  findAllWithLatest() {
-    return db.execute(sql`
-      SELECT p.*, 'qa' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, duration_ms, error_message, started_at AS start_time
-          FROM qa_test_executions
-          WHERE project_id = p.id ORDER BY started_at DESC LIMIT 1
-        ) e) AS latest,
-        (SELECT COUNT(*) FROM qa_generated_tests WHERE project_id = p.id) AS test_count
-      FROM qa_projects p ORDER BY id DESC
-    `);
+  async findAllWithLatest() {
+    const latest = db
+      .selectDistinctOn([qaTestExecutions.projectId], {
+        projectId: qaTestExecutions.projectId,
+        id: qaTestExecutions.id,
+        status: qaTestExecutions.status,
+        durationMs: qaTestExecutions.durationMs,
+        errorMessage: qaTestExecutions.errorMessage,
+        startTime: qaTestExecutions.startedAt,
+      })
+      .from(qaTestExecutions)
+      .orderBy(qaTestExecutions.projectId, desc(qaTestExecutions.startedAt))
+      .as('latest');
+
+    const testCounts = db
+      .select({
+        projectId: qaGeneratedTests.projectId,
+        count: sql<number>`COUNT(*)::int`.as('count'),
+      })
+      .from(qaGeneratedTests)
+      .groupBy(qaGeneratedTests.projectId)
+      .as('test_counts');
+
+    const rows = await db
+      .select()
+      .from(qaProjects)
+      .leftJoin(latest, eq(latest.projectId, qaProjects.id))
+      .leftJoin(testCounts, eq(testCounts.projectId, qaProjects.id))
+      .orderBy(desc(qaProjects.id));
+
+    return rows.map(({ qa_projects: p, latest: l, test_counts: tc }) => ({
+      ...p,
+      type: 'qa' as const,
+      testCount: tc?.count ?? 0,
+      latest: l && l.id !== null
+        ? {
+            id: l.id,
+            status: l.status,
+            durationMs: l.durationMs,
+            errorMessage: l.errorMessage,
+            startTime: l.startTime,
+          }
+        : null,
+    }));
   },
 
   findById(id: number) {

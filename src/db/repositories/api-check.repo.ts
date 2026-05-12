@@ -3,16 +3,41 @@ import { db } from '../../config/db.ts';
 import { apiAssertions, apiChecks, apiExecutions } from '../schema.ts';
 
 export const apiCheckRepo = {
-  findAllWithLatest() {
-    return db.execute(sql`
-      SELECT c.*, 'api' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, response_status AS status_code, response_time_ms, error_message, start_time
-          FROM api_executions
-          WHERE api_check_id = c.id ORDER BY start_time DESC LIMIT 1
-        ) e) AS latest
-      FROM api_checks c ORDER BY id DESC
-    `);
+  async findAllWithLatest() {
+    const latest = db
+      .selectDistinctOn([apiExecutions.apiCheckId], {
+        checkId: apiExecutions.apiCheckId,
+        id: apiExecutions.id,
+        status: apiExecutions.status,
+        statusCode: apiExecutions.responseStatus,
+        responseTimeMs: apiExecutions.responseTimeMs,
+        errorMessage: apiExecutions.errorMessage,
+        startTime: apiExecutions.startTime,
+      })
+      .from(apiExecutions)
+      .orderBy(apiExecutions.apiCheckId, desc(apiExecutions.startTime))
+      .as('latest');
+
+    const rows = await db
+      .select()
+      .from(apiChecks)
+      .leftJoin(latest, eq(latest.checkId, apiChecks.id))
+      .orderBy(desc(apiChecks.id));
+
+    return rows.map(({ api_checks: c, latest: l }) => ({
+      ...c,
+      type: 'api' as const,
+      latest: l && l.id !== null
+        ? {
+            id: l.id,
+            status: l.status,
+            statusCode: l.statusCode,
+            responseTimeMs: l.responseTimeMs,
+            errorMessage: l.errorMessage,
+            startTime: l.startTime,
+          }
+        : null,
+    }));
   },
 
   findById(id: number) {

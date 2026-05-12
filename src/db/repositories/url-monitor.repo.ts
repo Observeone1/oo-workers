@@ -3,17 +3,41 @@ import { db } from '../../config/db.ts';
 import { urlMonitorAssertions, urlMonitorExecutions, urlMonitors } from '../schema.ts';
 
 export const urlMonitorRepo = {
-  findAllWithLatest() {
-    // row_to_json correlated subquery — kept as raw SQL; no behaviour change risk
-    return db.execute(sql`
-      SELECT m.*, 'url' AS type,
-        (SELECT row_to_json(e) FROM (
-          SELECT id, status, status_code, response_time_ms, error_message, start_time
-          FROM url_monitor_executions
-          WHERE url_monitor_id = m.id ORDER BY start_time DESC LIMIT 1
-        ) e) AS latest
-      FROM url_monitors m ORDER BY id DESC
-    `);
+  async findAllWithLatest() {
+    const latest = db
+      .selectDistinctOn([urlMonitorExecutions.urlMonitorId], {
+        monitorId: urlMonitorExecutions.urlMonitorId,
+        id: urlMonitorExecutions.id,
+        status: urlMonitorExecutions.status,
+        statusCode: urlMonitorExecutions.statusCode,
+        responseTimeMs: urlMonitorExecutions.responseTimeMs,
+        errorMessage: urlMonitorExecutions.errorMessage,
+        startTime: urlMonitorExecutions.startTime,
+      })
+      .from(urlMonitorExecutions)
+      .orderBy(urlMonitorExecutions.urlMonitorId, desc(urlMonitorExecutions.startTime))
+      .as('latest');
+
+    const rows = await db
+      .select()
+      .from(urlMonitors)
+      .leftJoin(latest, eq(latest.monitorId, urlMonitors.id))
+      .orderBy(desc(urlMonitors.id));
+
+    return rows.map(({ url_monitors: m, latest: l }) => ({
+      ...m,
+      type: 'url' as const,
+      latest: l && l.id !== null
+        ? {
+            id: l.id,
+            status: l.status,
+            statusCode: l.statusCode,
+            responseTimeMs: l.responseTimeMs,
+            errorMessage: l.errorMessage,
+            startTime: l.startTime,
+          }
+        : null,
+    }));
   },
 
   findById(id: number) {
