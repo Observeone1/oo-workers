@@ -3,6 +3,16 @@
 # Used by `bun run test:integration` and the Husky pre-push hook.
 set -e
 
+# Load .env if present so the hook works without manual env exports.
+# Fall back to docker-compose defaults if .env is missing.
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+export DATABASE_URL="${DATABASE_URL:-postgres://oo:oo@localhost:${POSTGRES_PORT:-5442}/${POSTGRES_DB:-oo_workers}}"
+export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT:-6379}}"
+
 bun src/db/migrate.ts
 
 LOG_LEVEL=warn bun src/index.ts &
