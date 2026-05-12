@@ -29,7 +29,7 @@ async function pollUntilDone(execId: number, table: 'url_monitor_executions' | '
   while (Date.now() - start < timeoutMs) {
     const rows = await sql.unsafe(`SELECT * FROM ${table} WHERE id = $1`, [execId]);
     const row = rows[0];
-    if (row && row.status !== 'pending') return row;
+    if (row && row.status !== 'PENDING') return row;
     await Bun.sleep(500);
   }
   throw new Error(`timed out waiting for ${table} #${execId}`);
@@ -53,7 +53,7 @@ async function smokeUrlMonitor() {
 
   const [exec] = await sql`
     INSERT INTO url_monitor_executions (url_monitor_id, status)
-    VALUES (${monitor.id}, 'pending')
+    VALUES (${monitor.id}, 'PENDING')
     RETURNING *
   `;
   console.log(`  execution #${exec.id} created (pending)`);
@@ -90,7 +90,7 @@ async function smokeApiCheck() {
 
   const [exec] = await sql`
     INSERT INTO api_executions (api_check_id, status)
-    VALUES (${check.id}, 'pending')
+    VALUES (${check.id}, 'PENDING')
     RETURNING *
   `;
   console.log(`  execution #${exec.id} created (pending)`);

@@ -6,6 +6,11 @@ import { executePlaywrightTest } from '../services/playwright.service.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+// Resolve relative to this source file (project_root/src/processors → project_root/tests).
+// Avoids process.cwd() so the worker still works if started from a different dir.
+// Must stay inside Playwright's testDir ('./tests') — see playwright.config.ts.
+const TESTS_ROOT = path.resolve(import.meta.dir, '../../tests');
+
 interface QATest {
   id: number;
   name: string;
@@ -31,35 +36,25 @@ interface TestResult {
   logs?: string[];
 }
 
-// Redis publisher for real-time updates
-let redisPublisher: Redis | null = null;
-
-function getRedisPublisher(): Redis {
-  if (!redisPublisher) {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    redisPublisher = new Redis(redisUrl, { maxRetriesPerRequest: null });
-    redisPublisher.on('connect', () => logger.info('📡 Redis publisher connected'));
-    redisPublisher.on('error', (err) => logger.error(`Redis publisher error: ${err.message}`));
-  }
-  return redisPublisher;
-}
-
-async function publishUpdate(projectId: number, data: Record<string, unknown>): Promise<void> {
-  try {
-    const redis = getRedisPublisher();
-    const channel = `qa_project_updates:${projectId}`;
-    await redis.publish(channel, JSON.stringify({ ...data, timestamp: new Date().toISOString() }));
-  } catch (error) {
-    logger.error(`Failed to publish update: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 /**
- * QA Project Processor
+ * QA Project Processor factory.
  * Consumes jobs from the qa-project queue, runs Playwright scripts in parallel
  * (scripts stored inline in job data — sourced from qa_generated_tests.script).
+ * Takes the shared Redis connection so pub/sub uses one pool, not a private one.
  */
-export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
+export const createQaProjectProcessor = (redis: Redis) => {
+  const publishUpdate = async (projectId: number, data: Record<string, unknown>) => {
+    try {
+      await redis.publish(
+        `qa_project_updates:${projectId}`,
+        JSON.stringify({ ...data, timestamp: new Date().toISOString() }),
+      );
+    } catch (error) {
+      logger.error(`Failed to publish update: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  return async (job: Job<QAProjectJobData>) => {
   const { project_id, target_url, credentials, config, tests } = job.data;
 
   logger.info(`Processing QA Project job ${job.id} (Project: ${project_id})`);
@@ -76,7 +71,7 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
 
   // Write all scripts to a per-run directory before any test starts.
   // Using clean names (no id prefix) so sibling imports like import './auth.spec' resolve correctly.
-  const runDir = path.join(process.cwd(), 'tests', `${project_id}-${startTime}`);
+  const runDir = path.join(TESTS_ROOT, `${project_id}-${startTime}`);
   await fs.mkdir(runDir, { recursive: true });
 
   const fileMap = new Map<number, string>(); // test.id → absolute path
@@ -239,14 +234,5 @@ export const qaProjectProcessor = async (job: Job<QAProjectJobData>) => {
     await fs.rm(runDir, { recursive: true, force: true });
     throw error;
   }
+  };
 };
-
-async function cleanup() {
-  if (redisPublisher) {
-    await redisPublisher.quit();
-    redisPublisher = null;
-  }
-}
-
-process.on('SIGTERM', cleanup);
-process.on('SIGINT', cleanup);
