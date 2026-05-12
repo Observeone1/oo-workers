@@ -3,7 +3,7 @@ import { DEFAULTS } from '../constants.ts';
 import { urlMonitorRepo } from '../db/repositories/url-monitor.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
-import { evaluateUrlMonitorAssertions } from '../services/assertion.service.ts';
+import { evaluateUrlMonitorAssertions } from '../services/url-assertion.ts';
 
 export const urlMonitorProcessor = async (job: Job) => {
   const { executionId, monitor, assertions } = job.data;

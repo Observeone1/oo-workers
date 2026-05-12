@@ -3,7 +3,7 @@ import { DEFAULTS } from '../constants.ts';
 import { apiCheckRepo } from '../db/repositories/api-check.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
-import { evaluateAssertions } from '../services/assertion.service.ts';
+import { evaluateAssertions } from '../services/api-assertion.ts';
 
 export const apiCheckProcessor = async (job: Job) => {
   const { executionId, apiCheck, assertions } = job.data;
