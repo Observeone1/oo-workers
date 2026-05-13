@@ -66,6 +66,38 @@ Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put 
 - An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
 - TLS isn't built in. Terminate it at the proxy.
 
+## Multi-region (preview)
+
+Run probes from more than one location by attaching a regional **agent** to your master. The master holds the schedule, fans jobs out per region, and aggregates results. Agents are stateless — they only need outbound HTTPS back to the master, no database, no Redis, no inbound ports.
+
+### Add a region
+
+1. On the master, generate a region + agent key in one step:
+
+   ```bash
+   docker compose exec worker bun scripts/create-region.ts \
+     --slug us-east --label "US East (Virginia)"
+   ```
+
+   It prints the three env vars the agent box needs.
+
+2. On the agent box (a $4 VPS, home lab, anywhere with outbound HTTPS), copy `.env.agent.example` to `.env`, paste in the key, and:
+
+   ```bash
+   docker compose -f docker-compose.agent.yml up -d
+   ```
+
+3. Bind a monitor to the region via the API (UI is M3). The scheduler will fan it out; the agent will probe it; results land in the master's database tagged with `region_id`.
+
+### What works on agents
+
+URL, API, TCP, UDP. Browser (Playwright) monitors will report `ERROR` from agents in this release — run them from the master for now.
+
+### Known gaps (Phase 4 M2)
+
+- **No stalled-job sweeper yet.** If an agent crashes mid-probe, the matching execution row sits at `PENDING` indefinitely. The master keeps scheduling new runs every interval, so the metric is fresh — only the stale row leaks.
+- **No UI for region selection.** Currently bind via direct DB or API (M3 ships a multi-select in the create dialog).
+
 ## Documentation
 
 The dashboard ships a built-in reference at **http://localhost:3001/docs** covering:

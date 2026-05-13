@@ -1,0 +1,26 @@
+# oo-workers agent stack — for regional probe boxes.
+#
+# Pulls the same observeone/oo-workers image as the master but runs it in
+# `agent` role, which short-circuits Redis/Postgres/scheduler entirely.
+# The only outbound connection is HTTPS back to the master URL.
+#
+# Create a region on your master first:
+#   docker compose exec worker bun scripts/create-region.ts --slug us-east --label "US East"
+#
+# Then on the agent box:
+#   cp .env.agent.example .env
+#   # paste OO_MASTER_URL, OO_AGENT_KEY, OO_REGION_SLUG
+#   docker compose -f docker-compose.agent.yml up -d
+
+services:
+  agent:
+    image: observeone/oo-workers:${OO_WORKERS_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      OO_WORKER_ROLE: agent
+      OO_MASTER_URL: ${OO_MASTER_URL:?OO_MASTER_URL is required}
+      OO_AGENT_KEY: ${OO_AGENT_KEY:?OO_AGENT_KEY is required}
+      OO_REGION_SLUG: ${OO_REGION_SLUG:?OO_REGION_SLUG is required}
+      OO_AGENT_POLL_WAIT_SEC: ${OO_AGENT_POLL_WAIT_SEC:-30}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    command: ['bun', 'src/index.ts']

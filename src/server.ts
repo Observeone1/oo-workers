@@ -576,7 +576,10 @@ function buildApp(connection: Redis) {
 
 export function startServer(connection: Redis, port: number) {
   const { app, close } = buildApp(connection);
-  const server = Bun.serve({ port, fetch: app.fetch });
+  // idleTimeout default is 10s — too short for agent long-polls (up to 60s).
+  // Bumping to 120s gives ample headroom; the agent's BRPOP wait is capped
+  // at 60s in /api/agent/jobs so this only closes truly dead connections.
+  const server = Bun.serve({ port, fetch: app.fetch, idleTimeout: 120 });
   logger.info(`🌐 server listening on http://localhost:${port}`);
   return async () => {
     server.stop();

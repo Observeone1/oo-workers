@@ -38,10 +38,19 @@ export async function popJobForRegion(
   }
 }
 
+export type AgentResultStatus =
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'PENDING'
+  | 'ERROR'
+  | 'UP'
+  | 'DOWN'
+  | 'TIMEOUT';
+
 export interface AgentResultBody {
   type: MonitorType;
   executionId: number;
-  status: 'UP' | 'DOWN' | 'TIMEOUT' | 'ERROR';
+  status: AgentResultStatus;
   latencyMs?: number | null;
   errorMessage?: string | null;
   // url-monitor-specific
