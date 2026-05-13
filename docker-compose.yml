@@ -34,7 +34,7 @@ services:
       retries: 10
 
   worker:
-    image: observeone/oo-workers:${OO_WORKERS_TAG:-0.2.0}
+    image: observeone/oo-workers:${OO_WORKERS_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -51,7 +51,7 @@ services:
     command: ['sh', '-c', 'bun src/db/migrate.ts && bun src/index.ts']
 
   ui:
-    image: observeone/oo-workers:${OO_WORKERS_TAG:-0.2.0}
+    image: observeone/oo-workers:${OO_WORKERS_TAG:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
