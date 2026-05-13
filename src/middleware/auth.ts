@@ -9,13 +9,8 @@
  * Authentication sources, in priority order:
  *   1. `Authorization: Bearer oo_…` header (for CLI / tests / API
  *      consumers)
- *   2. `oo_session` HttpOnly cookie (for the dashboard once it has a
- *      login screen — set by POST /api/auth/login)
- *
- * Gated by env flag `OO_AUTH_ENABLED`. When `false` (the v0.5.6 default),
- * `requireAuth` is a no-op so the dashboard keeps working unchanged
- * after merge. PR D2 flips the default to `true` along with the UI
- * login work.
+ *   2. `oo_session` HttpOnly cookie (for the dashboard — set by
+ *      POST /api/auth/login)
  */
 
 import type { Context, MiddlewareHandler } from 'hono';
@@ -24,10 +19,6 @@ import { logger } from '../utils/logger.ts';
 
 export const KEY_PREFIX_LEN = 11; // "oo_" + first 8 random chars
 export const SESSION_COOKIE = 'oo_session';
-
-export function isAuthEnabled(): boolean {
-  return process.env.OO_AUTH_ENABLED === 'true';
-}
 
 export function extractKey(c: Context): string | null {
   const header = c.req.header('authorization');
@@ -66,8 +57,6 @@ export async function validateKey(cleartext: string): Promise<ApiKeyRow | null> 
  */
 export function requireAuth(scope: 'read' | 'write'): MiddlewareHandler {
   return async (c, next) => {
-    if (!isAuthEnabled()) return next();
-
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'authentication required' }, 401);
 

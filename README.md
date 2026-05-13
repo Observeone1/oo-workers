@@ -65,7 +65,6 @@ Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put 
 
 - An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
 - TLS isn't built in. Terminate it at the proxy.
-- For a fully internal LAN where everyone on the network is trusted, you can set `OO_AUTH_ENABLED=false` to skip the login screen. Don't do this with a port reachable from the internet.
 
 ## Documentation
 

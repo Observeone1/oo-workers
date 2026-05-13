@@ -1,7 +1,7 @@
 import type { MonType, MonitorsByType, MonitorDetail, ImportResult } from './types';
 
 // All requests carry `credentials: 'include'` so the oo_session cookie
-// flows on same-origin fetches. Required once OO_AUTH_ENABLED is true.
+// flows on same-origin fetches — required for the auth gate.
 const COMMON: RequestInit = { credentials: 'include' };
 
 export const getMonitors = async (): Promise<MonitorsByType> =>

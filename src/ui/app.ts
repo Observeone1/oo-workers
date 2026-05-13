@@ -21,20 +21,19 @@ import { renderLogin } from './login';
 import { iconSignOut } from './icons';
 
 interface AuthState {
-  authEnabled: boolean;
-  name?: string;
-  prefix?: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
 }
 
-async function checkAuth(): Promise<{ ok: boolean; state: AuthState }> {
+async function checkAuth(): Promise<{ ok: boolean; state?: AuthState }> {
   try {
     const res = await fetch('/api/auth/me', { credentials: 'include' });
-    if (res.status === 401) return { ok: false, state: { authEnabled: true } };
-    const body = await res.json();
-    return { ok: true, state: body };
+    if (res.status === 401) return { ok: false };
+    return { ok: true, state: await res.json() };
   } catch {
-    // Network error — fail open so the dashboard isn't stuck on a flaky boot.
-    return { ok: true, state: { authEnabled: false } };
+    // Network blip — render login so the user retries instead of seeing a blank app.
+    return { ok: false };
   }
 }
 
@@ -48,13 +47,9 @@ function route() {
 function wireSignOut(state: AuthState) {
   const btn = document.getElementById('sign-out') as HTMLButtonElement | null;
   if (!btn) return;
-  if (!state.authEnabled) {
-    btn.hidden = true;
-    return;
-  }
   btn.hidden = false;
   btn.innerHTML = iconSignOut;
-  btn.title = `Signed in as ${state.name ?? state.prefix ?? ''} — click to sign out`;
+  btn.title = `Signed in as ${state.name} — click to sign out`;
   btn.addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     location.reload();
@@ -64,7 +59,7 @@ function wireSignOut(state: AuthState) {
 async function boot() {
   initTheme();
   const { ok, state } = await checkAuth();
-  if (!ok) {
+  if (!ok || !state) {
     // Theme still applies; nothing else (no dialogs, no auto-refresh).
     renderLogin();
     return;

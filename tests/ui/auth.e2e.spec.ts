@@ -1,9 +1,9 @@
 import { test, expect, waitForList } from './fixtures';
 
-// These specs run when the stack has OO_AUTH_ENABLED=true and the
-// playwright config has injected OO_E2E_API_KEY as a Bearer header for
-// every request. The login-flow spec deliberately uses a fresh page
-// context without that header so it can exercise the login screen.
+// These specs assume OO_E2E_API_KEY is set so the playwright config
+// injects it as a Bearer header for every request. The login-flow
+// specs deliberately use a fresh page context without that header so
+// they can exercise the actual login screen.
 
 test('sign-out button is visible when authenticated, and signs out', async ({ page, shot }) => {
   await page.goto('/');

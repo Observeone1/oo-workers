@@ -65,10 +65,6 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Gate write endpoints behind /api/auth. Set to 'false' to opt
-      # out (e.g. for a fully internal LAN install). See README
-      # "Security & deployment" for first-key bootstrap.
-      OO_AUTH_ENABLED: ${OO_AUTH_ENABLED:-true}
     ports:
       # Bind to loopback by default — public exposure is explicit opt-in via
       # OO_BIND_ADDR=0.0.0.0. Pair with a TLS reverse proxy for internet exposure.
