@@ -9,6 +9,7 @@ import { logger } from './utils/logger.ts';
 import { apiCheckProcessor } from './processors/api-check.processor.ts';
 import { urlMonitorProcessor } from './processors/url-monitor.processor.ts';
 import { createQaProjectProcessor } from './processors/qa-project.processor.ts';
+import { tcpMonitorProcessor } from './processors/tcp-monitor.processor.ts';
 import { startScheduler } from './scheduler.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -34,6 +35,11 @@ const qaProjectWorker = new Worker('qa-project', createQaProjectProcessor(connec
   concurrency: parseInt(process.env.QA_PROJECT_CONCURRENCY || '5'),
 });
 
+const tcpMonitorWorker = new Worker('tcp-monitor', tcpMonitorProcessor, {
+  connection,
+  concurrency: parseInt(process.env.TCP_MONITOR_CONCURRENCY || '20'),
+});
+
 apiCheckWorker.on('completed', (job) => logger.info(`✅ api-check #${job.id} completed`));
 apiCheckWorker.on('failed', (job, err) =>
   logger.error(`❌ api-check #${job?.id} failed: ${err.message}`),
@@ -49,11 +55,21 @@ qaProjectWorker.on('failed', (job, err) =>
   logger.error(`❌ qa-project #${job?.id} failed: ${err.message}`),
 );
 
+tcpMonitorWorker.on('completed', (job) => logger.info(`✅ tcp-monitor #${job.id} completed`));
+tcpMonitorWorker.on('failed', (job, err) =>
+  logger.error(`❌ tcp-monitor #${job?.id} failed: ${err.message}`),
+);
+
 const stopScheduler = startScheduler(connection);
 
 process.on('SIGTERM', async () => {
   logger.info('Shutting down workers...');
   await stopScheduler();
-  await Promise.all([apiCheckWorker.close(), urlMonitorWorker.close(), qaProjectWorker.close()]);
+  await Promise.all([
+    apiCheckWorker.close(),
+    urlMonitorWorker.close(),
+    qaProjectWorker.close(),
+    tcpMonitorWorker.close(),
+  ]);
   process.exit(0);
 });

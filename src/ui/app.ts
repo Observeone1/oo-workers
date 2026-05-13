@@ -20,7 +20,7 @@ import { initTheme } from './theme';
 
 function route() {
   const h = location.hash;
-  const m = h.match(/^#\/(url|api|qa)\/(\d+)$/);
+  const m = h.match(/^#\/(url|api|qa|tcp)\/(\d+)$/);
   if (m) renderDetail(m[1] as MonType, Number(m[2]));
   else renderList();
 }
@@ -33,7 +33,8 @@ setInterval(() => {
   if (
     location.hash.startsWith('#/url/') ||
     location.hash.startsWith('#/api/') ||
-    location.hash.startsWith('#/qa/')
+    location.hash.startsWith('#/qa/') ||
+    location.hash.startsWith('#/tcp/')
   )
     return;
   if (document.activeElement?.id === 'search-input') return;

@@ -26,7 +26,7 @@ const connection = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
 
 async function pollUntilDone(
   execId: number,
-  table: 'url_monitor_executions' | 'api_executions',
+  table: 'url_monitor_executions' | 'api_executions' | 'tcp_executions',
   timeoutMs = 30_000,
 ) {
   const start = Date.now();
@@ -184,15 +184,52 @@ test('smoke loads example.com', async ({ page }) => {
   return false;
 }
 
+// ---- tcp-monitor smoke ----
+async function smokeTcpMonitor() {
+  console.log('\n=== tcp-monitor smoke ===');
+  const [monitor] = await sql`
+    INSERT INTO tcp_monitors (name, host, port, timeout_ms)
+    VALUES ('smoke-example', 'example.com', 443, 5000)
+    RETURNING *
+  `;
+  console.log(`  monitor #${monitor.id} created (${monitor.host}:${monitor.port})`);
+
+  const [exec] = await sql`
+    INSERT INTO tcp_executions (tcp_monitor_id, status)
+    VALUES (${monitor.id}, 'PENDING')
+    RETURNING *
+  `;
+  console.log(`  execution #${exec.id} created (pending)`);
+
+  const queue = new Queue('tcp-monitor', { connection });
+  const job = await queue.add('check', {
+    executionId: exec.id,
+    monitor: {
+      id: monitor.id,
+      host: monitor.host,
+      port: monitor.port,
+      timeoutMs: monitor.timeout_ms,
+    },
+  });
+  console.log(`  job ${job.id} pushed → waiting for worker...`);
+
+  const result = await pollUntilDone(exec.id, 'tcp_executions');
+  console.log(`  ✅ result: status=${result.status}, ${result.latency_ms}ms`);
+  await queue.close();
+  return result.status === 'SUCCESS';
+}
+
 const urlOk = await smokeUrlMonitor();
 const apiOk = await smokeApiCheck();
+const tcpOk = await smokeTcpMonitor();
 const qaOk = await smokeQaProject();
 
 console.log('\n=== summary ===');
 console.log(`  url-monitor: ${urlOk ? '✅' : '❌'}`);
 console.log(`  api-check:   ${apiOk ? '✅' : '❌'}`);
+console.log(`  tcp-monitor: ${tcpOk ? '✅' : '❌'}`);
 console.log(`  qa-project:  ${qaOk ? '✅' : '❌'}`);
 
 await sql.end();
 await connection.quit();
-process.exit(urlOk && apiOk && qaOk ? 0 : 1);
+process.exit(urlOk && apiOk && tcpOk && qaOk ? 0 : 1);

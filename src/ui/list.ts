@@ -17,12 +17,16 @@ export function setActiveTab(t: MonType) {
   page = 1;
 }
 
+function targetFor(m: Monitor): string {
+  if (m.host) return `${m.host}:${m.port ?? ''}`;
+  return m.url ?? m.targetUrl ?? '';
+}
+
 function filterMonitors(monitors: Monitor[], q: string): Monitor[] {
   const trimmed = q.trim().toLowerCase();
   if (!trimmed) return monitors;
   return monitors.filter((m) => {
-    const url = m.url ?? m.targetUrl ?? '';
-    return m.name.toLowerCase().includes(trimmed) || url.toLowerCase().includes(trimmed);
+    return m.name.toLowerCase().includes(trimmed) || targetFor(m).toLowerCase().includes(trimmed);
   });
 }
 
@@ -31,7 +35,12 @@ export async function renderList() {
   const searchWasFocused = document.activeElement?.id === 'search-input';
 
   const data = await getMonitors();
-  const counts = { url: data.url.length, api: data.api.length, qa: data.qa.length };
+  const counts = {
+    url: data.url.length,
+    api: data.api.length,
+    qa: data.qa.length,
+    tcp: data.tcp.length,
+  };
 
   const allForTab = data[activeTab];
   const filtered = filterMonitors(allForTab, search);
@@ -45,7 +54,7 @@ export async function renderList() {
 
   main.innerHTML = `
     <div class="tabs">
-      ${(['url', 'api', 'qa'] as const)
+      ${(['url', 'api', 'qa', 'tcp'] as const)
         .map(
           (t) =>
             `<div class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></div>`,
@@ -191,13 +200,13 @@ function wirePagination(totalPages: number) {
 function rowFor(m: Monitor): string {
   const cls = statusClass(m.latest?.status);
   const latency = m.latest?.responseTimeMs ?? m.latest?.durationMs;
-  const url = m.url ?? m.targetUrl ?? '';
+  const target = targetFor(m);
   return `
     <tr class="${m.enabled ? '' : 'disabled'}" data-open data-type="${m.type}" data-id="${m.id}" style="cursor:pointer">
       <td><span class="dot ${cls}"></span></td>
       <td>
         <div class="name">${esc(m.name)}</div>
-        <div class="url">${esc(url)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</div>
+        <div class="url">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</div>
       </td>
       <td><span class="pill">every ${m.intervalSeconds}s</span></td>
       <td class="meta">${fmtAge(m.latest?.startTime)}</td>

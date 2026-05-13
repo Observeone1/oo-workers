@@ -13,7 +13,11 @@ export async function renderDetail(type: MonType, id: number) {
   }
   const m = data.monitor;
   const runs: RunLite[] = data.runs;
-  const url = (m.url as string | undefined) ?? (m.targetUrl as string | undefined) ?? '';
+  const host = m.host as string | undefined;
+  const port = m.port as number | undefined;
+  const url = host
+    ? `${host}:${port ?? ''}`
+    : ((m.url as string | undefined) ?? (m.targetUrl as string | undefined) ?? '');
 
   const latencyValues = runs
     .map((r) => r.responseTimeMs ?? r.durationMs)

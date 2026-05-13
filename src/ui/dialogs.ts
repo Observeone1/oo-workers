@@ -14,9 +14,13 @@ function initAddDialog() {
   const addForm = $<HTMLFormElement>('#add-form');
 
   const syncFields = () => {
-    $('#url-fields').hidden = typeSelect.value !== 'url';
-    $('#api-fields').hidden = typeSelect.value !== 'api';
-    $('#qa-fields').hidden = typeSelect.value !== 'qa';
+    const t = typeSelect.value;
+    $('#url-fields').hidden = t !== 'url';
+    $('#api-fields').hidden = t !== 'api';
+    $('#qa-fields').hidden = t !== 'qa';
+    // The shared URL row is for url/api/qa; TCP swaps in a host+port row.
+    $('#url-row').hidden = t === 'tcp';
+    $('#tcp-row').hidden = t !== 'tcp';
   };
   typeSelect.addEventListener('change', syncFields);
   $('#add-btn').addEventListener('click', () => {
@@ -35,6 +39,10 @@ function initAddDialog() {
 
     let body: unknown;
     if (type === 'url') {
+      if (!url) {
+        alert('URL is required');
+        return;
+      }
       body = {
         name,
         url,
@@ -42,6 +50,10 @@ function initAddDialog() {
         assertions: [{ operator: 'equals', statusCode: Number(fd.get('url_status') || 200) }],
       };
     } else if (type === 'api') {
+      if (!url) {
+        alert('URL is required');
+        return;
+      }
       let assertions: unknown[] = [];
       try {
         assertions = JSON.parse((fd.get('api_assertions') as string) || '[]');
@@ -50,12 +62,30 @@ function initAddDialog() {
         return;
       }
       body = { name, url, method: fd.get('api_method'), intervalSeconds, assertions };
-    } else {
+    } else if (type === 'qa') {
+      if (!url) {
+        alert('Target URL is required');
+        return;
+      }
       body = {
         name,
         targetUrl: url,
         intervalSeconds,
         tests: [{ name: name.replace(/\s+/g, '_'), script: fd.get('qa_script') }],
+      };
+    } else {
+      // tcp
+      const host = String(fd.get('tcp_host') ?? '').trim();
+      const port = Number(fd.get('tcp_port'));
+      if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+        alert('Host + port (1–65535) required');
+        return;
+      }
+      body = {
+        name,
+        host,
+        port,
+        intervalSeconds: Number(fd.get('tcp_interval_seconds')) || 60,
       };
     }
     const res = await createMonitor(type, body);
