@@ -27,13 +27,16 @@ function route() {
 window.addEventListener('hashchange', route);
 
 // Auto-refresh the list every 5s when not viewing a detail page.
+// Skipped while the search input has focus so keystrokes aren't disrupted.
 setInterval(() => {
   if (
-    !location.hash.startsWith('#/url/') &&
-    !location.hash.startsWith('#/api/') &&
-    !location.hash.startsWith('#/qa/')
+    location.hash.startsWith('#/url/') ||
+    location.hash.startsWith('#/api/') ||
+    location.hash.startsWith('#/qa/')
   )
-    renderList();
+    return;
+  if (document.activeElement?.id === 'search-input') return;
+  renderList();
 }, 5000);
 
 initDialogs();
