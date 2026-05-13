@@ -15,6 +15,7 @@
 import type { MonType } from './types';
 import { renderList } from './list';
 import { renderDetail } from './detail';
+import { renderRegions } from './regions';
 import { initDialogs } from './dialogs';
 import { initTheme } from './theme';
 import { renderLogin } from './login';
@@ -39,6 +40,10 @@ async function checkAuth(): Promise<{ ok: boolean; state?: AuthState }> {
 
 function route() {
   const h = location.hash;
+  if (h === '#/regions' || h.startsWith('#/regions/')) {
+    renderRegions();
+    return;
+  }
   const m = h.match(/^#\/(url|api|qa|tcp|udp)\/(\d+)$/);
   if (m) renderDetail(m[1] as MonType, Number(m[2]));
   else renderList();
@@ -78,7 +83,8 @@ async function boot() {
       location.hash.startsWith('#/api/') ||
       location.hash.startsWith('#/qa/') ||
       location.hash.startsWith('#/tcp/') ||
-      location.hash.startsWith('#/udp/')
+      location.hash.startsWith('#/udp/') ||
+      location.hash.startsWith('#/regions')
     )
       return;
     if (document.activeElement?.id === 'search-input') return;

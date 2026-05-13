@@ -543,3 +543,213 @@ textarea {
   margin-bottom: 12px;
   color: var(--muted);
 }
+
+/* header nav link */
+.nav-link {
+  color: var(--fg);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 0.5rem;
+  font-size: 14px;
+  transition: background 0.12s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+}
+
+/* regions settings page */
+.regions-page {
+  & .regions-header {
+    margin-bottom: 24px;
+
+    & h2 {
+      margin: 0 0 4px 0;
+    }
+  }
+}
+
+.regions-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+
+  @media (max-width: 800px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.regions-list,
+.regions-create {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 16px;
+
+  & h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  margin-bottom: 8px;
+  gap: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.region-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.region-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+
+  &.online {
+    background: var(--up, #10b981);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--up, #10b981) 18%, transparent);
+  }
+
+  &.offline {
+    background: var(--muted);
+  }
+}
+
+.region-info {
+  & .region-slug code {
+    font-size: 14px;
+    background: transparent;
+    padding: 0;
+  }
+
+  & .region-label {
+    font-size: 13px;
+    margin-top: 2px;
+  }
+}
+
+.region-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+
+  & button {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  & .danger {
+    color: var(--down, #ef4444);
+    border-color: color-mix(in srgb, var(--down, #ef4444) 30%, var(--border));
+  }
+}
+
+.one-time-key {
+  background: color-mix(in srgb, var(--up, #10b981) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--up, #10b981) 40%, var(--border));
+  border-radius: 0.75rem;
+  padding: 16px;
+  margin-bottom: 16px;
+
+  & h3 {
+    margin: 0 0 6px 0;
+  }
+}
+
+.one-time-key-value {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+
+  & code {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 13px;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+}
+
+/* "Run from" region multi-select inside the Add monitor dialog */
+.regions-picker {
+  margin-top: 12px;
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > label {
+    margin-top: 0;
+  }
+}
+
+.regions-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 8px;
+}
+
+.region-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 0.375rem;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+  }
+
+  & code {
+    font-size: 12px;
+    background: transparent;
+    padding: 0;
+  }
+
+  & .region-pick-label {
+    color: var(--muted);
+    font-size: 12px;
+  }
+}
+
+.region-pick-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+
+  &.online {
+    background: var(--up, #10b981);
+  }
+
+  &.offline {
+    background: var(--muted);
+  }
+}
