@@ -19,11 +19,10 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
-import { apiKeyRepo } from '../src/db/repositories/api-key.repo.ts';
+import { eq, sql as drizzleSql } from 'drizzle-orm';
 import { regionRepo } from '../src/db/repositories/region.repo.ts';
 import { db, sql } from '../src/config/db.ts';
-import { regions } from '../src/db/schema.ts';
+import { apiKeys, regions } from '../src/db/schema.ts';
 import { KEY_PREFIX_LEN } from '../src/middleware/auth.ts';
 
 interface Args {
@@ -66,23 +65,23 @@ async function main() {
   const keyPrefix = cleartext.slice(0, KEY_PREFIX_LEN);
   const keyHash = await Bun.password.hash(cleartext, { algorithm: 'argon2id' });
 
-  // Issue the new key first, then atomically swap the region's binding
-  // before revoking the old key. Order matters: while the swap is in
-  // flight, an agent presenting the old key still hits a valid row and
-  // the requireAgent middleware finds the region via api_key_id. As
-  // soon as we update regions.api_key_id, the old key's row no longer
-  // maps to any region → requireAgent returns 403. Then we revoke
-  // the old key for completeness.
-  const [newKey] = await apiKeyRepo.create({
-    name: `agent:${slug}`,
-    keyPrefix,
-    keyHash,
-    scopes: ['agent'],
-  });
-
+  // Atomic rotate inside one transaction: create the new key, rebind the
+  // region to it, revoke the old key. If anything fails the operator
+  // re-runs and we don't leak agent-scoped credential rows that aren't
+  // bound to any region.
   const oldKeyId = region.apiKeyId;
-  await db.update(regions).set({ apiKeyId: newKey.id }).where(eq(regions.id, region.id));
-  await apiKeyRepo.revoke(oldKeyId);
+  const newKey = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(apiKeys)
+      .values({ name: `agent:${slug}`, keyPrefix, keyHash, scopes: ['agent'] })
+      .returning();
+    await tx.update(regions).set({ apiKeyId: created.id }).where(eq(regions.id, region.id));
+    await tx
+      .update(apiKeys)
+      .set({ revokedAt: drizzleSql`NOW()` })
+      .where(eq(apiKeys.id, oldKeyId));
+    return created;
+  });
 
   if (quiet) {
     process.stdout.write(cleartext);
