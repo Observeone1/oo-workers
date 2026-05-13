@@ -17,6 +17,13 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
+    // When OO_AUTH_ENABLED=true on the stack, every request through the
+    // Playwright APIRequestContext + Page-context fetches sends this
+    // bearer header. OO_E2E_API_KEY is generated in run-integration.sh
+    // (CI/pre-push) or by the operator before manual e2e runs.
+    extraHTTPHeaders: process.env.OO_E2E_API_KEY
+      ? { Authorization: `Bearer ${process.env.OO_E2E_API_KEY}` }
+      : undefined,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

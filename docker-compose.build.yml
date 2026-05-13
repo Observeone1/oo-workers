@@ -69,8 +69,9 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      OO_AUTH_ENABLED: ${OO_AUTH_ENABLED:-false}
     ports:
-      - '${UI_PORT:-3001}:3001'
+      - '${OO_BIND_ADDR:-127.0.0.1}:${UI_PORT:-3001}:3001'
     command: ['bun', 'src/ui-server.ts']
 
 volumes:
