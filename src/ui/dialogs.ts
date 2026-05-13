@@ -1,7 +1,11 @@
 import type { MonType } from './types';
-import { $ } from './helpers';
-import { createMonitor, importJson } from './api';
+import { $, esc } from './helpers';
+import { createMonitor, getRegions, importJson, setMonitorRegions, type RegionLite } from './api';
 import { renderList, setActiveTab } from './list';
+
+// Cache regions for the lifetime of the dialog session. Refreshed each time
+// the operator opens "Add monitor" so freshly-created regions show up.
+let cachedRegions: RegionLite[] = [];
 
 export function initDialogs() {
   initAddDialog();
@@ -25,8 +29,9 @@ function initAddDialog() {
     $('#udp-row').hidden = t !== 'udp';
   };
   typeSelect.addEventListener('change', syncFields);
-  $('#add-btn').addEventListener('click', () => {
+  $('#add-btn').addEventListener('click', async () => {
     syncFields();
+    await refreshRegionsPicker();
     addDialog.showModal();
   });
   $('#cancel-btn').addEventListener('click', () => addDialog.close());
@@ -111,12 +116,71 @@ function initAddDialog() {
       alert(`Failed: ${await res.text()}`);
       return;
     }
+    const created = (await res.json().catch(() => null)) as { id?: number } | null;
+
+    // If the operator checked any regions, bind them now. Fire-and-forget on
+    // failure isn't ideal but the monitor exists; the operator can fix the
+    // binding via the Regions page if this PUT fails.
+    if (created?.id) {
+      const regionIds = collectSelectedRegionIds();
+      if (regionIds.length > 0) {
+        try {
+          await setMonitorRegions(type, created.id, regionIds);
+        } catch (err) {
+          alert(
+            `Monitor created but region binding failed: ${
+              err instanceof Error ? err.message : String(err)
+            }. Fix it from the Regions page.`,
+          );
+        }
+      }
+    }
+
     addDialog.close();
     addForm.reset();
     syncFields();
     setActiveTab(type);
     renderList();
   });
+}
+
+async function refreshRegionsPicker() {
+  const row = document.getElementById('regions-row') as HTMLElement;
+  const container = document.getElementById('regions-checkboxes') as HTMLElement;
+  try {
+    cachedRegions = await getRegions();
+  } catch {
+    cachedRegions = [];
+  }
+  if (cachedRegions.length === 0) {
+    row.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  row.hidden = false;
+  container.innerHTML = cachedRegions
+    .map(
+      (r) => `
+      <label class="region-pick">
+        <input type="checkbox" name="region_id" value="${r.id}" />
+        <span class="region-pick-status ${r.online ? 'online' : 'offline'}" title="${
+          r.online ? 'online' : 'offline'
+        }"></span>
+        <code>${esc(r.slug)}</code>
+        <span class="region-pick-label">${esc(r.label)}</span>
+      </label>
+    `,
+    )
+    .join('');
+}
+
+function collectSelectedRegionIds(): number[] {
+  const checked = document.querySelectorAll<HTMLInputElement>(
+    '#regions-checkboxes input[name="region_id"]:checked',
+  );
+  return Array.from(checked)
+    .map((el) => Number(el.value))
+    .filter((n) => Number.isFinite(n));
 }
 
 function initImportDialog() {

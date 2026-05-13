@@ -18,6 +18,11 @@ export const regionRepo = {
     return rows[0] ?? null;
   },
 
+  async findById(id: number): Promise<RegionRow | null> {
+    const rows = await db.select().from(regions).where(eq(regions.id, id)).limit(1);
+    return rows[0] ?? null;
+  },
+
   async findByApiKeyId(apiKeyId: number): Promise<RegionRow | null> {
     const rows = await db.select().from(regions).where(eq(regions.apiKeyId, apiKeyId)).limit(1);
     return rows[0] ?? null;

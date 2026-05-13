@@ -13,6 +13,7 @@
         <a href="#/" class="logo">oo-workers <span class="tag">self-host</span></a>
       </h1>
       <div class="actions-bar">
+        <a href="#/regions" id="regions-link" class="nav-link">Regions</a>
         <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"></button>
         <button id="sign-out" class="icon-btn" aria-label="Sign out" hidden></button>
         <button id="import-btn">Import JSON</button>
@@ -153,6 +154,18 @@
             <input type="checkbox" name="udp_expect_response" />
             Require a response (mark FAILED if none received within timeout)
           </label>
+        </div>
+
+        <div id="regions-row" class="regions-picker" hidden>
+          <label>
+            Run from
+            <a href="#/regions" class="hint" data-tooltip="Manage regions">?</a>
+          </label>
+          <p class="meta">
+            Check zero or more regions — empty means "run from master only". QA (browser) monitors
+            are not yet supported on agents.
+          </p>
+          <div id="regions-checkboxes" class="regions-checkboxes"></div>
         </div>
 
         <div class="dialog-actions">

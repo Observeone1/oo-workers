@@ -44,3 +44,51 @@ export const importJson = async (
   const result = (await res.json()) as ImportResult;
   return { res, result };
 };
+
+// ---------- regions ----------
+
+export interface RegionLite {
+  id: number;
+  slug: string;
+  label: string;
+  lastSeenAt: string | null;
+  createdAt: string;
+  online: boolean;
+}
+
+export const getRegions = async (): Promise<RegionLite[]> =>
+  (await fetch('/api/regions', COMMON)).json();
+
+export const createRegion = async (
+  slug: string,
+  label: string,
+): Promise<{
+  res: Response;
+  data: { region: RegionLite; cleartextKey: string } | { error: string; code?: string };
+}> => {
+  const res = await fetch('/api/regions', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, label }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const deleteRegion = (id: number) =>
+  fetch(`/api/regions/${id}`, { ...COMMON, method: 'DELETE' });
+
+export const rotateRegionKey = async (
+  id: number,
+): Promise<{ region: RegionLite; cleartextKey: string }> => {
+  const res = await fetch(`/api/regions/${id}/rotate-key`, { ...COMMON, method: 'POST' });
+  return res.json();
+};
+
+export const setMonitorRegions = (type: MonType, id: number, regionIds: number[]) =>
+  fetch(`/api/monitors/${type}/${id}/regions`, {
+    ...COMMON,
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ regionIds }),
+  });
