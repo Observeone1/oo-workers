@@ -1,6 +1,6 @@
 {
   "name": "oo-workers",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Self-hosted distributed monitoring workers — HTTP, API, and Playwright browser checks. The OSS engine behind ObserveOne.",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
     "migrate": "bun src/db/migrate.ts",
-    "build:ui": "mkdir -p public && cp src/ui/index.html src/ui/docs.html public/ && bun build src/ui/app.ts --outdir public --target browser",
+    "build:ui": "mkdir -p public && cp src/ui/index.html src/ui/docs.html src/ui/tokens.css src/ui/dashboard.css src/ui/docs.css public/ && bun build src/ui/app.ts --outdir public --target browser",
     "test": "bun test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

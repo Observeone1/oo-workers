@@ -24,6 +24,9 @@ const ASSETS = {
   indexHtml: loadText('index.html'),
   appJs: loadText('app.js'),
   docsHtml: loadText('docs.html'),
+  tokensCss: loadText('tokens.css'),
+  dashboardCss: loadText('dashboard.css'),
+  docsCss: loadText('docs.css'),
 };
 
 function buildApp(connection: Redis) {
@@ -317,6 +320,11 @@ function buildApp(connection: Redis) {
   app.get('/docs', (c) =>
     ASSETS.docsHtml ? c.html(ASSETS.docsHtml) : c.text('docs not built', 500),
   );
+  const serveCss = (body: string | null) => (c: import('hono').Context) =>
+    body ? c.body(body, 200, { 'content-type': 'text/css' }) : c.text('/* not built */', 404);
+  app.get('/tokens.css', serveCss(ASSETS.tokensCss));
+  app.get('/dashboard.css', serveCss(ASSETS.dashboardCss));
+  app.get('/docs.css', serveCss(ASSETS.docsCss));
 
   return {
     app,
