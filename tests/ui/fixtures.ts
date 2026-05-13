@@ -4,13 +4,16 @@ import { dirname, join } from 'node:path';
 
 const SHOT_DIR = join(import.meta.dirname, 'screenshots');
 
-export const test = base.extend<{ shot: (name: string) => Promise<void> }>({
-  shot: async ({ page }, use, testInfo) => {
-    await use(async (name: string) => {
+export const test = base.extend<{
+  shot: (name: string, page?: Page) => Promise<void>;
+}>({
+  shot: async ({ page: fixturePage }, use, testInfo) => {
+    await use(async (name: string, override?: Page) => {
+      const target = override ?? fixturePage;
       const safe = `${testInfo.title.replace(/[^\w-]+/g, '_')}__${name}.png`;
       const path = join(SHOT_DIR, safe);
       mkdirSync(dirname(path), { recursive: true });
-      await page.screenshot({ path, fullPage: true });
+      await target.screenshot({ path, fullPage: true });
     });
   },
 });

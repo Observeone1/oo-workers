@@ -13,27 +13,58 @@ git clone https://github.com/Observeone1/oo-workers.git
 cd oo-workers
 cp .env.example .env
 docker compose up -d
+
+# Generate your first API key (auth is on by default).
+docker compose exec worker bun scripts/create-api-key.ts --name first
+# → copy the oo_… key it prints, you'll paste it into the login screen.
 ```
 
 This pulls the pre-built image from `observeone/oo-workers:latest` on Docker Hub — no local build needed. To build from source instead (for contributors), use `docker compose -f docker-compose.build.yml up -d`.
 
-Open **http://localhost:3001** and click _+ Add monitor_. That's it.
+Open **http://localhost:3001**, paste the key, and click _+ Add monitor_. That's it.
 
-The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTTP + admin dashboard), `postgres`, `redis`. Schema migrations run automatically on first boot.
+The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTTP + admin dashboard), `postgres`, `redis`. Schema migrations run automatically on first boot. The UI port binds to `127.0.0.1` by default — see _Security & deployment_ below before exposing publicly.
 
 ## What you can monitor
 
-| Type            | Checks                                                                                                                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **HTTP uptime** | Is the URL up? Expected status code.                                                                                           |
-| **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents. |
-| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.           |
+| Type            | Checks                                                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP uptime** | Is the URL up? Expected status code.                                                                                                         |
+| **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents.               |
+| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.                         |
+| **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Works for any port — SSH, SMTP, Postgres, Redis, custom services.                 |
+| **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services. |
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues anything that's due. Workers process jobs concurrently (tunable via env).
 
 ## Screenshots
 
 _(coming with the public launch post)_
+
+## Security & deployment
+
+Two defaults out of the box:
+
+- Write endpoints (`POST/PATCH/DELETE` on `/api/monitors/*`, plus `/api/import` and `/run`) need an API key. The dashboard asks for one on first visit and keeps it in an HttpOnly cookie. Reads stay open.
+- The UI port binds to `127.0.0.1`. Only your own machine reaches it until you change that.
+
+### Get your first key
+
+```bash
+docker compose exec worker bun scripts/create-api-key.ts --name first
+# → oo_<43 chars>  (copy this — it won't be shown again)
+```
+
+Only the argon2id hash is stored. Make as many as you want with different names; revoke them individually later. Two scopes exist: `write` (default) and `read` (reserved, not used yet).
+
+### Expose to the network
+
+Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put a reverse proxy with TLS in front — Caddy, Traefik, nginx, or Tailscale Funnel all work. Plain HTTP on a public IP is not a good idea.
+
+### Known gaps
+
+- An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
+- TLS isn't built in. Terminate it at the proxy.
 
 ## Documentation
 
@@ -58,14 +89,17 @@ The dashboard ships a built-in reference at **http://localhost:3001/docs** cover
 
 All via environment variables (see `.env.example`):
 
-| Var                                                   | Default                    | Purpose                           |
-| ----------------------------------------------------- | -------------------------- | --------------------------------- |
-| `UI_PORT`                                             | `3001`                     | Host port for the admin dashboard |
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `oo` / `oo` / `oo_workers` | Postgres credentials              |
-| `URL_MONITOR_CONCURRENCY`                             | `20`                       | Parallel HTTP checks              |
-| `API_CHECK_CONCURRENCY`                               | `10`                       | Parallel API checks               |
-| `QA_PROJECT_CONCURRENCY`                              | `5`                        | Parallel browser checks           |
-| `LOG_LEVEL`                                           | `info`                     | Worker log level                  |
+| Var                                                   | Default                    | Purpose                                                              |
+| ----------------------------------------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `UI_PORT`                                             | `3001`                     | Host port for the admin dashboard                                    |
+| `OO_BIND_ADDR`                                        | `127.0.0.1`                | Interface the UI port binds to. `0.0.0.0` to expose to your network. |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `oo` / `oo` / `oo_workers` | Postgres credentials                                                 |
+| `URL_MONITOR_CONCURRENCY`                             | `20`                       | Parallel HTTP checks                                                 |
+| `API_CHECK_CONCURRENCY`                               | `10`                       | Parallel API checks                                                  |
+| `QA_PROJECT_CONCURRENCY`                              | `5`                        | Parallel browser checks                                              |
+| `TCP_MONITOR_CONCURRENCY`                             | `20`                       | Parallel TCP probes                                                  |
+| `UDP_MONITOR_CONCURRENCY`                             | `20`                       | Parallel UDP probes                                                  |
+| `LOG_LEVEL`                                           | `info`                     | Worker log level                                                     |
 
 ## Bulk import
 
@@ -107,16 +141,21 @@ src/
 ├── scheduler.ts             # interval-based job enqueueing
 ├── config/db.ts             # bun:sql client
 ├── db/migrate.ts            # .sql runner with schema_migrations tracking
-├── processors/              # url-monitor, api-check, qa-project
-├── services/                # assertion engine, Playwright runner
-└── ui/                      # index.html + app.ts + docs.html
+├── middleware/              # auth gate (Bearer + cookie)
+├── processors/              # url-monitor, api-check, qa-project, tcp-monitor, udp-monitor
+├── services/                # assertion engine, Playwright runner, tcp-probe, udp-probe
+└── ui/                      # index.html + app.ts + login.ts + docs.html
 migrations/
 ├── 0001_init.sql            # core schema
-└── 0002_scheduler.sql       # interval_seconds + enabled
+├── 0002_scheduler.sql       # interval_seconds + enabled
+├── 0003_tcp.sql             # tcp_monitors + tcp_executions
+├── 0004_udp.sql             # udp_monitors + udp_executions
+└── 0005_auth.sql            # api_keys
 scripts/
-├── smoke.ts                 # 3-monitor end-to-end smoke
+├── smoke.ts                 # multi-monitor end-to-end smoke
 ├── load.ts                  # concurrency + failure modes + assertion breadth
-└── scheduler-test.ts        # scheduler tick verification
+├── scheduler-test.ts        # scheduler tick verification
+└── create-api-key.ts        # bootstrap an API key
 ```
 
 ## Limitations
@@ -130,9 +169,9 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Roadmap
 
-- **v0.2** _(current)_ — workers + scheduler + UI + bulk import + docs.
-- **v0.3** — TCP / UDP / database-protocol checks (the gap Uptime Kuma doesn't cover well).
-- **v0.4+** — alert channels (Discord/Slack/webhook/email), status pages.
+- **v0.6** _(current)_ — TCP + UDP probes, API-key auth, localhost-bind default, sign-in flow.
+- **v0.7** — SSRF allowlist (gate which hosts probes can reach), TLS overlay (Caddy + LE auto-certs), alert channels (Discord/Slack/webhook/email), status pages.
+- **v0.8+** — database-protocol checks (Postgres/MySQL/Redis `SELECT 1`/PING), S3/MinIO opt-in for QA script storage.
 
 ## Contributing
 

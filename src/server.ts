@@ -15,13 +15,7 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
-import {
-  extractKey,
-  isAuthEnabled,
-  requireAuth,
-  SESSION_COOKIE,
-  validateKey,
-} from './middleware/auth.ts';
+import { extractKey, requireAuth, SESSION_COOKIE, validateKey } from './middleware/auth.ts';
 import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
@@ -49,7 +43,7 @@ function buildApp(connection: Redis) {
 
   // ---------- Auth ----------
   // Gate every write under /api/monitors and /api/import behind requireAuth.
-  // Reads (GET) stay open. When OO_AUTH_ENABLED != 'true' the middleware is a no-op.
+  // Reads (GET) stay open — they don't leak secrets, only metadata.
   const writeAuth = requireAuth('write');
   app.use('/api/monitors/*', async (c, next) => {
     if (c.req.method === 'GET') return next();
@@ -81,17 +75,11 @@ function buildApp(connection: Redis) {
 
   // GET /api/auth/me — the dashboard uses this to decide login screen vs app.
   app.get('/api/auth/me', async (c) => {
-    if (!isAuthEnabled()) return c.json({ authEnabled: false }, 200);
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
     const row = await validateKey(cleartext);
     if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
-    return c.json({
-      authEnabled: true,
-      name: row.name,
-      prefix: row.keyPrefix,
-      scopes: row.scopes,
-    });
+    return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
   });
 
   // ---------- API: list ----------
