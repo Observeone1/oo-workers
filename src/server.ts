@@ -27,7 +27,10 @@ import {
   writeAgentResult,
   type AgentResultBody,
 } from './services/agent-dispatch.ts';
+import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
+
+const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa'];
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
 
@@ -295,6 +298,26 @@ function buildApp(connection: Redis) {
     else if (type === 'udp') await udpMonitorRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
+  });
+
+  // ---------- API: monitor regions ----------
+  // Replace the full set of regions attached to a monitor. Empty array =
+  // run on master. Until M3 ships the UI selector, this is how operators
+  // bind regions programmatically.
+  app.put('/api/monitors/:type/:id/regions', async (c) => {
+    const type = c.req.param('type') as MonitorType;
+    const id = Number(c.req.param('id'));
+    if (!MONITOR_TYPES.includes(type)) return c.json({ error: 'bad type' }, 400);
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+    const body = await c.req.json().catch(() => ({}));
+    if (
+      !Array.isArray(body.regionIds) ||
+      !body.regionIds.every((n: unknown) => Number.isInteger(n))
+    ) {
+      return c.json({ error: 'regionIds must be an integer array' }, 400);
+    }
+    await monitorRegionRepo.set(type, id, body.regionIds as number[]);
+    return c.json({ ok: true, regionIds: body.regionIds });
   });
 
   // ---------- API: enable/disable ----------

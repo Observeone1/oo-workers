@@ -38,14 +38,12 @@ export async function popJobForRegion(
   }
 }
 
-export type AgentResultStatus =
-  | 'SUCCESS'
-  | 'FAILED'
-  | 'PENDING'
-  | 'ERROR'
-  | 'UP'
-  | 'DOWN'
-  | 'TIMEOUT';
+// Status conventions match master processors so multi-region runs render
+// identically to single-node runs in the dashboard. ERROR is reserved for
+// agent-side execution errors (e.g. QA-not-supported); SUCCESS/FAILED are
+// normal probe outcomes; PENDING is for the "still trying" path that
+// processors emit on non-final retry attempts (currently unused by agents).
+export type AgentResultStatus = 'SUCCESS' | 'FAILED' | 'PENDING' | 'ERROR';
 
 export interface AgentResultBody {
   type: MonitorType;
@@ -67,7 +65,7 @@ export interface AgentResultBody {
 
 export interface WriteResultOutcome {
   updated: boolean;
-  reason?: 'no_match' | 'wrong_region';
+  reason?: 'no_match';
 }
 
 /**
@@ -168,6 +166,10 @@ export async function writeAgentResult(
         )
         .returning({ id: qaTestExecutions.id });
       return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+    }
+    default: {
+      const _exhaustive: never = type;
+      throw new Error(`unhandled monitor type: ${_exhaustive}`);
     }
   }
 }

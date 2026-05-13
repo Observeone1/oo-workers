@@ -87,16 +87,32 @@ Run probes from more than one location by attaching a regional **agent** to your
    docker compose -f docker-compose.agent.yml up -d
    ```
 
-3. Bind a monitor to the region via the API (UI is M3). The scheduler will fan it out; the agent will probe it; results land in the master's database tagged with `region_id`.
+3. Bind monitors to the region using the regions API (UI lands in M3):
+
+   ```bash
+   # Replace the full set of regions for monitor #42.
+   # Empty array = "run on master only".
+   curl -X PUT https://master.example.com/api/monitors/url/42/regions \
+     -H "Authorization: Bearer oo_<your-write-key>" \
+     -H "content-type: application/json" \
+     -d '{"regionIds": [1]}'
+   ```
+
+   The scheduler will fan it out; the agent will probe it; results land in the master's database tagged with `region_id`.
 
 ### What works on agents
 
-URL, API, TCP, UDP. Browser (Playwright) monitors will report `ERROR` from agents in this release — run them from the master for now.
+URL, API, TCP, UDP. Browser (Playwright) monitors report `ERROR` from agents in this release — run those from the master for now.
+
+### Multiple agents per region
+
+Running more than one agent for the same region is safe — `BRPOP` guarantees only one agent receives each job, and result writes are idempotent on `executionId`. You get parallel probe throughput for free. Each agent box needs its own clone of the agent key bound to the region.
 
 ### Known gaps (Phase 4 M2)
 
-- **No stalled-job sweeper yet.** If an agent crashes mid-probe, the matching execution row sits at `PENDING` indefinitely. The master keeps scheduling new runs every interval, so the metric is fresh — only the stale row leaks.
-- **No UI for region selection.** Currently bind via direct DB or API (M3 ships a multi-select in the create dialog).
+- **No stalled-job sweeper yet.** If an agent crashes mid-probe, the matching execution row sits at `PENDING` indefinitely. The master keeps scheduling new runs every interval, so the metric stays fresh — only the stale row leaks. Sweeper lands in M2.5.
+- **No UI for region selection.** Use the `PUT /api/monitors/:type/:id/regions` endpoint above. M3 ships the dialog.
+- **No agent-key rotation CLI.** To rotate, revoke the old key, run `create-region.ts --slug <same-slug>` will fail (slug taken), so for now: delete the region row, create a new one with the same slug, paste the fresh key into the agent.
 
 ## Documentation
 

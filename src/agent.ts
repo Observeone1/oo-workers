@@ -23,7 +23,7 @@ import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
 import { logger } from './utils/logger.ts';
-import type { AgentResultBody, AgentResultStatus } from './services/agent-dispatch.ts';
+import type { AgentResultBody } from './services/agent-dispatch.ts';
 
 export interface AgentConfig {
   masterUrl: string;
@@ -250,10 +250,14 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
       return {
         type: 'qa',
         executionId: job.executionId,
-        status: 'ERROR' as AgentResultStatus,
+        status: 'ERROR',
         errorMessage:
-          'QA (browser) monitors are not yet supported on agents — run from the master or unbind the region.',
+          "QA (browser) monitors are not yet supported on agents. To run them from master only, delete the matching row from monitor_regions where monitor_type='qa'.",
       };
+    default: {
+      const _exhaustive: never = job.type;
+      throw new Error(`unhandled monitor type: ${_exhaustive}`);
+    }
   }
 }
 
