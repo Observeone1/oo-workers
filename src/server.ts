@@ -12,6 +12,7 @@ import { DEFAULTS } from './constants.ts';
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
+import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
@@ -34,15 +35,17 @@ function buildApp(connection: Redis) {
   const urlQ = new Queue('url-monitor', { connection });
   const apiQ = new Queue('api-check', { connection });
   const qaQ = new Queue('qa-project', { connection });
+  const tcpQ = new Queue('tcp-monitor', { connection });
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const [urls, apis, qas] = await Promise.all([
+    const [urls, apis, qas, tcps] = await Promise.all([
       urlMonitorRepo.findAllWithLatest(),
       apiCheckRepo.findAllWithLatest(),
       qaProjectRepo.findAllWithLatest(),
+      tcpMonitorRepo.findAllWithLatest(),
     ]);
-    return c.json({ url: urls, api: apis, qa: qas });
+    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps });
   });
 
   // ---------- API: detail ----------
@@ -77,6 +80,15 @@ function buildApp(connection: Redis) {
         qaProjectRepo.findExecutionsByProjectId(id),
       ]);
       return c.json({ monitor: { ...m, type: 'qa' }, tests, runs });
+    }
+    if (type === 'tcp') {
+      const [m] = await tcpMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const runs = await tcpMonitorRepo.findExecutionsByMonitorId(id);
+      return c.json({
+        monitor: { ...m, type: 'tcp' },
+        runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
+      });
     }
     return c.json({ error: 'bad type' }, 400);
   });
@@ -131,6 +143,23 @@ function buildApp(connection: Redis) {
     return c.json(m, 201);
   });
 
+  app.post('/api/monitors/tcp', async (c) => {
+    const body = await c.req.json();
+    const port = Number(body.port);
+    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+    }
+    const [m] = await tcpMonitorRepo.create({
+      name: body.name,
+      host: body.host,
+      port,
+      timeoutMs: body.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
+      intervalSeconds: body.intervalSeconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(m, 201);
+  });
+
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
@@ -165,6 +194,7 @@ function buildApp(connection: Redis) {
     if (type === 'url') await urlMonitorRepo.deleteById(id);
     else if (type === 'api') await apiCheckRepo.deleteById(id);
     else if (type === 'qa') await qaProjectRepo.deleteById(id);
+    else if (type === 'tcp') await tcpMonitorRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -178,6 +208,7 @@ function buildApp(connection: Redis) {
     if (type === 'url') await urlMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'api') await apiCheckRepo.updateEnabled(id, body.enabled);
     else if (type === 'qa') await qaProjectRepo.updateEnabled(id, body.enabled);
+    else if (type === 'tcp') await tcpMonitorRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -222,6 +253,16 @@ function buildApp(connection: Redis) {
       });
       return c.json({ ok: true });
     }
+    if (type === 'tcp') {
+      const [m] = await tcpMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const [exec] = await tcpMonitorRepo.createExecution(id, 'PENDING');
+      await tcpQ.add('check', {
+        executionId: exec.id,
+        monitor: { id: m.id, host: m.host, port: m.port, timeoutMs: m.timeoutMs },
+      });
+      return c.json({ executionId: exec.id });
+    }
     return c.json({ error: 'bad type' }, 400);
   });
 
@@ -229,7 +270,7 @@ function buildApp(connection: Redis) {
   app.post('/api/import', async (c) => {
     const body = await c.req.json();
     if (body.version !== 1) return c.json({ error: 'unsupported import version' }, 400);
-    const created = { url: 0, api: 0, qa: 0, skipped: [] as string[] };
+    const created = { url: 0, api: 0, qa: 0, tcp: 0, skipped: [] as string[] };
 
     for (const u of (body.urlMonitors ?? []) as any[]) {
       try {
@@ -276,6 +317,21 @@ function buildApp(connection: Redis) {
         created.api++;
       } catch (err) {
         created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    for (const t of (body.tcpMonitors ?? []) as any[]) {
+      try {
+        await tcpMonitorRepo.create({
+          name: t.name,
+          host: t.host,
+          port: Number(t.port),
+          timeoutMs: t.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
+          intervalSeconds: t.intervalSeconds ?? 60,
+          enabled: t.enabled ?? true,
+        });
+        created.tcp++;
+      } catch (err) {
+        created.skipped.push(`tcp ${t.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     for (const q of (body.qaProjects ?? []) as any[]) {
@@ -329,7 +385,7 @@ function buildApp(connection: Redis) {
   return {
     app,
     close: async () => {
-      await Promise.all([urlQ.close(), apiQ.close(), qaQ.close()]);
+      await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close()]);
     },
   };
 }

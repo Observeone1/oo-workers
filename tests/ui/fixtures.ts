@@ -34,7 +34,7 @@ export const uniqueSuffix = () => `${Date.now().toString(36)}-${Math.random().to
 // delete via the UI for coverage, but this is a safety net.
 export async function deleteMonitorViaApi(
   request: import('@playwright/test').APIRequestContext,
-  type: 'url' | 'api' | 'qa',
+  type: 'url' | 'api' | 'qa' | 'tcp',
   id: number,
 ) {
   await request.delete(`/api/monitors/${type}/${id}`).catch(() => {});

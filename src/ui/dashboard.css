@@ -229,9 +229,23 @@ tr {
   }
 
   &.pending,
-  &.running,
+  &.running {
+    background: var(--error);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
   &.unknown {
     background: var(--unknown);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
   }
 }
 
@@ -324,6 +338,10 @@ textarea {
 .form-row {
   display: flex;
   gap: 12px;
+
+  &[hidden] {
+    display: none;
+  }
 
   & > div {
     flex: 1;

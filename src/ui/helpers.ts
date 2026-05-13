@@ -24,6 +24,7 @@ export const fmtAge = (iso?: string | null) => {
 const STATUS_CLASS: Record<string, string> = {
   SUCCESS: 'SUCCESS',
   FAILED: 'FAILED',
+  PENDING: 'pending',
   passed: 'passed',
   failed: 'failed',
   error: 'error',
