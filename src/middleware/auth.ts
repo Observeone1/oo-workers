@@ -15,7 +15,10 @@
 
 import type { Context, MiddlewareHandler } from 'hono';
 import { apiKeyRepo, type ApiKeyRow } from '../db/repositories/api-key.repo.ts';
+import { regionRepo, type RegionRow } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
+
+export type Scope = 'read' | 'write' | 'agent';
 
 export const KEY_PREFIX_LEN = 11; // "oo_" + first 8 random chars
 export const SESSION_COOKIE = 'oo_session';
@@ -55,7 +58,7 @@ export async function validateKey(cleartext: string): Promise<ApiKeyRow | null> 
  * rejects (401) unauthenticated callers and (403) authenticated keys
  * lacking the scope.
  */
-export function requireAuth(scope: 'read' | 'write'): MiddlewareHandler {
+export function requireAuth(scope: Scope): MiddlewareHandler {
   return async (c, next) => {
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'authentication required' }, 401);
@@ -76,3 +79,72 @@ export function requireAuth(scope: 'read' | 'write'): MiddlewareHandler {
     return next();
   };
 }
+
+/**
+ * Agent middleware — validates a key with the `agent` scope and resolves
+ * the region it's bound to. Sets `c.var.region` for downstream handlers
+ * to use without re-querying.
+ *
+ * Free heartbeat: every authenticated agent request touches the region's
+ * last_seen_at, so the UI can show online/offline without a dedicated
+ * heartbeat endpoint.
+ */
+export function requireAgent(): MiddlewareHandler {
+  return async (c, next) => {
+    const cleartext = extractKey(c);
+    if (!cleartext) return c.json({ error: 'agent authentication required' }, 401);
+
+    const row = await validateKey(cleartext);
+    if (!row) return c.json({ error: 'invalid or revoked agent key' }, 401);
+
+    if (!row.scopes.includes('agent')) {
+      return c.json({ error: "key lacks 'agent' scope" }, 403);
+    }
+
+    const region = await regionRepo.findByApiKeyId(row.id);
+    if (!region) {
+      return c.json({ error: 'agent key is not bound to any region' }, 403);
+    }
+
+    apiKeyRepo.touchLastUsed(row.id).catch((err) => {
+      logger.error(`touchLastUsed(${row.id}) failed: ${err instanceof Error ? err.message : err}`);
+    });
+    regionRepo.touchLastSeen(region.id).catch((err) => {
+      logger.error(
+        `touchLastSeen(region#${region.id}) failed: ${err instanceof Error ? err.message : err}`,
+      );
+    });
+
+    c.set('apiKey', { id: row.id, name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+    c.set('region', {
+      id: region.id,
+      slug: region.slug,
+      label: region.label,
+    } satisfies AgentRegion);
+    return next();
+  };
+}
+
+export interface AgentRegion {
+  id: number;
+  slug: string;
+  label: string;
+}
+
+export interface ApiKeyVar {
+  id: number;
+  name: string;
+  prefix: string;
+  scopes: string[];
+}
+
+// Hono context variable types — opt in via module augmentation so
+// c.get('apiKey') / c.get('region') return typed values without casts.
+declare module 'hono' {
+  interface ContextVariableMap {
+    apiKey: ApiKeyVar;
+    region: AgentRegion;
+  }
+}
+
+export type { RegionRow };

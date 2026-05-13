@@ -86,8 +86,8 @@ export const urlMonitorRepo = {
       .returning();
   },
 
-  createExecution(urlMonitorId: number, status: string) {
-    return db.insert(urlMonitorExecutions).values({ urlMonitorId, status }).returning();
+  createExecution(urlMonitorId: number, status: string, regionId: number | null = null) {
+    return db.insert(urlMonitorExecutions).values({ urlMonitorId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof urlMonitorExecutions.$inferInsert>) {

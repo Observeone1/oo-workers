@@ -63,8 +63,8 @@ export const tcpMonitorRepo = {
     return db.insert(tcpMonitors).values(data).returning();
   },
 
-  createExecution(tcpMonitorId: number, status: string) {
-    return db.insert(tcpExecutions).values({ tcpMonitorId, status }).returning();
+  createExecution(tcpMonitorId: number, status: string, regionId: number | null = null) {
+    return db.insert(tcpExecutions).values({ tcpMonitorId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof tcpExecutions.$inferInsert>) {

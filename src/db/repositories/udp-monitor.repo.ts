@@ -65,8 +65,8 @@ export const udpMonitorRepo = {
     return db.insert(udpMonitors).values(data).returning();
   },
 
-  createExecution(udpMonitorId: number, status: string) {
-    return db.insert(udpExecutions).values({ udpMonitorId, status }).returning();
+  createExecution(udpMonitorId: number, status: string, regionId: number | null = null) {
+    return db.insert(udpExecutions).values({ udpMonitorId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof udpExecutions.$inferInsert>) {

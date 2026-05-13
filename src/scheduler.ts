@@ -3,11 +3,30 @@
  *
  * Runs in the same process as the BullMQ workers. Ticks every TICK_MS, checks
  * each enabled monitor's last execution timestamp against its intervalSeconds,
- * and pushes a new execution row + BullMQ job for the due ones.
+ * and pushes a new execution row + job for the due ones.
  *
- * Deduplication: BullMQ jobId includes a minute-bucket timestamp so a slow
- * tick (or two schedulers in HA) can't double-enqueue the same monitor for
- * the same window.
+ * Dispatch is dual-path:
+ *
+ *   - **No regions attached** → BullMQ queue. Master's in-process workers
+ *     (started in src/index.ts) consume from `url-monitor`, `api-check`, etc.
+ *     This is the back-compat single-node path. BullMQ's jobId bucket
+ *     dedup protects against the same monitor being enqueued twice in one
+ *     interval.
+ *
+ *   - **Regions attached** → plain Redis list `oo:jobs:<slug>:<base>`.
+ *     The agent long-poll endpoint pops from this list via BRPOPLPUSH.
+ *     No BullMQ on the regional path — its retry/lock primitives don't
+ *     compose with HTTP-mediated cross-process dispatch, and the agent
+ *     retries naturally by reconnecting.
+ *
+ * The two systems are isolated by Redis key namespace; no code path reasons
+ * about both at once.
+ *
+ * Known gap (defer to M2): plain Redis lists have no jobId dedup. With a
+ * single scheduler this is fine — findDue() filters by ageSeconds so the
+ * same monitor won't re-enqueue within a bucket. If you ever run HA
+ * schedulers, wrap the LPUSH in `SETNX oo:scheduled:<bucket>:<m>:<r> 1
+ * EX <interval>` for parity with BullMQ's jobId guarantee.
  */
 
 import { Queue } from 'bullmq';
@@ -18,27 +37,93 @@ import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
+import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? DEFAULTS.SCHEDULER_TICK_MS);
 
+interface FanOutTarget {
+  regionId: number | null;
+  regionSlug: string | null;
+}
+
+async function fanOutTargets(type: MonitorType, monitorId: number): Promise<FanOutTarget[]> {
+  const rows = await monitorRegionRepo.forMonitor(type, monitorId);
+  if (rows.length === 0) return [{ regionId: null, regionSlug: null }];
+  return rows.map((r) => ({ regionId: r.id, regionSlug: r.slug }));
+}
+
+/**
+ * One Redis list per region holds all job types — agents only need one
+ * long-poll connection regardless of monitor count. The `type` field in
+ * the payload tells the agent (and the master's result handler) which
+ * processor / executions table to use.
+ */
+function regionalListKey(slug: string): string {
+  return `oo:jobs:${slug}`;
+}
+
+function jobIdSuffix(target: FanOutTarget): string {
+  return target.regionSlug === null ? '' : `:r${target.regionId}`;
+}
+
+type QueueFactory = (name: string) => Queue;
+
+interface JobPayload {
+  jobId: string;
+  type: MonitorType;
+  executionId: number;
+  regionId: number | null;
+  [k: string]: unknown;
+}
+
+async function dispatch(
+  baseQueue: string,
+  target: FanOutTarget,
+  payload: JobPayload,
+  removeOnComplete: number,
+  getQueue: QueueFactory,
+  connection: Redis,
+) {
+  if (target.regionSlug === null) {
+    // Master in-process worker path — BullMQ semantics (retry, lock, dedup).
+    const { jobId, type: _type, ...data } = payload;
+    await getQueue(baseQueue).add('check', data, {
+      jobId,
+      removeOnComplete,
+      removeOnFail: removeOnComplete,
+    });
+  } else {
+    // Regional agent path — single combined Redis list per region. Agent
+    // long-polls via BRPOPLPUSH and uses payload.type to route by monitor
+    // type. baseQueue isn't part of the list key.
+    await connection.lpush(regionalListKey(target.regionSlug), JSON.stringify(payload));
+  }
+}
+
 export function startScheduler(connection: Redis) {
-  const urlQ = new Queue('url-monitor', { connection });
-  const apiQ = new Queue('api-check', { connection });
-  const qaQ = new Queue('qa-project', { connection });
-  const tcpQ = new Queue('tcp-monitor', { connection });
-  const udpQ = new Queue('udp-monitor', { connection });
+  // BullMQ queues only get created for the null-region path. Regional jobs
+  // skip BullMQ entirely — see dispatch().
+  const queues = new Map<string, Queue>();
+  const getQueue: QueueFactory = (name) => {
+    let q = queues.get(name);
+    if (!q) {
+      q = new Queue(name, { connection });
+      queues.set(name, q);
+    }
+    return q;
+  };
 
   logger.info(`🕒 scheduler starting (tick every ${TICK_MS / 1000}s)`);
 
   const tick = async () => {
     try {
       await Promise.all([
-        tickUrlMonitors(urlQ),
-        tickApiChecks(apiQ),
-        tickQaProjects(qaQ),
-        tickTcpMonitors(tcpQ),
-        tickUdpMonitors(udpQ),
+        tickUrlMonitors(getQueue, connection),
+        tickApiChecks(getQueue, connection),
+        tickQaProjects(getQueue, connection),
+        tickTcpMonitors(getQueue, connection),
+        tickUdpMonitors(getQueue, connection),
       ]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -50,118 +135,170 @@ export function startScheduler(connection: Redis) {
 
   return async () => {
     clearInterval(handle);
-    await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close(), udpQ.close()]);
+    await Promise.all(Array.from(queues.values()).map((q) => q.close()));
   };
 }
 
 // ---------------- url-monitor ----------------
-async function tickUrlMonitors(queue: Queue) {
+async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await urlMonitorRepo.findDue();
 
   for (const m of due) {
     if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
 
     const assertions = await urlMonitorRepo.findAssertionsByMonitorId(m.id);
-    const [exec] = await urlMonitorRepo.createExecution(m.id, 'PENDING');
-
+    const targets = await fanOutTargets('url', m.id);
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
-    await queue.add(
-      'check',
-      {
-        executionId: exec.id,
-        monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
-        assertions,
-      },
-      { jobId: `url:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
-    );
-    logger.info(`scheduled url-monitor #${m.id} → exec #${exec.id}`);
+
+    for (const target of targets) {
+      const [exec] = await urlMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
+      await dispatch(
+        'url-monitor',
+        target,
+        {
+          jobId: `url:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'url',
+          executionId: exec.id,
+          regionId: target.regionId,
+          monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
+          assertions,
+        },
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled url-monitor #${m.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
   }
 }
 
 // ---------------- api-check ----------------
-async function tickApiChecks(queue: Queue) {
+async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
   const due = await apiCheckRepo.findDue();
 
   for (const c of due) {
     if (c.ageSeconds !== null && c.ageSeconds < c.intervalSeconds) continue;
 
     const assertions = await apiCheckRepo.findAssertionsByCheckId(c.id);
-    const [exec] = await apiCheckRepo.createExecution(c.id, 'PENDING');
-
+    const targets = await fanOutTargets('api', c.id);
     const bucket = Math.floor(Date.now() / (c.intervalSeconds * 1000));
-    await queue.add(
-      'check',
-      {
-        executionId: exec.id,
-        apiCheck: {
-          id: c.id,
-          url: c.url,
-          method: c.method,
-          headers: c.headers,
-          body: c.body,
-          timeoutMs: c.timeoutMs,
+
+    for (const target of targets) {
+      const [exec] = await apiCheckRepo.createExecution(c.id, 'PENDING', target.regionId);
+      await dispatch(
+        'api-check',
+        target,
+        {
+          jobId: `api:${c.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'api',
+          executionId: exec.id,
+          regionId: target.regionId,
+          apiCheck: {
+            id: c.id,
+            url: c.url,
+            method: c.method,
+            headers: c.headers,
+            body: c.body,
+            timeoutMs: c.timeoutMs,
+          },
+          assertions,
         },
-        assertions,
-      },
-      { jobId: `api:${c.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
-    );
-    logger.info(`scheduled api-check #${c.id} → exec #${exec.id}`);
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled api-check #${c.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
   }
 }
 
 // ---------------- tcp-monitor ----------------
-async function tickTcpMonitors(queue: Queue) {
+async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await tcpMonitorRepo.findDue();
 
   for (const m of due) {
     if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
 
-    const [exec] = await tcpMonitorRepo.createExecution(m.id, 'PENDING');
-
+    const targets = await fanOutTargets('tcp', m.id);
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
-    await queue.add(
-      'check',
-      {
-        executionId: exec.id,
-        monitor: { id: m.id, host: m.host, port: m.port, timeoutMs: m.timeoutMs },
-      },
-      { jobId: `tcp:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
-    );
-    logger.info(`scheduled tcp-monitor #${m.id} → exec #${exec.id}`);
+
+    for (const target of targets) {
+      const [exec] = await tcpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
+      await dispatch(
+        'tcp-monitor',
+        target,
+        {
+          jobId: `tcp:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'tcp',
+          executionId: exec.id,
+          regionId: target.regionId,
+          monitor: { id: m.id, host: m.host, port: m.port, timeoutMs: m.timeoutMs },
+        },
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled tcp-monitor #${m.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
   }
 }
 
 // ---------------- udp-monitor ----------------
-async function tickUdpMonitors(queue: Queue) {
+async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await udpMonitorRepo.findDue();
 
   for (const m of due) {
     if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
 
-    const [exec] = await udpMonitorRepo.createExecution(m.id, 'PENDING');
-
+    const targets = await fanOutTargets('udp', m.id);
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
-    await queue.add(
-      'check',
-      {
-        executionId: exec.id,
-        monitor: {
-          id: m.id,
-          host: m.host,
-          port: m.port,
-          payloadHex: m.payloadHex,
-          expectResponse: m.expectResponse,
-          timeoutMs: m.timeoutMs,
+
+    for (const target of targets) {
+      const [exec] = await udpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
+      await dispatch(
+        'udp-monitor',
+        target,
+        {
+          jobId: `udp:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'udp',
+          executionId: exec.id,
+          regionId: target.regionId,
+          monitor: {
+            id: m.id,
+            host: m.host,
+            port: m.port,
+            payloadHex: m.payloadHex,
+            expectResponse: m.expectResponse,
+            timeoutMs: m.timeoutMs,
+          },
         },
-      },
-      { jobId: `udp:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
-    );
-    logger.info(`scheduled udp-monitor #${m.id} → exec #${exec.id}`);
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled udp-monitor #${m.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
   }
 }
 
 // ---------------- qa-project ----------------
-async function tickQaProjects(queue: Queue) {
+async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
   const due = await qaProjectRepo.findDue();
 
   for (const p of due) {
@@ -170,20 +307,37 @@ async function tickQaProjects(queue: Queue) {
     const tests = await qaProjectRepo.findTestsByProjectId(p.id, { includeScript: true });
     if (tests.length === 0) continue;
 
+    const targets = await fanOutTargets('qa', p.id);
     const bucket = Math.floor(Date.now() / (p.intervalSeconds * 1000));
-    await queue.add(
-      'run',
-      {
-        type: 'qa-project-run',
-        projectId: p.id,
-        targetUrl: p.targetUrl,
-        credentials: p.credentials ?? undefined,
-        config: p.config ?? {},
-        tests,
-        triggeredAt: new Date().toISOString(),
-      },
-      { jobId: `qa:${p.id}:${bucket}`, removeOnComplete: 50, removeOnFail: 50 },
-    );
-    logger.info(`scheduled qa-project #${p.id} with ${tests.length} test(s)`);
+
+    for (const target of targets) {
+      // QA project doesn't pre-create an exec row in the scheduler — the
+      // processor does, per test. So no createExecution() here.
+      await dispatch(
+        'qa-project',
+        target,
+        {
+          jobId: `qa:${p.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'qa',
+          executionId: 0, // synthetic; QA processor creates exec rows per test
+          regionId: target.regionId,
+          kind: 'qa-project-run',
+          projectId: p.id,
+          targetUrl: p.targetUrl,
+          credentials: p.credentials ?? undefined,
+          config: p.config ?? {},
+          tests,
+          triggeredAt: new Date().toISOString(),
+        },
+        50,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled qa-project #${p.id} with ${tests.length} test(s)${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
   }
 }

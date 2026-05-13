@@ -121,8 +121,13 @@ export const qaProjectRepo = {
       .returning();
   },
 
-  createExecution(testId: number, projectId: number, status: string) {
-    return db.insert(qaTestExecutions).values({ testId, projectId, status }).returning();
+  createExecution(
+    testId: number,
+    projectId: number,
+    status: string,
+    regionId: number | null = null,
+  ) {
+    return db.insert(qaTestExecutions).values({ testId, projectId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof qaTestExecutions.$inferInsert>) {

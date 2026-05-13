@@ -92,8 +92,8 @@ export const apiCheckRepo = {
       .returning();
   },
 
-  createExecution(apiCheckId: number, status: string) {
-    return db.insert(apiExecutions).values({ apiCheckId, status }).returning();
+  createExecution(apiCheckId: number, status: string, regionId: number | null = null) {
+    return db.insert(apiExecutions).values({ apiCheckId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof apiExecutions.$inferInsert>) {
