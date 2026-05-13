@@ -15,7 +15,7 @@
 
 import type { Context, MiddlewareHandler } from 'hono';
 import { apiKeyRepo, type ApiKeyRow } from '../db/repositories/api-key.repo.ts';
-import { regionRepo, type RegionRow } from '../db/repositories/region.repo.ts';
+import { regionRepo } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
 
 export type Scope = 'read' | 'write' | 'agent';
@@ -116,35 +116,16 @@ export function requireAgent(): MiddlewareHandler {
     });
 
     c.set('apiKey', { id: row.id, name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
-    c.set('region', {
-      id: region.id,
-      slug: region.slug,
-      label: region.label,
-    } satisfies AgentRegion);
+    c.set('region', { id: region.id, slug: region.slug, label: region.label });
     return next();
   };
-}
-
-export interface AgentRegion {
-  id: number;
-  slug: string;
-  label: string;
-}
-
-export interface ApiKeyVar {
-  id: number;
-  name: string;
-  prefix: string;
-  scopes: string[];
 }
 
 // Hono context variable types — opt in via module augmentation so
 // c.get('apiKey') / c.get('region') return typed values without casts.
 declare module 'hono' {
   interface ContextVariableMap {
-    apiKey: ApiKeyVar;
-    region: AgentRegion;
+    apiKey: { id: number; name: string; prefix: string; scopes: string[] };
+    region: { id: number; slug: string; label: string };
   }
 }
-
-export type { RegionRow };

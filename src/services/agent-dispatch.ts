@@ -32,7 +32,7 @@ export async function popJobForRegion(
   const [, payloadStr] = result;
   try {
     return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch (err) {
+  } catch {
     logger.error(`agent dispatch: invalid JSON in queue for ${slug}: ${payloadStr}`);
     return null;
   }
@@ -43,7 +43,7 @@ export async function popJobForRegion(
 // agent-side execution errors (e.g. QA-not-supported); SUCCESS/FAILED are
 // normal probe outcomes; PENDING is for the "still trying" path that
 // processors emit on non-final retry attempts (currently unused by agents).
-export type AgentResultStatus = 'SUCCESS' | 'FAILED' | 'PENDING' | 'ERROR';
+type AgentResultStatus = 'SUCCESS' | 'FAILED' | 'PENDING' | 'ERROR';
 
 export interface AgentResultBody {
   type: MonitorType;
