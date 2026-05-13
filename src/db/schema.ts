@@ -247,3 +247,19 @@ export const qaTestExecutions = pgTable(
     index('idx_qa_test_executions_project_id').on(t.projectId),
   ],
 );
+
+// ============================================================
+// Auth — API keys
+// ============================================================
+
+export const apiKeys = pgTable('api_keys', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  keyPrefix: varchar('key_prefix', { length: 20 }).notNull(),
+  keyHash: text('key_hash').notNull(),
+  scopes: text('scopes').array().notNull().default(['write']),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

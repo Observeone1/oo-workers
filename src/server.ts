@@ -15,6 +15,13 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
+import {
+  extractKey,
+  isAuthEnabled,
+  requireAuth,
+  SESSION_COOKIE,
+  validateKey,
+} from './middleware/auth.ts';
 import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
@@ -39,6 +46,53 @@ function buildApp(connection: Redis) {
   const qaQ = new Queue('qa-project', { connection });
   const tcpQ = new Queue('tcp-monitor', { connection });
   const udpQ = new Queue('udp-monitor', { connection });
+
+  // ---------- Auth ----------
+  // Gate every write under /api/monitors and /api/import behind requireAuth.
+  // Reads (GET) stay open. When OO_AUTH_ENABLED != 'true' the middleware is a no-op.
+  const writeAuth = requireAuth('write');
+  app.use('/api/monitors/*', async (c, next) => {
+    if (c.req.method === 'GET') return next();
+    return writeAuth(c, next);
+  });
+  app.use('/api/import', writeAuth);
+
+  // POST /api/auth/login — body { key }. On match, sets HttpOnly cookie.
+  app.post('/api/auth/login', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    if (!key) return c.json({ error: 'key required' }, 400);
+    const row = await validateKey(key);
+    if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
+    // 30-day cookie. Secure flag flips on when TLS overlay is in front (S4).
+    const maxAge = 60 * 60 * 24 * 30;
+    c.header(
+      'set-cookie',
+      `${SESSION_COOKIE}=${key}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+    );
+    return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+  });
+
+  // POST /api/auth/logout — clears the cookie.
+  app.post('/api/auth/logout', (c) => {
+    c.header('set-cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+    return c.body(null, 204);
+  });
+
+  // GET /api/auth/me — the dashboard uses this to decide login screen vs app.
+  app.get('/api/auth/me', async (c) => {
+    if (!isAuthEnabled()) return c.json({ authEnabled: false }, 200);
+    const cleartext = extractKey(c);
+    if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
+    const row = await validateKey(cleartext);
+    if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
+    return c.json({
+      authEnabled: true,
+      name: row.name,
+      prefix: row.keyPrefix,
+      scopes: row.scopes,
+    });
+  });
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
