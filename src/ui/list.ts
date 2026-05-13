@@ -4,16 +4,44 @@ import { getMonitors, runMonitor, toggleMonitor, deleteMonitor } from './api';
 
 const main = $('#main');
 
+const PAGE_SIZE = 20;
+
+// Module-local view state. Search and page reset on tab change.
 let activeTab: MonType = 'url';
+let search = '';
+let page = 1;
 
 export function setActiveTab(t: MonType) {
   activeTab = t;
+  search = '';
+  page = 1;
+}
+
+function filterMonitors(monitors: Monitor[], q: string): Monitor[] {
+  const trimmed = q.trim().toLowerCase();
+  if (!trimmed) return monitors;
+  return monitors.filter((m) => {
+    const url = m.url ?? m.targetUrl ?? '';
+    return m.name.toLowerCase().includes(trimmed) || url.toLowerCase().includes(trimmed);
+  });
 }
 
 export async function renderList() {
+  // Capture focus state BEFORE replacing innerHTML so we can restore it.
+  const searchWasFocused = document.activeElement?.id === 'search-input';
+
   const data = await getMonitors();
   const counts = { url: data.url.length, api: data.api.length, qa: data.qa.length };
-  const monitors = data[activeTab];
+
+  const allForTab = data[activeTab];
+  const filtered = filterMonitors(allForTab, search);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  if (page > totalPages) page = totalPages;
+  const start = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
+  const showingFrom = filtered.length === 0 ? 0 : start + 1;
+  const showingTo = Math.min(start + PAGE_SIZE, filtered.length);
 
   main.innerHTML = `
     <div class="tabs">
@@ -24,22 +52,61 @@ export async function renderList() {
         )
         .join('')}
     </div>
+    <div class="list-toolbar">
+      <input id="search-input" class="search" type="search" placeholder="Search name or URL…" value="${esc(search)}" autocomplete="off" />
+      <span class="meta showing-count">
+        ${
+          filtered.length === 0
+            ? search
+              ? `No matches for "${esc(search)}"`
+              : 'No monitors'
+            : `Showing ${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
+        }
+      </span>
+    </div>
     ${
-      monitors.length === 0
-        ? `<div class="empty">No ${activeTab.toUpperCase()} monitors yet. Click <b>+ Add monitor</b> to create one.</div>`
+      pageRows.length === 0
+        ? `<div class="empty">${
+            search
+              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search>Clear search</a>.`
+              : `No ${activeTab.toUpperCase()} monitors yet. Click <b>+ Add monitor</b> to create one.`
+          }</div>`
         : `<table>
           <thead><tr><th></th><th>Name</th><th>Interval</th><th>Last run</th><th>Latency</th><th></th></tr></thead>
-          <tbody>${monitors.map(rowFor).join('')}</tbody>
-        </table>`
+          <tbody>${pageRows.map(rowFor).join('')}</tbody>
+        </table>
+        ${
+          totalPages > 1
+            ? `<div class="pagination">
+                <button data-page-prev ${page === 1 ? 'disabled' : ''}>← Prev</button>
+                <span class="meta">Page ${page} of ${totalPages}</span>
+                <button data-page-next ${page === totalPages ? 'disabled' : ''}>Next →</button>
+              </div>`
+            : ''
+        }`
     }
   `;
 
+  wireTabs();
+  wireRowActions();
+  wireSearch(searchWasFocused);
+  wirePagination(totalPages);
+}
+
+function wireTabs() {
   $$('.tab').forEach((t) =>
     t.addEventListener('click', () => {
-      activeTab = t.dataset.tab as MonType;
+      const tab = t.dataset.tab as MonType;
+      if (tab === activeTab) return;
+      activeTab = tab;
+      search = '';
+      page = 1;
       renderList();
     }),
   );
+}
+
+function wireRowActions() {
   $$('[data-run]').forEach((b) =>
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -71,6 +138,54 @@ export async function renderList() {
       location.hash = `#/${type}/${id}`;
     }),
   );
+}
+
+function wireSearch(wasFocused: boolean) {
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  if (!input) return;
+
+  // Only restore focus if the search input was the active element BEFORE the
+  // re-render. Otherwise we'd steal focus on every auto-refresh and row action.
+  if (wasFocused) {
+    const cursor = input.value.length;
+    input.focus();
+    try {
+      input.setSelectionRange(cursor, cursor);
+    } catch {
+      // setSelectionRange throws on type="search" in some browsers; ignore.
+    }
+  }
+
+  input.addEventListener('input', () => {
+    search = input.value;
+    page = 1;
+    renderList();
+  });
+
+  const clear = document.querySelector('[data-clear-search]');
+  clear?.addEventListener('click', (e) => {
+    e.preventDefault();
+    search = '';
+    page = 1;
+    renderList();
+  });
+}
+
+function wirePagination(totalPages: number) {
+  const prev = document.querySelector('[data-page-prev]');
+  const next = document.querySelector('[data-page-next]');
+  prev?.addEventListener('click', () => {
+    if (page > 1) {
+      page--;
+      renderList();
+    }
+  });
+  next?.addEventListener('click', () => {
+    if (page < totalPages) {
+      page++;
+      renderList();
+    }
+  });
 }
 
 function rowFor(m: Monitor): string {

@@ -130,6 +130,32 @@
         border: 1px dashed var(--border);
         border-radius: 0.75rem;
       }
+      .list-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 12px;
+      }
+      .list-toolbar .search {
+        flex: 0 1 320px;
+        padding: 6px 10px;
+        font-size: 13px;
+      }
+      .list-toolbar .showing-count {
+        margin-left: auto;
+        white-space: nowrap;
+      }
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 16px;
+      }
+      .pagination button[disabled] {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
       table {
         width: 100%;
         border-collapse: collapse;

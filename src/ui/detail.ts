@@ -1,5 +1,6 @@
 import type { MonType, RunLite } from './types';
 import { $, esc, fmtAge, statusClass } from './helpers';
+import { iconActive, iconPaused } from './icons';
 import { getDetail, runMonitor } from './api';
 
 const main = $('#main');
@@ -41,7 +42,7 @@ export async function renderDetail(type: MonType, id: number) {
       <div class="meta-card"><div class="label">Runs (last 100)</div><div class="value">${runs.length}</div></div>
       <div class="meta-card"><div class="label">Success rate</div><div class="value">${successRate}</div></div>
       <div class="meta-card"><div class="label">Last latency</div><div class="value">${lastLatency != null ? `${lastLatency}ms` : '—'}</div></div>
-      <div class="meta-card"><div class="label">Status</div><div class="value">${m.enabled ? '🟢 active' : '⚪ paused'}</div></div>
+      <div class="meta-card"><div class="label">Status</div><div class="value">${m.enabled ? `${iconActive} active` : `${iconPaused} paused`}</div></div>
     </div>
     <div class="meta-card" style="margin-bottom:16px">
       <div class="label">Latency (last 30 runs)</div>
