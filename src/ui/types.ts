@@ -1,4 +1,4 @@
-export type MonType = 'url' | 'api' | 'qa' | 'tcp';
+export type MonType = 'url' | 'api' | 'qa' | 'tcp' | 'udp';
 
 export interface RunLite {
   id: number;
@@ -29,6 +29,7 @@ export interface MonitorsByType {
   api: Monitor[];
   qa: Monitor[];
   tcp: Monitor[];
+  udp: Monitor[];
 }
 
 export interface MonitorDetail {
@@ -42,5 +43,6 @@ export interface ImportResult {
   api: number;
   qa: number;
   tcp: number;
+  udp: number;
   skipped?: string[];
 }

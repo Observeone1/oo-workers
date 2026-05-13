@@ -152,6 +152,45 @@ export const tcpExecutions = pgTable(
 );
 
 // ============================================================
+// UDP monitoring
+// ============================================================
+
+export const udpMonitors = pgTable('udp_monitors', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  host: varchar('host', { length: 255 }).notNull(),
+  port: integer('port').notNull(),
+  payloadHex: text('payload_hex'),
+  expectResponse: boolean('expect_response').notNull().default(false),
+  timeoutMs: integer('timeout_ms').notNull().default(5000),
+  intervalSeconds: integer('interval_seconds').notNull().default(60),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const udpExecutions = pgTable(
+  'udp_executions',
+  {
+    id: serial('id').primaryKey(),
+    udpMonitorId: integer('udp_monitor_id')
+      .notNull()
+      .references(() => udpMonitors.id, { onDelete: 'cascade' }),
+    status: varchar('status', { length: 20 }).notNull(),
+    latencyMs: integer('latency_ms'),
+    responseBytes: integer('response_bytes'),
+    errorMessage: text('error_message'),
+    startTime: timestamp('start_time', { withTimezone: true }).notNull().defaultNow(),
+    endTime: timestamp('end_time', { withTimezone: true }),
+  },
+  (t) => [
+    index('idx_udp_executions_monitor_id').on(t.udpMonitorId),
+    index('idx_udp_executions_start_time').on(t.startTime),
+  ],
+);
+
+// ============================================================
 // QA (Playwright) monitoring
 // ============================================================
 

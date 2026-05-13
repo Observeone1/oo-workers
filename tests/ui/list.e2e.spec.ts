@@ -15,6 +15,7 @@ test.describe('list view', () => {
     await expect(page.locator('.tab[data-tab="api"] .count')).toHaveText(String(api.api.length));
     await expect(page.locator('.tab[data-tab="qa"] .count')).toHaveText(String(api.qa.length));
     await expect(page.locator('.tab[data-tab="tcp"] .count')).toHaveText(String(api.tcp.length));
+    await expect(page.locator('.tab[data-tab="udp"] .count')).toHaveText(String(api.udp.length));
 
     await shot('list_url_tab');
   });

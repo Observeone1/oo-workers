@@ -17,6 +17,7 @@ import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
+import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? DEFAULTS.SCHEDULER_TICK_MS);
@@ -26,6 +27,7 @@ export function startScheduler(connection: Redis) {
   const apiQ = new Queue('api-check', { connection });
   const qaQ = new Queue('qa-project', { connection });
   const tcpQ = new Queue('tcp-monitor', { connection });
+  const udpQ = new Queue('udp-monitor', { connection });
 
   logger.info(`🕒 scheduler starting (tick every ${TICK_MS / 1000}s)`);
 
@@ -36,6 +38,7 @@ export function startScheduler(connection: Redis) {
         tickApiChecks(apiQ),
         tickQaProjects(qaQ),
         tickTcpMonitors(tcpQ),
+        tickUdpMonitors(udpQ),
       ]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -47,7 +50,7 @@ export function startScheduler(connection: Redis) {
 
   return async () => {
     clearInterval(handle);
-    await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close()]);
+    await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close(), udpQ.close()]);
   };
 }
 
@@ -125,6 +128,35 @@ async function tickTcpMonitors(queue: Queue) {
       { jobId: `tcp:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
     );
     logger.info(`scheduled tcp-monitor #${m.id} → exec #${exec.id}`);
+  }
+}
+
+// ---------------- udp-monitor ----------------
+async function tickUdpMonitors(queue: Queue) {
+  const due = await udpMonitorRepo.findDue();
+
+  for (const m of due) {
+    if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
+
+    const [exec] = await udpMonitorRepo.createExecution(m.id, 'PENDING');
+
+    const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
+    await queue.add(
+      'check',
+      {
+        executionId: exec.id,
+        monitor: {
+          id: m.id,
+          host: m.host,
+          port: m.port,
+          payloadHex: m.payloadHex,
+          expectResponse: m.expectResponse,
+          timeoutMs: m.timeoutMs,
+        },
+      },
+      { jobId: `udp:${m.id}:${bucket}`, removeOnComplete: 200, removeOnFail: 200 },
+    );
+    logger.info(`scheduled udp-monitor #${m.id} → exec #${exec.id}`);
   }
 }
 

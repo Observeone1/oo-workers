@@ -13,6 +13,8 @@ import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
+import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
+import { parseHexPayload } from './services/udp-probe.ts';
 import { logger } from './utils/logger.ts';
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
@@ -36,16 +38,18 @@ function buildApp(connection: Redis) {
   const apiQ = new Queue('api-check', { connection });
   const qaQ = new Queue('qa-project', { connection });
   const tcpQ = new Queue('tcp-monitor', { connection });
+  const udpQ = new Queue('udp-monitor', { connection });
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const [urls, apis, qas, tcps] = await Promise.all([
+    const [urls, apis, qas, tcps, udps] = await Promise.all([
       urlMonitorRepo.findAllWithLatest(),
       apiCheckRepo.findAllWithLatest(),
       qaProjectRepo.findAllWithLatest(),
       tcpMonitorRepo.findAllWithLatest(),
+      udpMonitorRepo.findAllWithLatest(),
     ]);
-    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps });
+    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps });
   });
 
   // ---------- API: detail ----------
@@ -87,6 +91,15 @@ function buildApp(connection: Redis) {
       const runs = await tcpMonitorRepo.findExecutionsByMonitorId(id);
       return c.json({
         monitor: { ...m, type: 'tcp' },
+        runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
+      });
+    }
+    if (type === 'udp') {
+      const [m] = await udpMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const runs = await udpMonitorRepo.findExecutionsByMonitorId(id);
+      return c.json({
+        monitor: { ...m, type: 'udp' },
         runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
       });
     }
@@ -160,6 +173,32 @@ function buildApp(connection: Redis) {
     return c.json(m, 201);
   });
 
+  app.post('/api/monitors/udp', async (c) => {
+    const body = await c.req.json();
+    const port = Number(body.port);
+    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+    }
+    if (body.payloadHex) {
+      try {
+        parseHexPayload(body.payloadHex);
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : 'invalid payloadHex' }, 400);
+      }
+    }
+    const [m] = await udpMonitorRepo.create({
+      name: body.name,
+      host: body.host,
+      port,
+      payloadHex: body.payloadHex ?? null,
+      expectResponse: body.expectResponse ?? false,
+      timeoutMs: body.timeoutMs ?? DEFAULTS.UDP_TIMEOUT_MS,
+      intervalSeconds: body.intervalSeconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(m, 201);
+  });
+
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
@@ -195,6 +234,7 @@ function buildApp(connection: Redis) {
     else if (type === 'api') await apiCheckRepo.deleteById(id);
     else if (type === 'qa') await qaProjectRepo.deleteById(id);
     else if (type === 'tcp') await tcpMonitorRepo.deleteById(id);
+    else if (type === 'udp') await udpMonitorRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -209,6 +249,7 @@ function buildApp(connection: Redis) {
     else if (type === 'api') await apiCheckRepo.updateEnabled(id, body.enabled);
     else if (type === 'qa') await qaProjectRepo.updateEnabled(id, body.enabled);
     else if (type === 'tcp') await tcpMonitorRepo.updateEnabled(id, body.enabled);
+    else if (type === 'udp') await udpMonitorRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -263,6 +304,23 @@ function buildApp(connection: Redis) {
       });
       return c.json({ executionId: exec.id });
     }
+    if (type === 'udp') {
+      const [m] = await udpMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const [exec] = await udpMonitorRepo.createExecution(id, 'PENDING');
+      await udpQ.add('check', {
+        executionId: exec.id,
+        monitor: {
+          id: m.id,
+          host: m.host,
+          port: m.port,
+          payloadHex: m.payloadHex,
+          expectResponse: m.expectResponse,
+          timeoutMs: m.timeoutMs,
+        },
+      });
+      return c.json({ executionId: exec.id });
+    }
     return c.json({ error: 'bad type' }, 400);
   });
 
@@ -270,7 +328,7 @@ function buildApp(connection: Redis) {
   app.post('/api/import', async (c) => {
     const body = await c.req.json();
     if (body.version !== 1) return c.json({ error: 'unsupported import version' }, 400);
-    const created = { url: 0, api: 0, qa: 0, tcp: 0, skipped: [] as string[] };
+    const created = { url: 0, api: 0, qa: 0, tcp: 0, udp: 0, skipped: [] as string[] };
 
     for (const u of (body.urlMonitors ?? []) as any[]) {
       try {
@@ -334,6 +392,24 @@ function buildApp(connection: Redis) {
         created.skipped.push(`tcp ${t.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    for (const u of (body.udpMonitors ?? []) as any[]) {
+      try {
+        if (u.payloadHex) parseHexPayload(u.payloadHex);
+        await udpMonitorRepo.create({
+          name: u.name,
+          host: u.host,
+          port: Number(u.port),
+          payloadHex: u.payloadHex ?? null,
+          expectResponse: u.expectResponse ?? false,
+          timeoutMs: u.timeoutMs ?? DEFAULTS.UDP_TIMEOUT_MS,
+          intervalSeconds: u.intervalSeconds ?? 60,
+          enabled: u.enabled ?? true,
+        });
+        created.udp++;
+      } catch (err) {
+        created.skipped.push(`udp ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     for (const q of (body.qaProjects ?? []) as any[]) {
       try {
         const [m] = await qaProjectRepo.create({
@@ -385,7 +461,7 @@ function buildApp(connection: Redis) {
   return {
     app,
     close: async () => {
-      await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close()]);
+      await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close(), udpQ.close()]);
     },
   };
 }
