@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { udpExecutions, udpMonitors } from '../schema.ts';
+import { projectStalled } from '../../services/exec-projection.ts';
 
 export const udpMonitorRepo = {
   async findAllWithLatest() {
@@ -11,6 +12,7 @@ export const udpMonitorRepo = {
         status: udpExecutions.status,
         latencyMs: udpExecutions.latencyMs,
         errorMessage: udpExecutions.errorMessage,
+        regionId: udpExecutions.regionId,
         startTime: udpExecutions.startTime,
       })
       .from(udpExecutions)
@@ -28,13 +30,20 @@ export const udpMonitorRepo = {
       type: 'udp' as const,
       latest:
         l && l.id !== null
-          ? {
-              id: l.id,
-              status: l.status,
-              responseTimeMs: l.latencyMs,
-              errorMessage: l.errorMessage,
-              startTime: l.startTime,
-            }
+          ? (() => {
+              const projected = projectStalled(
+                { status: l.status, regionId: l.regionId, errorMessage: l.errorMessage },
+                l.startTime,
+                m.intervalSeconds,
+              );
+              return {
+                id: l.id,
+                status: projected.status,
+                responseTimeMs: l.latencyMs,
+                errorMessage: projected.errorMessage,
+                startTime: l.startTime,
+              };
+            })()
           : null,
     }));
   },
@@ -43,13 +52,20 @@ export const udpMonitorRepo = {
     return db.select().from(udpMonitors).where(eq(udpMonitors.id, id)).limit(1);
   },
 
-  findExecutionsByMonitorId(udpMonitorId: number, limit = 100) {
-    return db
+  async findExecutionsByMonitorId(udpMonitorId: number, limit = 100) {
+    const [m] = await db
+      .select({ intervalSeconds: udpMonitors.intervalSeconds })
+      .from(udpMonitors)
+      .where(eq(udpMonitors.id, udpMonitorId))
+      .limit(1);
+    const rows = await db
       .select()
       .from(udpExecutions)
       .where(eq(udpExecutions.udpMonitorId, udpMonitorId))
       .orderBy(desc(udpExecutions.startTime))
       .limit(limit);
+    if (!m) return rows;
+    return rows.map((r) => projectStalled(r, r.startTime, m.intervalSeconds));
   },
 
   create(data: {

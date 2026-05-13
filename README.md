@@ -108,11 +108,21 @@ URL, API, TCP, UDP. Browser (Playwright) monitors report `ERROR` from agents in 
 
 Running more than one agent for the same region is safe — `BRPOP` guarantees only one agent receives each job, and result writes are idempotent on `executionId`. You get parallel probe throughput for free. Each agent box needs its own clone of the agent key bound to the region.
 
+### Rotating an agent key
+
+```bash
+docker compose exec worker bun scripts/rotate-region-key.ts --slug us-east
+```
+
+Issues a fresh agent key, rebinds the region atomically, revokes the old key. The running agent starts getting 401 — restart it with the new env vars and it picks up where it left off. Region history (executions, last_seen_at) is preserved.
+
+### Stalled executions
+
+If an agent pops a job and crashes before posting back, the execution row stays at `PENDING` in the DB. The dashboard and API project these as `FAILED` once they're older than 2× the monitor's interval — there's no background sweeper, and a late agent result can still write into the row (the underlying status stays `PENDING` until something updates it).
+
 ### Known gaps (Phase 4 M2)
 
-- **No stalled-job sweeper yet.** If an agent crashes mid-probe, the matching execution row sits at `PENDING` indefinitely. The master keeps scheduling new runs every interval, so the metric stays fresh — only the stale row leaks. Sweeper lands in M2.5.
 - **No UI for region selection.** Use the `PUT /api/monitors/:type/:id/regions` endpoint above. M3 ships the dialog.
-- **No agent-key rotation CLI.** To rotate, revoke the old key, run `create-region.ts --slug <same-slug>` will fail (slug taken), so for now: delete the region row, create a new one with the same slug, paste the fresh key into the agent.
 
 ## Documentation
 
