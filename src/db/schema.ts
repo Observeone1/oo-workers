@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -47,6 +48,7 @@ export const urlMonitorExecutions = pgTable(
     urlMonitorId: integer('url_monitor_id')
       .notNull()
       .references(() => urlMonitors.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
     status: varchar('status', { length: 20 }).notNull(),
     statusCode: integer('status_code'),
     responseTimeMs: integer('response_time_ms'),
@@ -58,6 +60,7 @@ export const urlMonitorExecutions = pgTable(
   (t) => [
     index('idx_url_monitor_executions_monitor_id').on(t.urlMonitorId),
     index('idx_url_monitor_executions_start_time').on(t.startTime),
+    index('idx_url_monitor_executions_region_id').on(t.regionId),
   ],
 );
 
@@ -99,6 +102,7 @@ export const apiExecutions = pgTable(
     apiCheckId: integer('api_check_id')
       .notNull()
       .references(() => apiChecks.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
     status: varchar('status', { length: 20 }).notNull(),
     responseStatus: integer('response_status'),
     responseTimeMs: integer('response_time_ms'),
@@ -112,6 +116,7 @@ export const apiExecutions = pgTable(
   (t) => [
     index('idx_api_executions_check_id').on(t.apiCheckId),
     index('idx_api_executions_start_time').on(t.startTime),
+    index('idx_api_executions_region_id').on(t.regionId),
   ],
 );
 
@@ -139,6 +144,7 @@ export const tcpExecutions = pgTable(
     tcpMonitorId: integer('tcp_monitor_id')
       .notNull()
       .references(() => tcpMonitors.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
     status: varchar('status', { length: 20 }).notNull(),
     latencyMs: integer('latency_ms'),
     errorMessage: text('error_message'),
@@ -148,6 +154,7 @@ export const tcpExecutions = pgTable(
   (t) => [
     index('idx_tcp_executions_monitor_id').on(t.tcpMonitorId),
     index('idx_tcp_executions_start_time').on(t.startTime),
+    index('idx_tcp_executions_region_id').on(t.regionId),
   ],
 );
 
@@ -177,6 +184,7 @@ export const udpExecutions = pgTable(
     udpMonitorId: integer('udp_monitor_id')
       .notNull()
       .references(() => udpMonitors.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
     status: varchar('status', { length: 20 }).notNull(),
     latencyMs: integer('latency_ms'),
     responseBytes: integer('response_bytes'),
@@ -187,6 +195,7 @@ export const udpExecutions = pgTable(
   (t) => [
     index('idx_udp_executions_monitor_id').on(t.udpMonitorId),
     index('idx_udp_executions_start_time').on(t.startTime),
+    index('idx_udp_executions_region_id').on(t.regionId),
   ],
 );
 
@@ -235,6 +244,7 @@ export const qaTestExecutions = pgTable(
     projectId: integer('project_id')
       .notNull()
       .references(() => qaProjects.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
     status: varchar('status', { length: 20 }).notNull(),
     errorMessage: text('error_message'),
     logs: text('logs'),
@@ -245,6 +255,7 @@ export const qaTestExecutions = pgTable(
   (t) => [
     index('idx_qa_test_executions_test_id').on(t.testId),
     index('idx_qa_test_executions_project_id').on(t.projectId),
+    index('idx_qa_test_executions_region_id').on(t.regionId),
   ],
 );
 
@@ -263,3 +274,42 @@ export const apiKeys = pgTable('api_keys', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ============================================================
+// Multi-region — agents register as regions, monitors fan out
+// ============================================================
+
+export const regions = pgTable(
+  'regions',
+  {
+    id: serial('id').primaryKey(),
+    slug: varchar('slug', { length: 64 }).notNull().unique(),
+    label: varchar('label', { length: 255 }).notNull(),
+    apiKeyId: integer('api_key_id')
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: 'restrict' }),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_regions_api_key_id').on(t.apiKeyId)],
+);
+
+// monitor_type is one of: 'url' | 'api' | 'tcp' | 'udp' | 'qa'.
+// Not a real FK because per-type monitor tables are separate.
+export const monitorRegions = pgTable(
+  'monitor_regions',
+  {
+    monitorType: varchar('monitor_type', { length: 16 }).notNull(),
+    monitorId: integer('monitor_id').notNull(),
+    regionId: integer('region_id')
+      .notNull()
+      .references(() => regions.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.monitorType, t.monitorId, t.regionId] }),
+    index('idx_monitor_regions_monitor').on(t.monitorType, t.monitorId),
+    index('idx_monitor_regions_region').on(t.regionId),
+  ],
+);

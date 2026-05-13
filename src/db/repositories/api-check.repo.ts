@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { apiAssertions, apiChecks, apiExecutions } from '../schema.ts';
+import { projectStalled } from '../../services/exec-projection.ts';
 
 export const apiCheckRepo = {
   async findAllWithLatest() {
@@ -12,6 +13,7 @@ export const apiCheckRepo = {
         statusCode: apiExecutions.responseStatus,
         responseTimeMs: apiExecutions.responseTimeMs,
         errorMessage: apiExecutions.errorMessage,
+        regionId: apiExecutions.regionId,
         startTime: apiExecutions.startTime,
       })
       .from(apiExecutions)
@@ -29,14 +31,21 @@ export const apiCheckRepo = {
       type: 'api' as const,
       latest:
         l && l.id !== null
-          ? {
-              id: l.id,
-              status: l.status,
-              statusCode: l.statusCode,
-              responseTimeMs: l.responseTimeMs,
-              errorMessage: l.errorMessage,
-              startTime: l.startTime,
-            }
+          ? (() => {
+              const projected = projectStalled(
+                { status: l.status, regionId: l.regionId, errorMessage: l.errorMessage },
+                l.startTime,
+                c.intervalSeconds,
+              );
+              return {
+                id: l.id,
+                status: projected.status,
+                statusCode: l.statusCode,
+                responseTimeMs: l.responseTimeMs,
+                errorMessage: projected.errorMessage,
+                startTime: l.startTime,
+              };
+            })()
           : null,
     }));
   },
@@ -49,13 +58,20 @@ export const apiCheckRepo = {
     return db.select().from(apiAssertions).where(eq(apiAssertions.apiCheckId, apiCheckId));
   },
 
-  findExecutionsByCheckId(apiCheckId: number, limit = 100) {
-    return db
+  async findExecutionsByCheckId(apiCheckId: number, limit = 100) {
+    const [c] = await db
+      .select({ intervalSeconds: apiChecks.intervalSeconds })
+      .from(apiChecks)
+      .where(eq(apiChecks.id, apiCheckId))
+      .limit(1);
+    const rows = await db
       .select()
       .from(apiExecutions)
       .where(eq(apiExecutions.apiCheckId, apiCheckId))
       .orderBy(desc(apiExecutions.startTime))
       .limit(limit);
+    if (!c) return rows;
+    return rows.map((r) => projectStalled(r, r.startTime, c.intervalSeconds));
   },
 
   create(data: {
@@ -92,8 +108,8 @@ export const apiCheckRepo = {
       .returning();
   },
 
-  createExecution(apiCheckId: number, status: string) {
-    return db.insert(apiExecutions).values({ apiCheckId, status }).returning();
+  createExecution(apiCheckId: number, status: string, regionId: number | null = null) {
+    return db.insert(apiExecutions).values({ apiCheckId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof apiExecutions.$inferInsert>) {

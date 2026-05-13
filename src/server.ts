@@ -15,8 +15,22 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
-import { extractKey, requireAuth, SESSION_COOKIE, validateKey } from './middleware/auth.ts';
+import {
+  extractKey,
+  requireAgent,
+  requireAuth,
+  SESSION_COOKIE,
+  validateKey,
+} from './middleware/auth.ts';
+import {
+  popJobForRegion,
+  writeAgentResult,
+  type AgentResultBody,
+} from './services/agent-dispatch.ts';
+import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
+
+const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa'];
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
 
@@ -40,6 +54,11 @@ function buildApp(connection: Redis) {
   const qaQ = new Queue('qa-project', { connection });
   const tcpQ = new Queue('tcp-monitor', { connection });
   const udpQ = new Queue('udp-monitor', { connection });
+
+  // Dedicated connection for blocking pops in /api/agent/jobs. BRPOP holds
+  // the connection for the duration of the wait, so it must not share with
+  // the BullMQ Queue ops above.
+  const blockingConn = connection.duplicate();
 
   // ---------- Auth ----------
   // Gate every write under /api/monitors and /api/import behind requireAuth.
@@ -281,6 +300,26 @@ function buildApp(connection: Redis) {
     return c.body(null, 204);
   });
 
+  // ---------- API: monitor regions ----------
+  // Replace the full set of regions attached to a monitor. Empty array =
+  // run on master. Until M3 ships the UI selector, this is how operators
+  // bind regions programmatically.
+  app.put('/api/monitors/:type/:id/regions', async (c) => {
+    const type = c.req.param('type') as MonitorType;
+    const id = Number(c.req.param('id'));
+    if (!MONITOR_TYPES.includes(type)) return c.json({ error: 'bad type' }, 400);
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+    const body = await c.req.json().catch(() => ({}));
+    if (
+      !Array.isArray(body.regionIds) ||
+      !body.regionIds.every((n: unknown) => Number.isInteger(n))
+    ) {
+      return c.json({ error: 'regionIds must be an integer array' }, 400);
+    }
+    await monitorRegionRepo.set(type, id, body.regionIds as number[]);
+    return c.json({ ok: true, regionIds: body.regionIds });
+  });
+
   // ---------- API: enable/disable ----------
   app.patch('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type');
@@ -480,6 +519,55 @@ function buildApp(connection: Redis) {
     return c.json(created);
   });
 
+  // ---------- Agent (multi-region) ----------
+  //
+  // Long-poll endpoint — agent calls this repeatedly, master holds the
+  // connection open until a job is available or `wait` seconds pass.
+  // Returns 204 on timeout (agent reconnects). On 200, the body is the
+  // job payload, including `type`, `executionId`, `regionId`, and the
+  // type-specific monitor fields the agent's probe needs.
+  app.get('/api/agent/jobs', requireAgent(), async (c) => {
+    const region = c.get('region');
+    const waitRaw = c.req.query('wait');
+    const wait = Math.min(60, Math.max(1, waitRaw ? Number.parseInt(waitRaw, 10) || 30 : 30));
+    const payload = await popJobForRegion(blockingConn, region.slug, wait);
+    if (!payload) return c.body(null, 204);
+    return c.json(payload);
+  });
+
+  // POST /api/agent/results — agent posts back the probe result. The
+  // executions row must reference the agent's region or the write is
+  // rejected (403). Idempotent on executionId — a second POST for the
+  // same exec is silently dropped (rows.updated=false because the
+  // status no longer matches PENDING semantics here we only filter on
+  // region_id, but a re-update simply rewrites the same values).
+  app.post('/api/agent/results', requireAgent(), async (c) => {
+    const region = c.get('region');
+    let body: AgentResultBody;
+    try {
+      body = (await c.req.json()) as AgentResultBody;
+    } catch {
+      return c.json({ error: 'invalid JSON body' }, 400);
+    }
+    if (!body || typeof body !== 'object') {
+      return c.json({ error: 'body must be a JSON object' }, 400);
+    }
+    if (!body.type || typeof body.executionId !== 'number' || !body.status) {
+      return c.json({ error: 'type, executionId, status are required' }, 400);
+    }
+    const outcome = await writeAgentResult(region.id, body);
+    if (!outcome.updated) {
+      return c.json(
+        { error: 'execution not found or not owned by this region', reason: outcome.reason },
+        403,
+      );
+    }
+    logger.info(
+      `agent result region=${region.slug} type=${body.type} exec=${body.executionId} status=${body.status}`,
+    );
+    return c.json({ ok: true });
+  });
+
   // ---------- static UI ----------
   app.get('/', (c) =>
     ASSETS.indexHtml
@@ -504,13 +592,17 @@ function buildApp(connection: Redis) {
     app,
     close: async () => {
       await Promise.all([urlQ.close(), apiQ.close(), qaQ.close(), tcpQ.close(), udpQ.close()]);
+      await blockingConn.quit().catch(() => {});
     },
   };
 }
 
 export function startServer(connection: Redis, port: number) {
   const { app, close } = buildApp(connection);
-  const server = Bun.serve({ port, fetch: app.fetch });
+  // idleTimeout default is 10s — too short for agent long-polls (up to 60s).
+  // Bumping to 120s gives ample headroom; the agent's BRPOP wait is capped
+  // at 60s in /api/agent/jobs so this only closes truly dead connections.
+  const server = Bun.serve({ port, fetch: app.fetch, idleTimeout: 120 });
   logger.info(`🌐 server listening on http://localhost:${port}`);
   return async () => {
     server.stop();

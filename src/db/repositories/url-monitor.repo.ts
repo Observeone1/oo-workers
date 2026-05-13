@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { urlMonitorAssertions, urlMonitorExecutions, urlMonitors } from '../schema.ts';
+import { projectStalled } from '../../services/exec-projection.ts';
 
 export const urlMonitorRepo = {
   async findAllWithLatest() {
@@ -12,6 +13,7 @@ export const urlMonitorRepo = {
         statusCode: urlMonitorExecutions.statusCode,
         responseTimeMs: urlMonitorExecutions.responseTimeMs,
         errorMessage: urlMonitorExecutions.errorMessage,
+        regionId: urlMonitorExecutions.regionId,
         startTime: urlMonitorExecutions.startTime,
       })
       .from(urlMonitorExecutions)
@@ -29,14 +31,25 @@ export const urlMonitorRepo = {
       type: 'url' as const,
       latest:
         l && l.id !== null
-          ? {
-              id: l.id,
-              status: l.status,
-              statusCode: l.statusCode,
-              responseTimeMs: l.responseTimeMs,
-              errorMessage: l.errorMessage,
-              startTime: l.startTime,
-            }
+          ? (() => {
+              const projected = projectStalled(
+                {
+                  status: l.status,
+                  regionId: l.regionId,
+                  errorMessage: l.errorMessage,
+                },
+                l.startTime,
+                m.intervalSeconds,
+              );
+              return {
+                id: l.id,
+                status: projected.status,
+                statusCode: l.statusCode,
+                responseTimeMs: l.responseTimeMs,
+                errorMessage: projected.errorMessage,
+                startTime: l.startTime,
+              };
+            })()
           : null,
     }));
   },
@@ -52,13 +65,20 @@ export const urlMonitorRepo = {
       .where(eq(urlMonitorAssertions.urlMonitorId, urlMonitorId));
   },
 
-  findExecutionsByMonitorId(urlMonitorId: number, limit = 100) {
-    return db
+  async findExecutionsByMonitorId(urlMonitorId: number, limit = 100) {
+    const [m] = await db
+      .select({ intervalSeconds: urlMonitors.intervalSeconds })
+      .from(urlMonitors)
+      .where(eq(urlMonitors.id, urlMonitorId))
+      .limit(1);
+    const rows = await db
       .select()
       .from(urlMonitorExecutions)
       .where(eq(urlMonitorExecutions.urlMonitorId, urlMonitorId))
       .orderBy(desc(urlMonitorExecutions.startTime))
       .limit(limit);
+    if (!m) return rows;
+    return rows.map((r) => projectStalled(r, r.startTime, m.intervalSeconds));
   },
 
   create(data: {
@@ -86,8 +106,8 @@ export const urlMonitorRepo = {
       .returning();
   },
 
-  createExecution(urlMonitorId: number, status: string) {
-    return db.insert(urlMonitorExecutions).values({ urlMonitorId, status }).returning();
+  createExecution(urlMonitorId: number, status: string, regionId: number | null = null) {
+    return db.insert(urlMonitorExecutions).values({ urlMonitorId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof urlMonitorExecutions.$inferInsert>) {

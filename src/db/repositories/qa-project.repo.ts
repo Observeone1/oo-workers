@@ -1,6 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
+import { projectStalled } from '../../services/exec-projection.ts';
 
 export const qaProjectRepo = {
   async findAllWithLatest() {
@@ -11,6 +12,7 @@ export const qaProjectRepo = {
         status: qaTestExecutions.status,
         durationMs: qaTestExecutions.durationMs,
         errorMessage: qaTestExecutions.errorMessage,
+        regionId: qaTestExecutions.regionId,
         startTime: qaTestExecutions.startedAt,
       })
       .from(qaTestExecutions)
@@ -39,13 +41,20 @@ export const qaProjectRepo = {
       testCount: tc?.count ?? 0,
       latest:
         l && l.id !== null
-          ? {
-              id: l.id,
-              status: l.status,
-              durationMs: l.durationMs,
-              errorMessage: l.errorMessage,
-              startTime: l.startTime,
-            }
+          ? (() => {
+              const projected = projectStalled(
+                { status: l.status, regionId: l.regionId, errorMessage: l.errorMessage },
+                l.startTime,
+                p.intervalSeconds,
+              );
+              return {
+                id: l.id,
+                status: projected.status,
+                durationMs: l.durationMs,
+                errorMessage: projected.errorMessage,
+                startTime: l.startTime,
+              };
+            })()
           : null,
     }));
   },
@@ -74,13 +83,20 @@ export const qaProjectRepo = {
       .where(eq(qaGeneratedTests.projectId, projectId));
   },
 
-  findExecutionsByProjectId(projectId: number, limit = 100) {
-    return db
+  async findExecutionsByProjectId(projectId: number, limit = 100) {
+    const [p] = await db
+      .select({ intervalSeconds: qaProjects.intervalSeconds })
+      .from(qaProjects)
+      .where(eq(qaProjects.id, projectId))
+      .limit(1);
+    const rows = await db
       .select()
       .from(qaTestExecutions)
       .where(eq(qaTestExecutions.projectId, projectId))
       .orderBy(desc(qaTestExecutions.startedAt))
       .limit(limit);
+    if (!p) return rows;
+    return rows.map((r) => projectStalled(r, r.startedAt, p.intervalSeconds));
   },
 
   create(data: {
@@ -121,8 +137,13 @@ export const qaProjectRepo = {
       .returning();
   },
 
-  createExecution(testId: number, projectId: number, status: string) {
-    return db.insert(qaTestExecutions).values({ testId, projectId, status }).returning();
+  createExecution(
+    testId: number,
+    projectId: number,
+    status: string,
+    regionId: number | null = null,
+  ) {
+    return db.insert(qaTestExecutions).values({ testId, projectId, status, regionId }).returning();
   },
 
   updateExecution(id: number, data: Partial<typeof qaTestExecutions.$inferInsert>) {

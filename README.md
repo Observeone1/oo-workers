@@ -66,6 +66,64 @@ Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put 
 - An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
 - TLS isn't built in. Terminate it at the proxy.
 
+## Multi-region (preview)
+
+Run probes from more than one location by attaching a regional **agent** to your master. The master holds the schedule, fans jobs out per region, and aggregates results. Agents are stateless — they only need outbound HTTPS back to the master, no database, no Redis, no inbound ports.
+
+### Add a region
+
+1. On the master, generate a region + agent key in one step:
+
+   ```bash
+   docker compose exec worker bun scripts/create-region.ts \
+     --slug us-east --label "US East (Virginia)"
+   ```
+
+   It prints the three env vars the agent box needs.
+
+2. On the agent box (a $4 VPS, home lab, anywhere with outbound HTTPS), copy `.env.agent.example` to `.env`, paste in the key, and:
+
+   ```bash
+   docker compose -f docker-compose.agent.yml up -d
+   ```
+
+3. Bind monitors to the region using the regions API (UI lands in M3):
+
+   ```bash
+   # Replace the full set of regions for monitor #42.
+   # Empty array = "run on master only".
+   curl -X PUT https://master.example.com/api/monitors/url/42/regions \
+     -H "Authorization: Bearer oo_<your-write-key>" \
+     -H "content-type: application/json" \
+     -d '{"regionIds": [1]}'
+   ```
+
+   The scheduler will fan it out; the agent will probe it; results land in the master's database tagged with `region_id`.
+
+### What works on agents
+
+URL, API, TCP, UDP. Browser (Playwright) monitors report `ERROR` from agents in this release — run those from the master for now.
+
+### Multiple agents per region
+
+Running more than one agent for the same region is safe — `BRPOP` guarantees only one agent receives each job, and result writes are idempotent on `executionId`. You get parallel probe throughput for free. Each agent box needs its own clone of the agent key bound to the region.
+
+### Rotating an agent key
+
+```bash
+docker compose exec worker bun scripts/rotate-region-key.ts --slug us-east
+```
+
+Issues a fresh agent key, rebinds the region atomically, revokes the old key. The running agent starts getting 401 — restart it with the new env vars and it picks up where it left off. Region history (executions, last_seen_at) is preserved.
+
+### Stalled executions
+
+If an agent pops a job and crashes before posting back, the execution row stays at `PENDING` in the DB. The dashboard and API project these as `FAILED` once they're older than 2× the monitor's interval — there's no background sweeper, and a late agent result can still write into the row (the underlying status stays `PENDING` until something updates it).
+
+### Known gaps (Phase 4 M2)
+
+- **No UI for region selection.** Use the `PUT /api/monitors/:type/:id/regions` endpoint above. M3 ships the dialog.
+
 ## Documentation
 
 The dashboard ships a built-in reference at **http://localhost:3001/docs** covering:
