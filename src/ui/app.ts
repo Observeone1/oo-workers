@@ -16,6 +16,7 @@ import type { MonType } from './types';
 import { renderList } from './list';
 import { renderDetail } from './detail';
 import { initDialogs } from './dialogs';
+import { initTheme } from './theme';
 
 function route() {
   const h = location.hash;
@@ -39,5 +40,6 @@ setInterval(() => {
   renderList();
 }, 5000);
 
+initTheme();
 initDialogs();
 route();
