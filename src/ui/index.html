@@ -28,6 +28,7 @@
           <option value="api">API — request + assertions</option>
           <option value="qa">Browser — Playwright script</option>
           <option value="tcp">TCP — host:port reachability probe</option>
+          <option value="udp">UDP — send datagram, optionally await response</option>
         </select>
 
         <label>Name</label>
@@ -56,6 +57,21 @@
           <div>
             <label>Interval (sec)</label>
             <input name="tcp_interval_seconds" type="number" value="60" min="10" />
+          </div>
+        </div>
+
+        <div class="form-row" id="udp-row" hidden>
+          <div>
+            <label>Host</label>
+            <input name="udp_host" placeholder="8.8.8.8" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input name="udp_port" type="number" min="1" max="65535" placeholder="53" />
+          </div>
+          <div>
+            <label>Interval (sec)</label>
+            <input name="udp_interval_seconds" type="number" value="60" min="10" />
           </div>
         </div>
 
@@ -113,6 +129,27 @@
             name="qa_script"
             placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"
           ></textarea>
+        </div>
+
+        <div id="udp-fields" hidden>
+          <label
+            >Payload (hex)
+            <a
+              href="/docs#udp"
+              target="_blank"
+              class="hint"
+              data-tooltip="Hex bytes to send. Leave empty for an empty datagram."
+              >?</a
+            ></label
+          >
+          <input
+            name="udp_payload_hex"
+            placeholder="e.g. 1234010000010000000000000877696b69706564696102636f6d0000010001"
+          />
+          <label class="checkbox-label">
+            <input type="checkbox" name="udp_expect_response" />
+            Require a response (mark FAILED if none received within timeout)
+          </label>
         </div>
 
         <div class="dialog-actions">

@@ -10,6 +10,7 @@ import { apiCheckProcessor } from './processors/api-check.processor.ts';
 import { urlMonitorProcessor } from './processors/url-monitor.processor.ts';
 import { createQaProjectProcessor } from './processors/qa-project.processor.ts';
 import { tcpMonitorProcessor } from './processors/tcp-monitor.processor.ts';
+import { udpMonitorProcessor } from './processors/udp-monitor.processor.ts';
 import { startScheduler } from './scheduler.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -40,6 +41,11 @@ const tcpMonitorWorker = new Worker('tcp-monitor', tcpMonitorProcessor, {
   concurrency: parseInt(process.env.TCP_MONITOR_CONCURRENCY || '20'),
 });
 
+const udpMonitorWorker = new Worker('udp-monitor', udpMonitorProcessor, {
+  connection,
+  concurrency: parseInt(process.env.UDP_MONITOR_CONCURRENCY || '20'),
+});
+
 apiCheckWorker.on('completed', (job) => logger.info(`✅ api-check #${job.id} completed`));
 apiCheckWorker.on('failed', (job, err) =>
   logger.error(`❌ api-check #${job?.id} failed: ${err.message}`),
@@ -60,6 +66,11 @@ tcpMonitorWorker.on('failed', (job, err) =>
   logger.error(`❌ tcp-monitor #${job?.id} failed: ${err.message}`),
 );
 
+udpMonitorWorker.on('completed', (job) => logger.info(`✅ udp-monitor #${job.id} completed`));
+udpMonitorWorker.on('failed', (job, err) =>
+  logger.error(`❌ udp-monitor #${job?.id} failed: ${err.message}`),
+);
+
 const stopScheduler = startScheduler(connection);
 
 process.on('SIGTERM', async () => {
@@ -70,6 +81,7 @@ process.on('SIGTERM', async () => {
     urlMonitorWorker.close(),
     qaProjectWorker.close(),
     tcpMonitorWorker.close(),
+    udpMonitorWorker.close(),
   ]);
   process.exit(0);
 });

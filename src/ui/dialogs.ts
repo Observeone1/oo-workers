@@ -18,9 +18,11 @@ function initAddDialog() {
     $('#url-fields').hidden = t !== 'url';
     $('#api-fields').hidden = t !== 'api';
     $('#qa-fields').hidden = t !== 'qa';
-    // The shared URL row is for url/api/qa; TCP swaps in a host+port row.
-    $('#url-row').hidden = t === 'tcp';
+    $('#udp-fields').hidden = t !== 'udp';
+    // The shared URL row is for url/api/qa; TCP/UDP swap in their own host+port rows.
+    $('#url-row').hidden = t === 'tcp' || t === 'udp';
     $('#tcp-row').hidden = t !== 'tcp';
+    $('#udp-row').hidden = t !== 'udp';
   };
   typeSelect.addEventListener('change', syncFields);
   $('#add-btn').addEventListener('click', () => {
@@ -73,8 +75,7 @@ function initAddDialog() {
         intervalSeconds,
         tests: [{ name: name.replace(/\s+/g, '_'), script: fd.get('qa_script') }],
       };
-    } else {
-      // tcp
+    } else if (type === 'tcp') {
       const host = String(fd.get('tcp_host') ?? '').trim();
       const port = Number(fd.get('tcp_port'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -86,6 +87,23 @@ function initAddDialog() {
         host,
         port,
         intervalSeconds: Number(fd.get('tcp_interval_seconds')) || 60,
+      };
+    } else {
+      // udp
+      const host = String(fd.get('udp_host') ?? '').trim();
+      const port = Number(fd.get('udp_port'));
+      if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+        alert('Host + port (1–65535) required');
+        return;
+      }
+      const payloadHex = String(fd.get('udp_payload_hex') ?? '').trim();
+      body = {
+        name,
+        host,
+        port,
+        payloadHex: payloadHex || null,
+        expectResponse: fd.get('udp_expect_response') === 'on',
+        intervalSeconds: Number(fd.get('udp_interval_seconds')) || 60,
       };
     }
     const res = await createMonitor(type, body);

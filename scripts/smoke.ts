@@ -26,7 +26,7 @@ const connection = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
 
 async function pollUntilDone(
   execId: number,
-  table: 'url_monitor_executions' | 'api_executions' | 'tcp_executions',
+  table: 'url_monitor_executions' | 'api_executions' | 'tcp_executions' | 'udp_executions',
   timeoutMs = 30_000,
 ) {
   const start = Date.now();
@@ -219,17 +219,62 @@ async function smokeTcpMonitor() {
   return result.status === 'SUCCESS';
 }
 
+// ---- udp-monitor smoke ----
+// DNS query for example.com (A record), tx id 0x1234, recursion desired.
+const DNS_QUERY_HEX =
+  '1234010000010000000000000765' + // 12-byte header + start of QNAME ('example')
+  '78616d706c6503636f6d0000010001'; // 'example'.'com' + QTYPE=A + QCLASS=IN
+
+async function smokeUdpMonitor() {
+  console.log('\n=== udp-monitor smoke ===');
+  const [monitor] = await sql`
+    INSERT INTO udp_monitors (name, host, port, payload_hex, expect_response, timeout_ms)
+    VALUES ('smoke-dns', '8.8.8.8', 53, ${DNS_QUERY_HEX}, TRUE, 5000)
+    RETURNING *
+  `;
+  console.log(`  monitor #${monitor.id} created (${monitor.host}:${monitor.port}, DNS query)`);
+
+  const [exec] = await sql`
+    INSERT INTO udp_executions (udp_monitor_id, status)
+    VALUES (${monitor.id}, 'PENDING')
+    RETURNING *
+  `;
+
+  const queue = new Queue('udp-monitor', { connection });
+  const job = await queue.add('check', {
+    executionId: exec.id,
+    monitor: {
+      id: monitor.id,
+      host: monitor.host,
+      port: monitor.port,
+      payloadHex: monitor.payload_hex,
+      expectResponse: monitor.expect_response,
+      timeoutMs: monitor.timeout_ms,
+    },
+  });
+  console.log(`  job ${job.id} pushed → waiting for worker...`);
+
+  const result = await pollUntilDone(exec.id, 'udp_executions');
+  console.log(
+    `  ✅ result: status=${result.status}, ${result.latency_ms}ms, ${result.response_bytes} resp-bytes`,
+  );
+  await queue.close();
+  return result.status === 'SUCCESS';
+}
+
 const urlOk = await smokeUrlMonitor();
 const apiOk = await smokeApiCheck();
 const tcpOk = await smokeTcpMonitor();
+const udpOk = await smokeUdpMonitor();
 const qaOk = await smokeQaProject();
 
 console.log('\n=== summary ===');
 console.log(`  url-monitor: ${urlOk ? '✅' : '❌'}`);
 console.log(`  api-check:   ${apiOk ? '✅' : '❌'}`);
 console.log(`  tcp-monitor: ${tcpOk ? '✅' : '❌'}`);
+console.log(`  udp-monitor: ${udpOk ? '✅' : '❌'}`);
 console.log(`  qa-project:  ${qaOk ? '✅' : '❌'}`);
 
 await sql.end();
 await connection.quit();
-process.exit(urlOk && apiOk && tcpOk && qaOk ? 0 : 1);
+process.exit(urlOk && apiOk && tcpOk && udpOk && qaOk ? 0 : 1);
