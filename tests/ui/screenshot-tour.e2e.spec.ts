@@ -79,3 +79,35 @@ test('14 regions', async ({ page }) => {
   await page.waitForTimeout(300);
   await shot(page, '14-regions.png');
 });
+
+test('15 channels', async ({ page }) => {
+  await page.goto('/#/channels');
+  await page.waitForSelector('.channels-page', { timeout: 10_000 });
+  await page.waitForTimeout(300);
+  await shot(page, '15-channels.png');
+});
+
+test('16 status pages', async ({ page }) => {
+  await page.goto('/#/status-pages');
+  await page.waitForSelector('.status-pages-page', { timeout: 10_000 });
+  await page.waitForTimeout(300);
+  await shot(page, '16-status-pages.png');
+});
+
+test('16b status page public', async ({ browser }) => {
+  // Anonymous context — public page must render without bearer.
+  const ctx = await browser.newContext({ extraHTTPHeaders: {} });
+  const page = await ctx.newPage();
+  await page.goto('/status/demo');
+  await page.waitForSelector('h1', { timeout: 10_000 });
+  await page.waitForTimeout(300);
+  await shot(page, '16b-status-page-public.png');
+  await ctx.close();
+});
+
+test('17 docs in-app', async ({ page }) => {
+  await page.goto('/#/docs');
+  await page.waitForSelector('#main .docs-embed h1, #main .docs-embed h2', { timeout: 10_000 });
+  await page.waitForTimeout(300);
+  await shot(page, '17-docs.png');
+});
