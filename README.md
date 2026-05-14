@@ -11,7 +11,7 @@ The open-source slice of [ObserveOne](https://observeone.com) — the engine, th
 ```bash
 git clone https://github.com/Observeone1/oo-workers.git
 cd oo-workers
-cp .env.example .env
+./scripts/setup.sh           # writes .env with random Postgres + Redis passwords
 docker compose up -d
 
 # Generate your first API key (auth is on by default).
@@ -55,12 +55,21 @@ Only the argon2id hash is stored. Make as many as you want with different names;
 
 ### Expose to the network
 
-Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put a reverse proxy with TLS in front — Caddy, Traefik, nginx, or Tailscale Funnel all work. Plain HTTP on a public IP is not a good idea.
+Two supported paths:
+
+**a) TLS overlay (recommended).** Point DNS at the host, set `OO_DOMAIN=monitor.example.com` in `.env`, then:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+```
+
+Caddy fetches a Let's Encrypt cert automatically, serves the UI over HTTPS on `:443`, and renews forever. Ports 80 + 443 need to be reachable from the public internet so the ACME challenge can complete. Want LE expiry-notification emails? Add a global `{ email you@example.com }` block to `Caddyfile`.
+
+**b) Plain HTTP + your own proxy.** Set `OO_BIND_ADDR=0.0.0.0` in `.env` and put Traefik, nginx, or Tailscale Funnel in front. Plain HTTP on a public IP is not a good idea.
 
 ### Known gaps
 
-- An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
-- TLS isn't built in. Terminate it at the proxy.
+- An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. This is intentional — self-hosted monitoring is supposed to watch private services (your NAS, internal Grafana, staging APIs) — so don't hand write keys to people you wouldn't already trust with that access.
 
 ## Multi-region
 
@@ -133,7 +142,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 ## Roadmap
 
 - **v0.6** _(current)_ — TCP + UDP probes, API-key auth, localhost-bind default, sign-in flow.
-- **v0.7** — SSRF allowlist (gate which hosts probes can reach), TLS overlay (Caddy + LE auto-certs), alert channels (Discord/Slack/webhook/email), status pages.
+- **v0.7** — TLS overlay (Caddy + LE auto-certs), alert channels (Discord/Slack/webhook/email), status pages.
 - **v0.8+** — database-protocol checks (Postgres/MySQL/Redis `SELECT 1`/PING), S3/MinIO opt-in for QA script storage.
 
 ## Contributing

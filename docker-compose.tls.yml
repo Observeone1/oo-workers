@@ -1,0 +1,41 @@
+# TLS overlay — adds a Caddy reverse proxy in front of the UI with
+# automatic Let's Encrypt certificate provisioning.
+#
+# Usage:
+#   OO_DOMAIN=monitor.example.com docker compose \
+#     -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Prerequisites:
+#   - DNS A/AAAA record pointing OO_DOMAIN at this host
+#   - Ports 80 + 443 reachable from the public internet (Let's Encrypt
+#     ACME HTTP-01 challenge needs port 80 momentarily; HTTP/3 wants
+#     UDP 443)
+#   - .env contains OO_DOMAIN (and optionally CADDY_EMAIL)
+#
+# The UI's localhost port from docker-compose.yml stays as-is — that's
+# fine, Caddy reaches `ui:3001` over the Docker network regardless of
+# the host port mapping. If you want to lock the UI down to Caddy only,
+# set OO_BIND_ADDR to an address Caddy can't reach (or comment out the
+# UI ports in your local copy).
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      OO_DOMAIN: ${OO_DOMAIN:?OO_DOMAIN is required for the TLS overlay (e.g. monitor.example.com)}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      ui:
+        condition: service_started
+
+volumes:
+  caddy_data:
+  caddy_config:

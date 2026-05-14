@@ -27,10 +27,22 @@ services:
     # Uncomment to expose for local debugging:
     # ports:
     #   - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
+    command:
+      [
+        'sh',
+        '-c',
+        'if [ -n "$$REDIS_PASSWORD" ]; then exec redis-server --requirepass "$$REDIS_PASSWORD"; else exec redis-server; fi',
+      ]
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test:
+        [
+          'CMD-SHELL',
+          'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping; else redis-cli ping; fi',
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -45,7 +57,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_CHECK_CONCURRENCY: ${API_CHECK_CONCURRENCY:-10}
       URL_MONITOR_CONCURRENCY: ${URL_MONITOR_CONCURRENCY:-20}
@@ -66,7 +78,7 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:

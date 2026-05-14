@@ -10,8 +10,8 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
-export DATABASE_URL="${DATABASE_URL:-postgres://oo:oo@localhost:${POSTGRES_PORT:-5442}/${POSTGRES_DB:-oo_workers}}"
-export REDIS_URL="${REDIS_URL:-redis://localhost:${REDIS_PORT:-6379}}"
+export DATABASE_URL="${DATABASE_URL:-postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@localhost:${POSTGRES_PORT:-5442}/${POSTGRES_DB:-oo_workers}}"
+export REDIS_URL="${REDIS_URL:-redis://:${REDIS_PASSWORD:-}@localhost:${REDIS_PORT:-6379}}"
 
 bun src/db/migrate.ts
 

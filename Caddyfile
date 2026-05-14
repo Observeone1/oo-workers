@@ -1,0 +1,30 @@
+# Caddy config for the TLS overlay (docker-compose.tls.yml).
+# Caddy fetches a Let's Encrypt cert for OO_DOMAIN automatically and renews
+# it forever. Reverse-proxies everything to the `ui` service over the
+# Docker network. HTTP/3 enabled by default.
+#
+# Want Let's Encrypt expiry notifications? Add a global block above the
+# site, e.g.:
+#   {
+#       email you@example.com
+#   }
+# Without it, Caddy uses ZeroSSL anonymously — also fine, just no email.
+
+{$OO_DOMAIN} {
+	reverse_proxy ui:3001
+
+	# Drop the worker's framework defaults; let Caddy stamp these.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+		level INFO
+	}
+}
