@@ -14,7 +14,7 @@
 
 import { and, eq, isNotNull, isNull, like, sql } from 'drizzle-orm';
 import { db } from '../config/db.ts';
-import { qaGeneratedTests, qaProjects } from '../db/schema.ts';
+import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../db/schema.ts';
 import {
   deleteObject,
   isLegacyQaScriptKey,
@@ -120,8 +120,24 @@ async function uploadPending(): Promise<{ uploaded: number; failed: number }> {
  */
 async function sweepOrphans(): Promise<{ deleted: number; failed: number }> {
   const live = new Set<string>();
-  const rows = await db.select({ scriptUrl: qaGeneratedTests.scriptUrl }).from(qaGeneratedTests);
-  for (const r of rows) if (r.scriptUrl) live.add(r.scriptUrl);
+
+  // Test scripts.
+  const scriptRows = await db
+    .select({ scriptUrl: qaGeneratedTests.scriptUrl })
+    .from(qaGeneratedTests);
+  for (const r of scriptRows) if (r.scriptUrl) live.add(r.scriptUrl);
+
+  // Run artifacts — trace.zip + screenshot keys per failed execution.
+  const artifactRows = await db
+    .select({
+      traceUrl: qaTestExecutions.traceUrl,
+      screenshotUrls: qaTestExecutions.screenshotUrls,
+    })
+    .from(qaTestExecutions);
+  for (const r of artifactRows) {
+    if (r.traceUrl) live.add(r.traceUrl);
+    if (Array.isArray(r.screenshotUrls)) for (const k of r.screenshotUrls) live.add(k);
+  }
 
   const bucketKeys = [
     ...(await listObjects('qa-scripts/')),

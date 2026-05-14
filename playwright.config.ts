@@ -7,6 +7,11 @@ export default defineConfig({
   use: {
     headless: true,
     viewport: { width: 1920, height: 1080 },
+    // Capture artifacts on failed QA monitor runs so operators can debug
+    // from the dashboard. Trace is also passed on the CLI per-run, but
+    // setting it here keeps local runs (CI, smoke) consistent.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     userAgent:
       'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     locale: 'en-US',

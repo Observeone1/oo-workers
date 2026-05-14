@@ -30,6 +30,27 @@ function regionLabel(filter: Filter, regions: Map<number, RegionLite>): string {
   return regions.get(filter)?.label ?? `region #${filter}`;
 }
 
+/**
+ * QA-only column. Renders a trace-download icon + screenshot thumbnails
+ * when the failed run has artifacts. Returns an empty <td> for passing
+ * runs so the column stays aligned.
+ */
+function renderArtifactsCell(r: RunLite): string {
+  const trace = r.traceUrl;
+  const shots = Array.isArray(r.screenshotUrls) ? r.screenshotUrls : [];
+  if (!trace && shots.length === 0) return '<td class="meta">—</td>';
+  const traceLink = trace
+    ? `<a class="artifact-link" href="/api/artifacts?key=${encodeURIComponent(trace)}" title="Download Playwright trace.zip — open with: npx playwright show-trace trace.zip">trace.zip</a>`
+    : '';
+  const thumbs = shots
+    .map(
+      (k) =>
+        `<a class="artifact-thumb" href="/api/artifacts?key=${encodeURIComponent(k)}" target="_blank" title="${esc(k)}"><img src="/api/artifacts?key=${encodeURIComponent(k)}" alt="screenshot" loading="lazy" /></a>`,
+    )
+    .join('');
+  return `<td class="artifacts">${traceLink}${thumbs ? '<div class="artifact-thumbs">' + thumbs + '</div>' : ''}</td>`;
+}
+
 function latenciesOf(runs: RunLite[]): number[] {
   return runs
     .map((r) => r.responseTimeMs ?? r.durationMs)
@@ -134,7 +155,7 @@ function renderWithFilter(
       ${sparkline}
     </div>
     <table>
-      <thead><tr><th></th><th>When</th>${showChips ? '<th>Region</th>' : ''}<th>Status</th><th>Latency</th><th>Detail</th></tr></thead>
+      <thead><tr><th></th><th>When</th>${showChips ? '<th>Region</th>' : ''}<th>Status</th><th>Latency</th><th>Detail</th>${type === 'qa' ? '<th>Artifacts</th>' : ''}</tr></thead>
       <tbody>
         ${runs
           .map((r) => {
@@ -143,6 +164,7 @@ function renderWithFilter(
             const regionCell = showChips
               ? `<td class="meta">${r.regionId == null ? 'master' : esc(regions.get(r.regionId)?.slug ?? `#${r.regionId}`)}</td>`
               : '';
+            const artifactsCell = type === 'qa' ? renderArtifactsCell(r) : '';
             return `<tr>
             <td><span class="dot ${cls}"></span></td>
             <td class="meta">${fmtAge(r.startTime)}</td>
@@ -150,6 +172,7 @@ function renderWithFilter(
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
             <td class="meta">${latency != null ? `${latency}ms` : '—'}</td>
             <td class="meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>
+            ${artifactsCell}
           </tr>`;
           })
           .join('')}

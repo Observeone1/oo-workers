@@ -43,6 +43,7 @@ import {
   RegionAdminError,
   rotateRegionKey,
 } from './services/region-admin.ts';
+import { getObjectResponse } from './services/object-storage.ts';
 import { logger } from './utils/logger.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa'];
@@ -126,6 +127,40 @@ function buildApp(connection: Redis) {
     const row = await validateKey(cleartext);
     if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
     return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+  });
+
+  // ---------- API: artifact proxy ----------
+  // GET /api/artifacts?key=<bucket key> — streams a stored run artifact
+  // back to the browser. RustFS isn't directly reachable from the
+  // dashboard (it sits on the private compose network); this is the
+  // bridge. Restricted to keys under qa-projects/.../runs/ so it can't
+  // be repurposed as a general bucket reader.
+  app.use('/api/artifacts', requireAuth('read'));
+  app.get('/api/artifacts', async (c) => {
+    const key = c.req.query('key') ?? '';
+    if (!key || !/^qa-projects\/\d+-[a-z0-9-]+\/runs\/\d+\/[\w.-]+$/.test(key)) {
+      return c.json({ error: 'bad or unauthorized key' }, 400);
+    }
+    let res: Response;
+    try {
+      res = await getObjectResponse(key);
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      return c.json({ error: 'fetch failed', detail: String(err) }, status === 404 ? 404 : 502);
+    }
+    const filename = key.split('/').pop() ?? 'artifact';
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const disposition = filename.endsWith('.zip')
+      ? `attachment; filename="${filename}"`
+      : `inline; filename="${filename}"`;
+    return new Response(res.body, {
+      status: 200,
+      headers: {
+        'content-type': contentType,
+        'content-disposition': disposition,
+        'cache-control': 'private, max-age=60',
+      },
+    });
   });
 
   // ---------- API: list ----------

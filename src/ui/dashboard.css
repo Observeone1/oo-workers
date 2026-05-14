@@ -1276,3 +1276,42 @@ textarea {
 .monitor-pick-name {
   font-weight: 500;
 }
+
+/* QA run artifacts on monitor detail */
+td.artifacts {
+  min-width: 180px;
+}
+
+.artifact-link {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.artifact-link:hover {
+  background: var(--surface-hover);
+}
+
+.artifact-thumbs {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.artifact-thumb img {
+  width: 60px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.artifact-thumb img:hover {
+  border-color: var(--accent);
+}

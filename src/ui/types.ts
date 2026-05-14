@@ -9,6 +9,10 @@ export interface RunLite {
   errorMessage?: string | null;
   startTime: string;
   regionId?: number | null;
+  /** QA-only: bucket key for the Playwright trace.zip (failed runs). */
+  traceUrl?: string | null;
+  /** QA-only: bucket keys for per-failure screenshots (failed runs). */
+  screenshotUrls?: string[] | null;
 }
 
 export interface Monitor {

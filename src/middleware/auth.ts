@@ -66,7 +66,13 @@ export function requireAuth(scope: Scope): MiddlewareHandler {
     const row = await validateKey(cleartext);
     if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
 
-    if (!row.scopes.includes(scope)) {
+    // Write implies read — a key authorised to mutate state is also
+    // authorised to read it. Keeps the create-api-key default (write)
+    // useful for the artifact proxy and any future read-only endpoints
+    // without forcing operators to mint a separate read key.
+    const allowed =
+      row.scopes.includes(scope) || (scope === 'read' && row.scopes.includes('write'));
+    if (!allowed) {
       return c.json({ error: `key lacks '${scope}' scope` }, 403);
     }
 

@@ -234,6 +234,24 @@ export async function getObject(key: string): Promise<string> {
 }
 
 /**
+ * Fetch a raw object as a `Response` so callers can stream binary content
+ * (trace.zip, screenshot PNG) without forcing it through string decoding.
+ * Used by the artifact proxy endpoint to pipe bytes to the dashboard.
+ */
+export async function getObjectResponse(key: string): Promise<Response> {
+  const cfg = requireConfig();
+  const res = await signedFetch(cfg, 'GET', key, null);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ObjectStorageError(
+      `GET ${key} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      res.status,
+    );
+  }
+  return res;
+}
+
+/**
  * Idempotently create the configured bucket. Safe to call on every boot:
  * a 409 BucketAlreadyOwnedByYou (or 200 from re-create) is treated as success.
  * Some implementations return 409 on second create, others 200; both are OK.
@@ -303,6 +321,20 @@ export function qaScriptKey(
   testName: string,
 ): string {
   return `qa-projects/${projectId}-${slug(projectName)}/${testId}-${slug(testName)}.spec.ts`;
+}
+
+/**
+ * Key for a run artifact (Playwright trace or screenshot) tied to a single
+ * execution. Sits under the project's folder so the bucket layout stays
+ * coherent and the boot-time orphan sweep finds it without extra prefixes.
+ */
+export function qaRunArtifactKey(
+  projectId: number,
+  projectName: string,
+  executionId: number,
+  filename: string,
+): string {
+  return `qa-projects/${projectId}-${slug(projectName)}/runs/${executionId}/${filename}`;
 }
 
 /** True if a key looks like the legacy `qa-scripts/<id>.spec.ts` layout. */

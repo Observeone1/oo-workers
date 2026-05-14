@@ -256,6 +256,8 @@ export const qaTestExecutions = pgTable(
     durationMs: integer('duration_ms'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    traceUrl: varchar('trace_url', { length: 512 }),
+    screenshotUrls: jsonb('screenshot_urls').$type<string[]>(),
   },
   (t) => [
     index('idx_qa_test_executions_test_id').on(t.testId),

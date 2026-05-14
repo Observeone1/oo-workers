@@ -195,20 +195,32 @@ export const qaProjectRepo = {
   },
 
   async deleteById(id: number) {
-    // Collect storage keys before the row (and cascaded tests) disappear, so
-    // we can drop the objects in storage too. Best-effort: a failed delete
-    // here logs and continues — the row is gone either way, and the
-    // boot-time orphan sweep is the durable backstop.
-    const keys: string[] = isStorageConfigured()
-      ? (
-          await db
-            .select({ scriptUrl: qaGeneratedTests.scriptUrl })
-            .from(qaGeneratedTests)
-            .where(eq(qaGeneratedTests.projectId, id))
-        )
-          .map((r) => r.scriptUrl)
-          .filter((u): u is string => !!u)
-      : [];
+    // Collect storage keys before the row (and cascaded tests + executions)
+    // disappear, so we can drop the objects in storage too. Three sources:
+    // test scripts (script_url), per-run traces (trace_url), and per-run
+    // screenshots (screenshot_urls jsonb array). Best-effort: a failed
+    // delete here logs and continues — the row is gone either way, and
+    // the boot-time orphan sweep is the durable backstop.
+    const keys: string[] = [];
+    if (isStorageConfigured()) {
+      const scriptRows = await db
+        .select({ scriptUrl: qaGeneratedTests.scriptUrl })
+        .from(qaGeneratedTests)
+        .where(eq(qaGeneratedTests.projectId, id));
+      for (const r of scriptRows) if (r.scriptUrl) keys.push(r.scriptUrl);
+
+      const artifactRows = await db
+        .select({
+          traceUrl: qaTestExecutions.traceUrl,
+          screenshotUrls: qaTestExecutions.screenshotUrls,
+        })
+        .from(qaTestExecutions)
+        .where(eq(qaTestExecutions.projectId, id));
+      for (const r of artifactRows) {
+        if (r.traceUrl) keys.push(r.traceUrl);
+        if (Array.isArray(r.screenshotUrls)) keys.push(...r.screenshotUrls);
+      }
+    }
     await db.delete(qaProjects).where(eq(qaProjects.id, id));
     if (keys.length === 0) return;
     await Promise.all(
@@ -217,7 +229,7 @@ export const qaProjectRepo = {
           await deleteObject(key);
         } catch (err) {
           logger.error(
-            `qa-script storage DELETE failed for ${key}; boot-time sweep will retry: ${err instanceof Error ? err.message : err}`,
+            `qa-storage DELETE failed for ${key}; boot-time sweep will retry: ${err instanceof Error ? err.message : err}`,
           );
         }
       }),

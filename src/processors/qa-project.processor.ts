@@ -2,7 +2,8 @@ import { Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
 import { logger } from '../utils/logger.ts';
-import { executePlaywrightTest } from '../services/playwright.service.ts';
+import { executePlaywrightTest, type PlaywrightArtifact } from '../services/playwright.service.ts';
+import { isStorageConfigured, putObject, qaRunArtifactKey } from '../services/object-storage.ts';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
@@ -74,6 +75,11 @@ export const createQaProjectProcessor = (redis: Redis) => {
     const results: TestResult[] = [];
     const startTime = Date.now();
 
+    // Resolve the project name once so artifact keys stay stable across
+    // parallel test runs in this job. Falls back to a synthetic name if
+    // the project row vanished mid-flight.
+    const projectName = await resolveProjectName(projectId);
+
     // Write all scripts to a per-run directory before any test starts.
     // Using clean names (no id prefix) so sibling imports like import './auth.spec' resolve correctly.
     const runDir = path.join(TESTS_ROOT, `${projectId}-${startTime}`);
@@ -128,6 +134,10 @@ export const createQaProjectProcessor = (redis: Redis) => {
         const testStartTime = Date.now();
         const filePath = fileMap.get(test.id)!;
         const fileName = path.relative(process.cwd(), filePath);
+        // Per-execution output dir so parallel test runs don't stomp each
+        // other's artifacts. Sits inside the per-project runDir so the
+        // existing rm-rf cleanup at the bottom covers it.
+        const artifactDir = path.join(runDir, `exec-${executionId}`);
 
         try {
           const result = await executePlaywrightTest(fileName, targetUrl, credentials, {
@@ -137,10 +147,18 @@ export const createQaProjectProcessor = (redis: Redis) => {
               width: 1280,
               height: 720,
             },
+            outputDir: artifactDir,
           });
 
           const durationMs = result.duration_ms;
           const status = result.success ? 'passed' : 'failed';
+
+          // On failure, upload trace + screenshots to the bucket and stamp
+          // the execution row. Skip cleanly when storage isn't configured
+          // or no artifacts came back.
+          const { traceUrl, screenshotUrls } = !result.success
+            ? await uploadArtifacts(projectId, projectName, executionId, result.artifacts)
+            : { traceUrl: null, screenshotUrls: null };
 
           await qaProjectRepo.updateExecution(executionId, {
             status,
@@ -148,6 +166,8 @@ export const createQaProjectProcessor = (redis: Redis) => {
             durationMs,
             errorMessage: result.error ?? null,
             logs: result.logs?.join('\n') ?? null,
+            traceUrl,
+            screenshotUrls,
           });
 
           await publishUpdate(projectId, {
@@ -246,3 +266,67 @@ export const createQaProjectProcessor = (redis: Redis) => {
     }
   };
 };
+
+/**
+ * Look up the QA project name by id. Used to slug it into artifact keys so
+ * the bucket layout stays human-readable. Falls back to a synthetic name
+ * if the row is gone (project deleted mid-run) — the upload still
+ * succeeds and the orphan sweep cleans up later.
+ */
+async function resolveProjectName(projectId: number): Promise<string> {
+  try {
+    const [row] = await qaProjectRepo.findById(projectId);
+    return row?.name ?? `project-${projectId}`;
+  } catch {
+    return `project-${projectId}`;
+  }
+}
+
+/**
+ * Upload trace + screenshot artifacts for one execution. Best-effort: a
+ * failed upload logs and returns whatever succeeded; the boot-time orphan
+ * sweep is the durable backstop. Returns the stored keys for stamping
+ * onto the qa_test_executions row.
+ */
+async function uploadArtifacts(
+  projectId: number,
+  projectName: string,
+  executionId: number,
+  artifacts: PlaywrightArtifact[],
+): Promise<{ traceUrl: string | null; screenshotUrls: string[] | null }> {
+  if (!isStorageConfigured() || artifacts.length === 0) {
+    return { traceUrl: null, screenshotUrls: null };
+  }
+  let traceUrl: string | null = null;
+  const screenshotUrls: string[] = [];
+  let screenshotIndex = 0;
+  for (const art of artifacts) {
+    try {
+      const body = await fs.readFile(art.path);
+      if (art.name === 'trace') {
+        const key = qaRunArtifactKey(projectId, projectName, executionId, 'trace.zip');
+        await putObject(key, body, art.contentType);
+        traceUrl = key;
+      } else if (art.name === 'screenshot') {
+        screenshotIndex += 1;
+        const key = qaRunArtifactKey(
+          projectId,
+          projectName,
+          executionId,
+          `screenshot-${screenshotIndex}.png`,
+        );
+        await putObject(key, body, art.contentType);
+        screenshotUrls.push(key);
+      }
+      // Video / other named attachments deferred until v1.3+.
+    } catch (err) {
+      logger.error(
+        `qa-run-artifact upload failed for execution ${executionId} (${art.name}): ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+  return {
+    traceUrl,
+    screenshotUrls: screenshotUrls.length > 0 ? screenshotUrls : null,
+  };
+}
