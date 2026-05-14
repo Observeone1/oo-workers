@@ -228,6 +228,11 @@ export const qaGeneratedTests = pgTable(
     testName: varchar('test_name', { length: 255 }),
     testType: varchar('test_type', { length: 50 }),
     script: text('script').notNull(),
+    // When set, the script content lives in object storage at this key.
+    // Reads prefer scriptUrl; the inline `script` column is the fallback
+    // during the v1.0 backfill window. A future migration will drop the
+    // inline column once all stacks have drained.
+    scriptUrl: varchar('script_url', { length: 512 }),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

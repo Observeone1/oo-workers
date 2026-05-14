@@ -20,6 +20,25 @@ services:
       timeout: 3s
       retries: 10
 
+  rustfs:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_ACCESS_KEY: ${OO_OBJECT_STORAGE_ACCESS_KEY:-oo-workers-access}
+      RUSTFS_SECRET_KEY: ${OO_OBJECT_STORAGE_SECRET_KEY:-oo-workers-secret-change-me}
+      RUSTFS_OBS_LOGGER_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - rustfs_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:9000/ || exit 0']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:8-alpine
     restart: unless-stopped
@@ -56,9 +75,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rustfs:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
       REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      OO_OBJECT_STORAGE_ENDPOINT: ${OO_OBJECT_STORAGE_ENDPOINT:-http://rustfs:9000}
+      OO_OBJECT_STORAGE_REGION: ${OO_OBJECT_STORAGE_REGION:-us-east-1}
+      OO_OBJECT_STORAGE_BUCKET: ${OO_OBJECT_STORAGE_BUCKET:-oo-workers}
+      OO_OBJECT_STORAGE_ACCESS_KEY: ${OO_OBJECT_STORAGE_ACCESS_KEY:-oo-workers-access}
+      OO_OBJECT_STORAGE_SECRET_KEY: ${OO_OBJECT_STORAGE_SECRET_KEY:-oo-workers-secret-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_CHECK_CONCURRENCY: ${API_CHECK_CONCURRENCY:-10}
       URL_MONITOR_CONCURRENCY: ${URL_MONITOR_CONCURRENCY:-20}
@@ -78,6 +104,11 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@postgres:5432/${POSTGRES_DB:-oo_workers}
       REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      OO_OBJECT_STORAGE_ENDPOINT: ${OO_OBJECT_STORAGE_ENDPOINT:-http://rustfs:9000}
+      OO_OBJECT_STORAGE_REGION: ${OO_OBJECT_STORAGE_REGION:-us-east-1}
+      OO_OBJECT_STORAGE_BUCKET: ${OO_OBJECT_STORAGE_BUCKET:-oo-workers}
+      OO_OBJECT_STORAGE_ACCESS_KEY: ${OO_OBJECT_STORAGE_ACCESS_KEY:-oo-workers-access}
+      OO_OBJECT_STORAGE_SECRET_KEY: ${OO_OBJECT_STORAGE_SECRET_KEY:-oo-workers-secret-change-me}
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
@@ -89,3 +120,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  rustfs_data:

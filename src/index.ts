@@ -115,6 +115,23 @@ async function runMasterRole(): Promise<void> {
 
   const stopScheduler = startScheduler(connection);
 
+  // Phase 6 — kick off object-storage setup once after BullMQ is wired.
+  // Bucket creation + script backfill both no-op when storage is unconfigured.
+  // Don't block startup on either; log any error and continue.
+  void (async () => {
+    try {
+      const { ensureBucket, isStorageConfigured } = await import('./services/object-storage.ts');
+      if (!isStorageConfigured()) return;
+      await ensureBucket();
+      const { runBackfill } = await import('./services/storage-backfill.ts');
+      await runBackfill();
+    } catch (err) {
+      logger.error(
+        `object-storage init failed (continuing without it): ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  })();
+
   process.on('SIGTERM', async () => {
     logger.info('Shutting down workers...');
     await stopScheduler();

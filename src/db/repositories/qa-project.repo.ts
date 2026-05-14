@@ -2,6 +2,13 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
+import {
+  getObject,
+  isStorageConfigured,
+  putObject,
+  qaScriptKey,
+} from '../../services/object-storage.ts';
+import { logger } from '../../utils/logger.ts';
 
 export const qaProjectRepo = {
   async findAllWithLatest() {
@@ -63,24 +70,48 @@ export const qaProjectRepo = {
     return db.select().from(qaProjects).where(eq(qaProjects.id, id)).limit(1);
   },
 
-  findTestsByProjectId(projectId: number, opts: { includeScript?: boolean } = {}) {
-    const cols = opts.includeScript
-      ? {
-          id: qaGeneratedTests.id,
-          name: qaGeneratedTests.testName,
-          script: qaGeneratedTests.script,
-        }
-      : {
+  async findTestsByProjectId(projectId: number, opts: { includeScript?: boolean } = {}) {
+    if (!opts.includeScript) {
+      return db
+        .select({
           id: qaGeneratedTests.id,
           testName: qaGeneratedTests.testName,
           testType: qaGeneratedTests.testType,
           description: qaGeneratedTests.description,
           scriptSize: sql<number>`length(${qaGeneratedTests.script})`.as('script_size'),
-        };
-    return db
-      .select(cols as any)
+        })
+        .from(qaGeneratedTests)
+        .where(eq(qaGeneratedTests.projectId, projectId));
+    }
+    // Fetch both the inline script column and the script_url pointer; prefer
+    // storage when available, fall back to inline on storage error or when
+    // the row hasn't been backfilled yet.
+    const rows = await db
+      .select({
+        id: qaGeneratedTests.id,
+        name: qaGeneratedTests.testName,
+        script: qaGeneratedTests.script,
+        scriptUrl: qaGeneratedTests.scriptUrl,
+      })
       .from(qaGeneratedTests)
       .where(eq(qaGeneratedTests.projectId, projectId));
+    if (!isStorageConfigured()) {
+      return rows.map(({ id, name, script }) => ({ id, name, script }));
+    }
+    return Promise.all(
+      rows.map(async ({ id, name, script, scriptUrl }) => {
+        if (scriptUrl) {
+          try {
+            return { id, name, script: await getObject(scriptUrl) };
+          } catch (err) {
+            logger.error(
+              `qa-script storage GET failed for test ${id} (${scriptUrl}); using inline fallback: ${err instanceof Error ? err.message : err}`,
+            );
+          }
+        }
+        return { id, name, script };
+      }),
+    );
   },
 
   async findExecutionsByProjectId(projectId: number, limit = 100) {
@@ -111,17 +142,19 @@ export const qaProjectRepo = {
     return db.insert(qaProjects).values(data).returning();
   },
 
-  createTest(
+  async createTest(
     projectId: number,
     test: { testName: string; testType?: string; script: string; description?: string | null },
   ) {
-    return db
+    const inserted = await db
       .insert(qaGeneratedTests)
       .values({ projectId, ...test })
       .returning();
+    await maybeUploadScripts(inserted);
+    return inserted;
   },
 
-  createTests(
+  async createTests(
     projectId: number,
     rows: Array<{
       testName: string;
@@ -130,11 +163,13 @@ export const qaProjectRepo = {
       description?: string | null;
     }>,
   ) {
-    if (rows.length === 0) return Promise.resolve([] as never[]);
-    return db
+    if (rows.length === 0) return [] as never[];
+    const inserted = await db
       .insert(qaGeneratedTests)
       .values(rows.map((r) => ({ projectId, ...r })))
       .returning();
+    await maybeUploadScripts(inserted);
+    return inserted;
   },
 
   createExecution(
@@ -179,3 +214,32 @@ export const qaProjectRepo = {
       .where(eq(qaProjects.enabled, true));
   },
 };
+
+/**
+ * Upload newly-inserted test scripts to object storage and stamp `script_url`
+ * back onto each row. Best-effort: a storage outage just leaves rows with
+ * NULL script_url (the inline column is the durable fallback, and the
+ * boot-time backfill will retry later).
+ */
+async function maybeUploadScripts(
+  rows: Array<typeof qaGeneratedTests.$inferSelect>,
+): Promise<void> {
+  if (!isStorageConfigured() || rows.length === 0) return;
+  await Promise.all(
+    rows.map(async (row) => {
+      try {
+        const key = qaScriptKey(row.id);
+        await putObject(key, row.script, 'text/typescript');
+        await db
+          .update(qaGeneratedTests)
+          .set({ scriptUrl: key })
+          .where(eq(qaGeneratedTests.id, row.id));
+        row.scriptUrl = key;
+      } catch (err) {
+        logger.error(
+          `qa-script storage PUT failed for test ${row.id}; backfill will retry: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }),
+  );
+}

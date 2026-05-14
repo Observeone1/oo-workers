@@ -86,11 +86,30 @@ The dashboard ships a built-in reference at **http://localhost:3001/docs** cover
 - Playwright skeletons (login flow, checkout flow)
 - Bulk JSON import schema
 
+## Storage backend
+
+QA Playwright scripts live in object storage (S3 API). The default stack bundles **RustFS** as a container alongside Postgres + Redis — no extra setup, scripts upload automatically on create and read back on every run.
+
+To point at AWS S3 / Cloudflare R2 / Backblaze B2 / on-prem MinIO/Ceph instead, override these in `.env`:
+
+```bash
+OO_OBJECT_STORAGE_ENDPOINT=https://s3.amazonaws.com
+OO_OBJECT_STORAGE_REGION=us-east-1
+OO_OBJECT_STORAGE_BUCKET=my-bucket
+OO_OBJECT_STORAGE_ACCESS_KEY=AKIA...
+OO_OBJECT_STORAGE_SECRET_KEY=...
+```
+
+When overridden, the bundled RustFS container still starts (compose doesn't conditionally skip services) — it just sits idle. Operators with constrained hosts can comment out the `rustfs:` block in `docker-compose.yml`.
+
+Upgrading from `v0.9.x`? The first boot after `docker compose pull && docker compose up -d` runs a one-time backfill: existing rows in `qa_generated_tests` get uploaded to storage and stamped with `script_url`. Logs show `storage-backfill: 208 qa test scripts to upload` style progress. The inline `script` column stays as a fallback during the v1.0 cycle; a future patch drops it.
+
 ## Stack
 
 - **Runtime:** Bun
 - **Queue:** BullMQ + Redis 8
 - **DB:** Postgres 18 (via `bun:sql` — no `pg` client dep)
+- **Object storage:** RustFS by default (S3-compatible, Apache-2.0); any S3 endpoint via env override
 - **Browser:** Playwright (Chromium, headless)
 - **HTTP:** Hono
 - **UI:** plain HTML + TS bundled by `bun build` (no framework)
