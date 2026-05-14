@@ -66,63 +66,11 @@ Set `OO_BIND_ADDR=0.0.0.0` in `.env` to drop the loopback restriction. Then put 
 - An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. An allowlist of destination IPs is on the roadmap (S2 in the security plan).
 - TLS isn't built in. Terminate it at the proxy.
 
-## Multi-region (preview)
+## Multi-region
 
-Run probes from more than one location by attaching a regional **agent** to your master. The master holds the schedule, fans jobs out per region, and aggregates results. Agents are stateless — they only need outbound HTTPS back to the master, no database, no Redis, no inbound ports.
+Run probes from more than one location by attaching regional **agents** to your master. Master schedules and aggregates; agents are stateless and only need outbound HTTPS. Set up a region from the dashboard's **Regions** page, paste the printed key into `docker-compose.agent.yml`'s `.env`, and bind monitors via the **+ Add monitor** dialog's "Run from" picker.
 
-### Add a region
-
-1. On the master, generate a region + agent key in one step:
-
-   ```bash
-   docker compose exec worker bun scripts/create-region.ts \
-     --slug us-east --label "US East (Virginia)"
-   ```
-
-   It prints the three env vars the agent box needs.
-
-2. On the agent box (a $4 VPS, home lab, anywhere with outbound HTTPS), copy `.env.agent.example` to `.env`, paste in the key, and:
-
-   ```bash
-   docker compose -f docker-compose.agent.yml up -d
-   ```
-
-3. Bind monitors to the region using the regions API (UI lands in M3):
-
-   ```bash
-   # Replace the full set of regions for monitor #42.
-   # Empty array = "run on master only".
-   curl -X PUT https://master.example.com/api/monitors/url/42/regions \
-     -H "Authorization: Bearer oo_<your-write-key>" \
-     -H "content-type: application/json" \
-     -d '{"regionIds": [1]}'
-   ```
-
-   The scheduler will fan it out; the agent will probe it; results land in the master's database tagged with `region_id`.
-
-### What works on agents
-
-URL, API, TCP, UDP. Browser (Playwright) monitors report `ERROR` from agents in this release — run those from the master for now.
-
-### Multiple agents per region
-
-Running more than one agent for the same region is safe — `BRPOP` guarantees only one agent receives each job, and result writes are idempotent on `executionId`. You get parallel probe throughput for free. Each agent box needs its own clone of the agent key bound to the region.
-
-### Rotating an agent key
-
-```bash
-docker compose exec worker bun scripts/rotate-region-key.ts --slug us-east
-```
-
-Issues a fresh agent key, rebinds the region atomically, revokes the old key. The running agent starts getting 401 — restart it with the new env vars and it picks up where it left off. Region history (executions, last_seen_at) is preserved.
-
-### Stalled executions
-
-If an agent pops a job and crashes before posting back, the execution row stays at `PENDING` in the DB. The dashboard and API project these as `FAILED` once they're older than 2× the monitor's interval — there's no background sweeper, and a late agent result can still write into the row (the underlying status stays `PENDING` until something updates it).
-
-### Known gaps (Phase 4 M2)
-
-- **No UI for region selection.** Use the `PUT /api/monitors/:type/:id/regions` endpoint above. M3 ships the dialog.
+→ **Full walkthrough, architecture, and troubleshooting in [docs/multi-region.md](docs/multi-region.md).**
 
 ## Documentation
 
@@ -177,45 +125,6 @@ The dashboard has an **Import JSON** button. Schema:
 
 Full schema at `/docs#import`.
 
-## Develop without Docker
-
-```bash
-bun install
-# point at your own postgres + redis
-export DATABASE_URL=postgres://oo:oo@localhost:5432/oo_workers
-export REDIS_URL=redis://localhost:6379
-bun src/db/migrate.ts
-bun --watch src/index.ts    # worker + scheduler
-bun --watch src/ui-server.ts # in another shell — HTTP + UI on $PORT
-```
-
-## Project layout
-
-```
-src/
-├── index.ts                 # worker entrypoint (BullMQ + scheduler, no HTTP)
-├── ui-server.ts             # UI entrypoint (Hono + serves dashboard)
-├── server.ts                # REST API + static UI handlers
-├── scheduler.ts             # interval-based job enqueueing
-├── config/db.ts             # bun:sql client
-├── db/migrate.ts            # .sql runner with schema_migrations tracking
-├── middleware/              # auth gate (Bearer + cookie)
-├── processors/              # url-monitor, api-check, qa-project, tcp-monitor, udp-monitor
-├── services/                # assertion engine, Playwright runner, tcp-probe, udp-probe
-└── ui/                      # index.html + app.ts + login.ts + docs.html
-migrations/
-├── 0001_init.sql            # core schema
-├── 0002_scheduler.sql       # interval_seconds + enabled
-├── 0003_tcp.sql             # tcp_monitors + tcp_executions
-├── 0004_udp.sql             # udp_monitors + udp_executions
-└── 0005_auth.sql            # api_keys
-scripts/
-├── smoke.ts                 # multi-monitor end-to-end smoke
-├── load.ts                  # concurrency + failure modes + assertion breadth
-├── scheduler-test.ts        # scheduler tick verification
-└── create-api-key.ts        # bootstrap an API key
-```
-
 ## Limitations
 
 Browser checks run against **plain headless Chromium** inside the container — no captcha bypass, no residential proxies, no clean-IP fingerprint rotation. That means:
@@ -233,7 +142,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Contributing
 
-Issues + PRs welcome once we get past v0.2 polish. For now, kick the tires and tell us what breaks.
+Issues + PRs welcome. Dev setup, project layout, test commands, and the release flow live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

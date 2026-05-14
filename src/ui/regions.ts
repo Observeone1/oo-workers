@@ -27,7 +27,7 @@ export async function renderRegions() {
         <h2>Regions</h2>
         <p class="meta">
           Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master.
-          See <a href="https://github.com/Observeone1/oo-workers#multi-region-preview" target="_blank">README</a>
+          See the <a href="https://github.com/Observeone1/oo-workers/blob/main/docs/multi-region.md" target="_blank">multi-region guide</a>
           for the agent quickstart.
         </p>
       </div>
