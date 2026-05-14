@@ -51,11 +51,21 @@ Run probes from more than one location by attaching regional **agents** to your 
 
 ## Storage
 
-Browser-check scripts and (soon) failed-run traces live in object storage. The default stack bundles **RustFS** (Apache-2.0, S3-compatible) — no setup, scripts upload on create, the bucket is browsable at **http://localhost:9001** with the keys from your `.env`.
+Browser-check scripts and **run artifacts** (Playwright `trace.zip` + screenshot, captured on failure) live in object storage. The default stack bundles **RustFS** (Apache-2.0, S3-compatible) — no setup, scripts upload on create, traces upload on failed runs. Browse the bucket at **http://localhost:9001** with the keys from your `.env`.
 
-Keys follow `qa-projects/<projectId>-<slug>/<testId>-<slug>.spec.ts`, so the bucket reads like your monitors do. Deleting a monitor cleans up its bucket objects; a boot-time orphan sweep handles anything that slips through.
+Keys follow `qa-projects/<projectId>-<slug>/...` — scripts at the root, run artifacts under `runs/<execId>/`. The monitor detail page shows trace + screenshot links per failed run; download the trace and open it with `npx playwright show-trace trace.zip`. Monitor delete cleans up its bucket objects; a boot-time orphan sweep handles anything that slips through.
 
-Point at any S3 endpoint by overriding in `.env`:
+### Why RustFS
+
+The default storage backend went through three picks:
+
+- **MinIO** was the obvious choice for years. Relicensed to AGPL-3.0 in February 2026 and archived the community repo. AGPL on a bundled binary is a deal-breaker for enterprises that ban copyleft in their stack, even when shipped unmodified.
+- **Garage** (Deuxfleurs) was next. Lightweight, geo-distributed, Rust. Also AGPL-3.0. Same problem.
+- **RustFS** (Apache-2.0) shipped. Drop-in MinIO replacement, single Rust binary, actively maintained. License matches oo-workers' own Apache-2.0 so the whole stack stays permissive.
+
+### Bring your own S3
+
+Point at any S3-compatible endpoint by overriding `.env`:
 
 ```bash
 OO_OBJECT_STORAGE_ENDPOINT=https://s3.amazonaws.com
@@ -64,7 +74,7 @@ OO_OBJECT_STORAGE_ACCESS_KEY=AKIA...
 OO_OBJECT_STORAGE_SECRET_KEY=...
 ```
 
-Works with AWS S3, Cloudflare R2, Backblaze B2, MinIO, Ceph — anything that speaks the S3 protocol.
+Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph — anything that speaks the S3 protocol. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
 
 ## Security & deployment
 
@@ -124,7 +134,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Releases
 
-Active releases live on [GitHub Releases](https://github.com/Observeone1/oo-workers/releases) and Docker Hub (`observeone/oo-workers`). Latest stable is **v1.1.1**.
+Active releases live on [GitHub Releases](https://github.com/Observeone1/oo-workers/releases) and Docker Hub (`observeone/oo-workers`). Latest stable is **v1.2.1**.
 
 ## Contributing
 
