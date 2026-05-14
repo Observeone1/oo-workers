@@ -114,7 +114,7 @@ function encodeKey(key: string): string {
 
 async function signedFetch(
   cfg: Config,
-  method: 'GET' | 'PUT' | 'HEAD',
+  method: 'GET' | 'PUT' | 'HEAD' | 'DELETE',
   key: string,
   body: Buffer | null,
   extraHeaders: Record<string, string> = {},
@@ -296,6 +296,57 @@ export async function ensureBucket(): Promise<void> {
 }
 
 /** A stable key for a QA test script. */
-export function qaScriptKey(testId: number): string {
-  return `qa-scripts/${testId}.spec.ts`;
+export function qaScriptKey(
+  projectId: number,
+  projectName: string,
+  testId: number,
+  testName: string,
+): string {
+  return `qa-projects/${projectId}-${slug(projectName)}/${testId}-${slug(testName)}.spec.ts`;
+}
+
+/** True if a key looks like the legacy `qa-scripts/<id>.spec.ts` layout. */
+export function isLegacyQaScriptKey(key: string): boolean {
+  return key.startsWith('qa-scripts/');
+}
+
+/**
+ * Slug helper for keys: lowercase ASCII, hyphen-separated, capped at 40
+ * chars. Strips diacritics so non-ASCII project names still produce readable
+ * keys. Falls back to "untitled" so we never emit an empty path segment.
+ */
+function slug(input: string): string {
+  const normalized = input
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const capped = normalized.slice(0, 40).replace(/-+$/g, '');
+  return capped || 'untitled';
+}
+
+/**
+ * Copy an object to a new key, idempotently. S3 doesn't have an atomic move —
+ * we GET, PUT to the new key, then DELETE the old. Boot-time storage layout
+ * migration calls this; not used on the hot path.
+ */
+export async function moveObject(oldKey: string, newKey: string): Promise<void> {
+  if (oldKey === newKey) return;
+  const body = await getObject(oldKey);
+  await putObject(newKey, body, 'text/typescript');
+  await deleteObject(oldKey);
+}
+
+/** Best-effort DELETE — used by the boot-time migration to clean up old keys. */
+async function deleteObject(key: string): Promise<void> {
+  const cfg = requireConfig();
+  const res = await signedFetch(cfg, 'DELETE', key, null);
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => '');
+    throw new ObjectStorageError(
+      `DELETE ${key} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      res.status,
+    );
+  }
 }

@@ -225,10 +225,17 @@ async function maybeUploadScripts(
   rows: Array<typeof qaGeneratedTests.$inferSelect>,
 ): Promise<void> {
   if (!isStorageConfigured() || rows.length === 0) return;
+  const projectId = rows[0]!.projectId;
+  const [proj] = await db
+    .select({ name: qaProjects.name })
+    .from(qaProjects)
+    .where(eq(qaProjects.id, projectId))
+    .limit(1);
+  const projectName = proj?.name ?? `project-${projectId}`;
   await Promise.all(
     rows.map(async (row) => {
       try {
-        const key = qaScriptKey(row.id);
+        const key = qaScriptKey(projectId, projectName, row.id, row.testName ?? `test-${row.id}`);
         await putObject(key, row.script, 'text/typescript');
         await db
           .update(qaGeneratedTests)
