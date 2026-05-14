@@ -338,8 +338,8 @@ export async function moveObject(oldKey: string, newKey: string): Promise<void> 
   await deleteObject(oldKey);
 }
 
-/** Best-effort DELETE — used by the boot-time migration to clean up old keys. */
-async function deleteObject(key: string): Promise<void> {
+/** Best-effort DELETE — used by the boot-time migration and the QA delete path. */
+export async function deleteObject(key: string): Promise<void> {
   const cfg = requireConfig();
   const res = await signedFetch(cfg, 'DELETE', key, null);
   if (!res.ok && res.status !== 404) {
@@ -349,4 +349,71 @@ async function deleteObject(key: string): Promise<void> {
       res.status,
     );
   }
+}
+
+/**
+ * List all object keys under the given prefix. Pages through ListObjectsV2
+ * until the bucket is exhausted. Used by the boot-time orphan sweep.
+ */
+export async function listObjects(prefix: string): Promise<string[]> {
+  const cfg = requireConfig();
+  const out: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const url = new URL(cfg.endpoint);
+    url.pathname = `/${cfg.bucket}`;
+    url.searchParams.set('list-type', '2');
+    url.searchParams.set('prefix', prefix);
+    if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const payloadHash = sha256Hex('');
+    const headers: Record<string, string> = {
+      host: url.host,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+    };
+    const sorted = Object.keys(headers).sort();
+    const canonicalHeaders = sorted.map((k) => `${k}:${headers[k]}\n`).join('');
+    const signedHeaders = sorted.join(';');
+    const qs = [...url.searchParams.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    const canonicalRequest = [
+      'GET',
+      url.pathname,
+      qs,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+    const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      sha256Hex(canonicalRequest),
+    ].join('\n');
+    const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
+    const signature = hex(hmac(kSigning, stringToSign));
+    const authHeader =
+      `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    const res = await fetch(url.toString(), { headers: { ...headers, Authorization: authHeader } });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ObjectStorageError(
+        `LIST ${prefix} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+        res.status,
+      );
+    }
+    const xml = await res.text();
+    for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) out.push(m[1]);
+    const nextMatch = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+    continuationToken = nextMatch?.[1];
+  } while (continuationToken);
+  return out;
 }

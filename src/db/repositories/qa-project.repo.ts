@@ -3,6 +3,7 @@ import { db } from '../../config/db.ts';
 import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
 import {
+  deleteObject,
   getObject,
   isStorageConfigured,
   putObject,
@@ -193,8 +194,34 @@ export const qaProjectRepo = {
     return db.update(qaProjects).set({ enabled }).where(eq(qaProjects.id, id));
   },
 
-  deleteById(id: number) {
-    return db.delete(qaProjects).where(eq(qaProjects.id, id));
+  async deleteById(id: number) {
+    // Collect storage keys before the row (and cascaded tests) disappear, so
+    // we can drop the objects in storage too. Best-effort: a failed delete
+    // here logs and continues — the row is gone either way, and the
+    // boot-time orphan sweep is the durable backstop.
+    const keys: string[] = isStorageConfigured()
+      ? (
+          await db
+            .select({ scriptUrl: qaGeneratedTests.scriptUrl })
+            .from(qaGeneratedTests)
+            .where(eq(qaGeneratedTests.projectId, id))
+        )
+          .map((r) => r.scriptUrl)
+          .filter((u): u is string => !!u)
+      : [];
+    await db.delete(qaProjects).where(eq(qaProjects.id, id));
+    if (keys.length === 0) return;
+    await Promise.all(
+      keys.map(async (key) => {
+        try {
+          await deleteObject(key);
+        } catch (err) {
+          logger.error(
+            `qa-script storage DELETE failed for ${key}; boot-time sweep will retry: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }),
+    );
   },
 
   findDue() {

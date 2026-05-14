@@ -16,8 +16,10 @@ import { and, eq, isNotNull, isNull, like, sql } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import { qaGeneratedTests, qaProjects } from '../db/schema.ts';
 import {
+  deleteObject,
   isLegacyQaScriptKey,
   isStorageConfigured,
+  listObjects,
   moveObject,
   putObject,
   qaScriptKey,
@@ -29,21 +31,24 @@ const BATCH = 50;
 export async function runBackfill(): Promise<{
   uploaded: number;
   migrated: number;
+  orphansDeleted: number;
   failed: number;
 }> {
   if (!isStorageConfigured()) {
     logger.info('storage-backfill: skipped (OO_OBJECT_STORAGE_* not configured)');
-    return { uploaded: 0, migrated: 0, failed: 0 };
+    return { uploaded: 0, migrated: 0, orphansDeleted: 0, failed: 0 };
   }
   const uploaded = await uploadPending();
   const migrated = await migrateLegacy();
+  const orphans = await sweepOrphans();
   logger.info(
-    `storage-backfill: done — uploaded=${uploaded.uploaded} migrated=${migrated.migrated} failed=${uploaded.failed + migrated.failed}`,
+    `storage-backfill: done — uploaded=${uploaded.uploaded} migrated=${migrated.migrated} orphans=${orphans.deleted} failed=${uploaded.failed + migrated.failed + orphans.failed}`,
   );
   return {
     uploaded: uploaded.uploaded,
     migrated: migrated.migrated,
-    failed: uploaded.failed + migrated.failed,
+    orphansDeleted: orphans.deleted,
+    failed: uploaded.failed + migrated.failed + orphans.failed,
   };
 }
 
@@ -105,6 +110,43 @@ async function uploadPending(): Promise<{ uploaded: number; failed: number }> {
     }
   }
   return { uploaded, failed };
+}
+
+/**
+ * List both `qa-scripts/` (legacy) and `qa-projects/` (current) prefixes,
+ * subtract the set of keys still referenced by qa_generated_tests.script_url,
+ * and delete whatever's left. Cleans up after monitor deletions that didn't
+ * have storage-cleanup wired up (pre-v1.1.1) and after future bugs.
+ */
+async function sweepOrphans(): Promise<{ deleted: number; failed: number }> {
+  const live = new Set<string>();
+  const rows = await db.select({ scriptUrl: qaGeneratedTests.scriptUrl }).from(qaGeneratedTests);
+  for (const r of rows) if (r.scriptUrl) live.add(r.scriptUrl);
+
+  const bucketKeys = [
+    ...(await listObjects('qa-scripts/')),
+    ...(await listObjects('qa-projects/')),
+  ];
+  const orphans = bucketKeys.filter((k) => !live.has(k));
+  if (orphans.length === 0) return { deleted: 0, failed: 0 };
+
+  logger.info(`storage-backfill: ${orphans.length} orphan object(s) to sweep`);
+  let deleted = 0;
+  let failed = 0;
+  await Promise.all(
+    orphans.map(async (key) => {
+      try {
+        await deleteObject(key);
+        deleted++;
+      } catch (err) {
+        failed++;
+        logger.error(
+          `storage-backfill: orphan delete failed for ${key}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }),
+  );
+  return { deleted, failed };
 }
 
 async function migrateLegacy(): Promise<{ migrated: number; failed: number }> {
