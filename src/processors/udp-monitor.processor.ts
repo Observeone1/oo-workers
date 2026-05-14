@@ -3,6 +3,7 @@ import { DEFAULTS } from '../constants.ts';
 import { udpMonitorRepo } from '../db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload, udpProbe } from '../services/udp-probe.ts';
 import { logger } from '../utils/logger.ts';
+import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 
 export const udpMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
@@ -39,15 +40,25 @@ export const udpMonitorProcessor = async (job: Job) => {
       responseBytes: result.responseBytes ?? null,
       endTime: new Date(),
     });
+    void maybeAlertOnTransition('udp', monitor.id, executionId, 'SUCCESS', {
+      durationMs: result.latencyMs,
+    });
     return { success: true };
   }
 
   logger.error(`UDP monitor execution ${executionId} failed: ${result.errorMessage}`);
+  const finalStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
   await udpMonitorRepo.updateExecution(executionId, {
-    status: isFinalAttempt ? 'FAILED' : 'PENDING',
+    status: finalStatus,
     latencyMs: result.latencyMs,
     errorMessage: result.errorMessage,
     endTime: new Date(),
   });
+  if (finalStatus === 'FAILED') {
+    void maybeAlertOnTransition('udp', monitor.id, executionId, 'FAILED', {
+      durationMs: result.latencyMs,
+      errorMessage: result.errorMessage,
+    });
+  }
   throw new Error(result.errorMessage ?? 'UDP probe failed');
 };

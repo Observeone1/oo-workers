@@ -18,6 +18,9 @@
           <a href="#/regions" id="regions-link" class="nav-link" data-route="regions"
             >Regions<span id="regions-badge" class="nav-badge" hidden></span
           ></a>
+          <a href="#/channels" id="channels-link" class="nav-link" data-route="channels"
+            >Channels</a
+          >
           <a href="#/docs" class="nav-link" data-route="docs">Docs</a>
         </nav>
       </div>
@@ -175,6 +178,18 @@
             are not yet supported on agents.
           </p>
           <div id="regions-checkboxes" class="regions-checkboxes"></div>
+        </div>
+
+        <div id="channels-row" class="regions-picker" hidden>
+          <label>
+            Alert via
+            <a href="#/channels" class="hint" data-tooltip="Manage alert channels">?</a>
+          </label>
+          <p class="meta">
+            Check the channels to notify when this monitor flips from up to down (and again on
+            recovery). Empty means no alerts. QA (browser) monitors don't alert yet.
+          </p>
+          <div id="channels-checkboxes" class="regions-checkboxes"></div>
         </div>
 
         <div class="dialog-actions">

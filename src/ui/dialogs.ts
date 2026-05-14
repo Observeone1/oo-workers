@@ -1,11 +1,21 @@
 import type { MonType } from './types';
 import { $, esc } from './helpers';
-import { createMonitor, getRegions, importJson, setMonitorRegions, type RegionLite } from './api';
+import {
+  createMonitor,
+  getChannels,
+  getRegions,
+  importJson,
+  setMonitorChannels,
+  setMonitorRegions,
+  type ChannelLite,
+  type RegionLite,
+} from './api';
 import { renderList, setActiveTab } from './list';
 
 // Cache regions for the lifetime of the dialog session. Refreshed each time
 // the operator opens "Add monitor" so freshly-created regions show up.
 let cachedRegions: RegionLite[] = [];
+let cachedChannels: ChannelLite[] = [];
 
 export function initDialogs() {
   initAddDialog();
@@ -31,7 +41,7 @@ function initAddDialog() {
   typeSelect.addEventListener('change', syncFields);
   $('#add-btn').addEventListener('click', async () => {
     syncFields();
-    await refreshRegionsPicker();
+    await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);
     addDialog.showModal();
   });
   $('#cancel-btn').addEventListener('click', () => addDialog.close());
@@ -118,9 +128,9 @@ function initAddDialog() {
     }
     const created = (await res.json().catch(() => null)) as { id?: number } | null;
 
-    // If the operator checked any regions, bind them now. Fire-and-forget on
-    // failure isn't ideal but the monitor exists; the operator can fix the
-    // binding via the Regions page if this PUT fails.
+    // If the operator checked any regions/channels, bind them now. Best-effort:
+    // the monitor itself exists either way; the operator can re-bind from the
+    // Regions / Channels page if these PUTs fail.
     if (created?.id) {
       const regionIds = collectSelectedRegionIds();
       if (regionIds.length > 0) {
@@ -131,6 +141,18 @@ function initAddDialog() {
             `Monitor created but region binding failed: ${
               err instanceof Error ? err.message : String(err)
             }. Fix it from the Regions page.`,
+          );
+        }
+      }
+      const channelIds = collectSelectedChannelIds();
+      if (channelIds.length > 0) {
+        try {
+          await setMonitorChannels(type, created.id, channelIds);
+        } catch (err) {
+          alert(
+            `Monitor created but alert-channel binding failed: ${
+              err instanceof Error ? err.message : String(err)
+            }. Fix it from the Channels page.`,
           );
         }
       }
@@ -177,6 +199,42 @@ async function refreshRegionsPicker() {
 function collectSelectedRegionIds(): number[] {
   const checked = document.querySelectorAll<HTMLInputElement>(
     '#regions-checkboxes input[name="region_id"]:checked',
+  );
+  return Array.from(checked)
+    .map((el) => Number(el.value))
+    .filter((n) => Number.isFinite(n));
+}
+
+async function refreshChannelsPicker() {
+  const row = document.getElementById('channels-row') as HTMLElement;
+  const container = document.getElementById('channels-checkboxes') as HTMLElement;
+  try {
+    cachedChannels = await getChannels();
+  } catch {
+    cachedChannels = [];
+  }
+  if (cachedChannels.length === 0) {
+    row.hidden = true;
+    container.innerHTML = '';
+    return;
+  }
+  row.hidden = false;
+  container.innerHTML = cachedChannels
+    .map(
+      (c) => `
+      <label class="channel-pick">
+        <input type="checkbox" name="channel_id" value="${c.id}" />
+        <span class="channel-pick-type type-${c.type}">${esc(c.type)}</span>
+        <span class="channel-pick-name">${esc(c.name)}</span>
+      </label>
+    `,
+    )
+    .join('');
+}
+
+function collectSelectedChannelIds(): number[] {
+  const checked = document.querySelectorAll<HTMLInputElement>(
+    '#channels-checkboxes input[name="channel_id"]:checked',
   );
   return Array.from(checked)
     .map((el) => Number(el.value))

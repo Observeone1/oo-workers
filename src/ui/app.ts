@@ -16,6 +16,7 @@ import type { MonType } from './types';
 import { renderList } from './list';
 import { renderDetail } from './detail';
 import { renderRegions } from './regions';
+import { renderChannels } from './channels';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
 import { getRegions } from './api';
@@ -64,7 +65,7 @@ async function refreshRegionBadge() {
   void refreshRegionBadge();
 };
 
-function setActiveNav(route: 'list' | 'regions' | 'docs' | null) {
+function setActiveNav(route: 'list' | 'regions' | 'channels' | 'docs' | null) {
   document.querySelectorAll<HTMLAnchorElement>('.header-nav .nav-link').forEach((a) => {
     a.classList.toggle('active', route !== null && a.dataset.route === route);
   });
@@ -75,6 +76,11 @@ function route() {
   if (h === '#/regions' || h.startsWith('#/regions/')) {
     setActiveNav('regions');
     renderRegions();
+    return;
+  }
+  if (h === '#/channels' || h.startsWith('#/channels/')) {
+    setActiveNav('channels');
+    renderChannels();
     return;
   }
   if (h === '#/docs' || h.startsWith('#/docs/')) {
@@ -133,6 +139,7 @@ async function boot() {
       location.hash.startsWith('#/tcp/') ||
       location.hash.startsWith('#/udp/') ||
       location.hash.startsWith('#/regions') ||
+      location.hash.startsWith('#/channels') ||
       location.hash.startsWith('#/docs')
     )
       return;

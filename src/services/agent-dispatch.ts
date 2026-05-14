@@ -19,6 +19,7 @@ import {
 } from '../db/schema.ts';
 import type { MonitorType } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
+import { maybeAlertOnTransition } from './transition-detector.ts';
 
 const REGION_LIST = (slug: string) => `oo:jobs:${slug}`;
 
@@ -102,8 +103,17 @@ export async function writeAgentResult(
             eq(urlMonitorExecutions.regionId, agentRegionId),
           ),
         )
-        .returning({ id: urlMonitorExecutions.id });
-      return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+        .returning({ id: urlMonitorExecutions.id, monitorId: urlMonitorExecutions.urlMonitorId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('url', rows[0].monitorId, executionId, status, {
+          statusCode: body.statusCode ?? null,
+          durationMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
     }
     case 'api': {
       const rows = await db
@@ -119,8 +129,17 @@ export async function writeAgentResult(
           endTime,
         })
         .where(and(eq(apiExecutions.id, executionId), eq(apiExecutions.regionId, agentRegionId)))
-        .returning({ id: apiExecutions.id });
-      return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+        .returning({ id: apiExecutions.id, monitorId: apiExecutions.apiCheckId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('api', rows[0].monitorId, executionId, status, {
+          statusCode: body.responseStatus ?? null,
+          durationMs: body.responseTimeMs ?? body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
     }
     case 'tcp': {
       const rows = await db
@@ -132,8 +151,16 @@ export async function writeAgentResult(
           endTime,
         })
         .where(and(eq(tcpExecutions.id, executionId), eq(tcpExecutions.regionId, agentRegionId)))
-        .returning({ id: tcpExecutions.id });
-      return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+        .returning({ id: tcpExecutions.id, monitorId: tcpExecutions.tcpMonitorId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('tcp', rows[0].monitorId, executionId, status, {
+          durationMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
     }
     case 'udp': {
       const rows = await db
@@ -146,8 +173,16 @@ export async function writeAgentResult(
           endTime,
         })
         .where(and(eq(udpExecutions.id, executionId), eq(udpExecutions.regionId, agentRegionId)))
-        .returning({ id: udpExecutions.id });
-      return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+        .returning({ id: udpExecutions.id, monitorId: udpExecutions.udpMonitorId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('udp', rows[0].monitorId, executionId, status, {
+          durationMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
     }
     case 'qa': {
       // QA project runs create exec rows per-test inside the processor; the

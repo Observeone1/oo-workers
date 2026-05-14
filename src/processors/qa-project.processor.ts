@@ -214,6 +214,11 @@ export const createQaProjectProcessor = (redis: Redis) => {
 
       await qaProjectRepo.touchLastRunAt(projectId);
 
+      // TODO Phase 5.x — QA alerts have per-project-run semantics (a batch of
+      // test executions vs the previous batch's aggregate outcome) that don't
+      // fit the single-row transition detector used by url/api/tcp/udp.
+      // Skipped in the v0.8.0 MVP.
+
       const completionData = {
         type: 'run_completed',
         project_id: projectId,

@@ -3,6 +3,7 @@ import { DEFAULTS } from '../constants.ts';
 import { tcpMonitorRepo } from '../db/repositories/tcp-monitor.repo.ts';
 import { tcpProbe } from '../services/tcp-probe.ts';
 import { logger } from '../utils/logger.ts';
+import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 
 export const tcpMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
@@ -19,15 +20,25 @@ export const tcpMonitorProcessor = async (job: Job) => {
       latencyMs: result.latencyMs,
       endTime: new Date(),
     });
+    void maybeAlertOnTransition('tcp', monitor.id, executionId, 'SUCCESS', {
+      durationMs: result.latencyMs,
+    });
     return { success: true };
   }
 
   logger.error(`TCP monitor execution ${executionId} failed: ${result.errorMessage}`);
+  const finalStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
   await tcpMonitorRepo.updateExecution(executionId, {
-    status: isFinalAttempt ? 'FAILED' : 'PENDING',
+    status: finalStatus,
     latencyMs: result.latencyMs,
     errorMessage: result.errorMessage,
     endTime: new Date(),
   });
+  if (finalStatus === 'FAILED') {
+    void maybeAlertOnTransition('tcp', monitor.id, executionId, 'FAILED', {
+      durationMs: result.latencyMs,
+      errorMessage: result.errorMessage,
+    });
+  }
   throw new Error(result.errorMessage ?? 'TCP probe failed');
 };

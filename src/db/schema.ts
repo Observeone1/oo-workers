@@ -313,3 +313,45 @@ export const monitorRegions = pgTable(
     index('idx_monitor_regions_region').on(t.regionId),
   ],
 );
+
+// ============================================================
+//   alert channels — Phase 5
+// ============================================================
+
+// Channel types: 'webhook' | 'discord' | 'slack'. Config is jsonb so
+// each type can add per-shape fields (URL, custom headers, mention
+// strings) without a migration.
+export const alertChannels = pgTable(
+  'alert_channels',
+  {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    type: varchar('type', { length: 32 }).notNull(),
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_alert_channels_enabled').on(t.enabled)],
+);
+
+// monitor_type is one of: 'url' | 'api' | 'tcp' | 'udp' | 'qa'. Same
+// pattern as monitor_regions — no real FK because per-type monitor
+// tables are separate; the application layer cleans up on monitor
+// delete.
+export const monitorAlertChannels = pgTable(
+  'monitor_alert_channels',
+  {
+    monitorType: varchar('monitor_type', { length: 16 }).notNull(),
+    monitorId: integer('monitor_id').notNull(),
+    channelId: integer('channel_id')
+      .notNull()
+      .references(() => alertChannels.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.monitorType, t.monitorId, t.channelId] }),
+    index('idx_monitor_alert_channels_monitor').on(t.monitorType, t.monitorId),
+    index('idx_monitor_alert_channels_channel').on(t.channelId),
+  ],
+);

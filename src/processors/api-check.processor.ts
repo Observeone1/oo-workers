@@ -4,6 +4,7 @@ import { apiCheckRepo } from '../db/repositories/api-check.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateAssertions } from '../services/api-assertion.ts';
+import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 
 export const apiCheckProcessor = async (job: Job) => {
   const { executionId, apiCheck, assertions } = job.data;
@@ -67,6 +68,15 @@ export const apiCheckProcessor = async (job: Job) => {
       endTime: new Date(),
     });
 
+    if (status === 'SUCCESS' || status === 'FAILED') {
+      void maybeAlertOnTransition('api', apiCheck.id, executionId, status, {
+        statusCode: response.status,
+        durationMs: responseTime,
+        errorMessage: allAssertionsPassed ? null : 'One or more assertions failed',
+        startTime: new Date(startTime),
+      });
+    }
+
     if (!allAssertionsPassed) {
       throw new Error('One or more assertions failed');
     }
@@ -78,11 +88,18 @@ export const apiCheckProcessor = async (job: Job) => {
 
     logger.error(`API check execution ${executionId} failed: ${errorMessage}`);
 
+    const finalStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
     await apiCheckRepo.updateExecution(executionId, {
-      status: isFinalAttempt ? 'FAILED' : 'PENDING',
+      status: finalStatus,
       errorMessage,
       endTime: new Date(),
     });
+
+    if (finalStatus === 'FAILED') {
+      void maybeAlertOnTransition('api', apiCheck.id, executionId, 'FAILED', {
+        errorMessage,
+      });
+    }
 
     throw new Error(errorMessage);
   }

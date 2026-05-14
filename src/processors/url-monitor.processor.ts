@@ -4,6 +4,7 @@ import { urlMonitorRepo } from '../db/repositories/url-monitor.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateUrlMonitorAssertions } from '../services/url-assertion.ts';
+import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 
 export const urlMonitorProcessor = async (job: Job) => {
   const { executionId, monitor, assertions } = job.data;
@@ -32,6 +33,15 @@ export const urlMonitorProcessor = async (job: Job) => {
       endTime: new Date(),
     });
 
+    if (status === 'SUCCESS' || status === 'FAILED') {
+      void maybeAlertOnTransition('url', monitor.id, executionId, status, {
+        statusCode: response.status,
+        durationMs: responseTime,
+        errorMessage: allPassed ? null : 'Assertions failed',
+        startTime: new Date(startTime),
+      });
+    }
+
     if (!allPassed) {
       throw new Error('Assertions failed');
     }
@@ -44,12 +54,21 @@ export const urlMonitorProcessor = async (job: Job) => {
 
     logger.error(`URL monitor execution ${executionId} failed: ${detailedMessage}`);
 
+    const finalStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
     await urlMonitorRepo.updateExecution(executionId, {
-      status: isFinalAttempt ? 'FAILED' : 'PENDING',
+      status: finalStatus,
       errorMessage: detailedMessage,
       responseTimeMs: responseTime,
       endTime: new Date(),
     });
+
+    if (finalStatus === 'FAILED') {
+      void maybeAlertOnTransition('url', monitor.id, executionId, 'FAILED', {
+        errorMessage: detailedMessage,
+        durationMs: responseTime,
+        startTime: new Date(startTime),
+      });
+    }
 
     throw new Error(detailedMessage);
   }

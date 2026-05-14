@@ -92,3 +92,50 @@ export const setMonitorRegions = (type: MonType, id: number, regionIds: number[]
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ regionIds }),
   });
+
+// ---------- alert channels ----------
+
+export type ChannelType = 'webhook' | 'discord' | 'slack';
+
+export interface ChannelLite {
+  id: number;
+  name: string;
+  type: ChannelType;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export const getChannels = async (): Promise<ChannelLite[]> =>
+  (await fetch('/api/channels', COMMON)).json();
+
+export const createChannel = async (
+  name: string,
+  type: ChannelType,
+  url: string,
+): Promise<{ res: Response; data: ChannelLite | { error: string } }> => {
+  const res = await fetch('/api/channels', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, type, url }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const deleteChannel = (id: number) =>
+  fetch(`/api/channels/${id}`, { ...COMMON, method: 'DELETE' });
+
+export const testChannel = async (
+  id: number,
+): Promise<{ res: Response; data: { ok: boolean; error?: string } }> => {
+  const res = await fetch(`/api/channels/${id}/test`, { ...COMMON, method: 'POST' });
+  return { res, data: await res.json().catch(() => ({ ok: false })) };
+};
+
+export const setMonitorChannels = (type: MonType, id: number, channelIds: number[]) =>
+  fetch(`/api/monitors/${type}/${id}/channels`, {
+    ...COMMON,
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ channelIds }),
+  });
