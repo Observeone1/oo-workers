@@ -8,6 +8,7 @@ export interface RunLite {
   durationMs?: number | null;
   errorMessage?: string | null;
   startTime: string;
+  regionId?: number | null;
 }
 
 export interface Monitor {

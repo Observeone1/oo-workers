@@ -17,9 +17,14 @@ interface OneTimeKey {
 
 let oneTimeKey: OneTimeKey | null = null;
 
+function nudgeBadge() {
+  (globalThis as unknown as { ooRefreshRegionBadge?: () => void }).ooRefreshRegionBadge?.();
+}
+
 export async function renderRegions() {
   const main = $('#main');
   const regions = await getRegions();
+  nudgeBadge();
 
   main.innerHTML = `
     <div class="regions-page">

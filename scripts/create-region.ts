@@ -2,13 +2,9 @@
 /**
  * Register a new region + provision an agent API key for it.
  *
- * Two side effects:
- *   1. Insert a row into `regions` with the given slug + label
- *   2. Insert a row into `api_keys` with scope=['agent'] bound to that region
- *
- * The cleartext key is printed once and never stored — paste it into the
- * agent box's env as `OO_AGENT_KEY=...`. Along with `OO_MASTER_URL` and
- * `OO_REGION_SLUG` (matching --slug), that's everything the agent needs.
+ * Thin wrapper around services/region-admin.ts — the same code path the
+ * dashboard's Regions page uses. The cleartext key is printed once and
+ * never stored; paste it into the agent box's env as `OO_AGENT_KEY=...`.
  *
  * Usage:
  *   bun scripts/create-region.ts --slug us-east --label "US East (Virginia)"
@@ -18,11 +14,8 @@
  *   docker compose exec worker bun scripts/create-region.ts --slug us-east --label "US East"
  */
 
-import { randomBytes } from 'node:crypto';
-import { apiKeyRepo } from '../src/db/repositories/api-key.repo.ts';
-import { regionRepo } from '../src/db/repositories/region.repo.ts';
 import { sql } from '../src/config/db.ts';
-import { KEY_PREFIX_LEN } from '../src/middleware/auth.ts';
+import { createRegionWithKey, RegionAdminError } from '../src/services/region-admin.ts';
 
 interface Args {
   slug: string;
@@ -49,10 +42,6 @@ function parseArgs(): Args {
     console.error('--slug is required (e.g. us-east, eu-west)');
     process.exit(2);
   }
-  if (!/^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]?$/.test(slug)) {
-    console.error('--slug must be lowercase alphanumeric + dashes, max 64 chars');
-    process.exit(2);
-  }
   if (!label) {
     console.error('--label is required (e.g. "US East (Virginia)")');
     process.exit(2);
@@ -63,40 +52,27 @@ function parseArgs(): Args {
 async function main() {
   const { slug, label, quiet } = parseArgs();
 
-  const existing = await regionRepo.findBySlug(slug);
-  if (existing) {
-    console.error(`region '${slug}' already exists (id=${existing.id})`);
-    process.exit(1);
+  let result;
+  try {
+    result = await createRegionWithKey(slug, label);
+  } catch (err) {
+    if (err instanceof RegionAdminError) {
+      console.error(err.message);
+      process.exit(err.code === 'slug_taken' ? 1 : 2);
+    }
+    throw err;
   }
-
-  // 32 bytes → 43 base64url chars (no padding).
-  const raw = randomBytes(32).toString('base64url');
-  const cleartext = `oo_${raw}`;
-  const keyPrefix = cleartext.slice(0, KEY_PREFIX_LEN);
-  const keyHash = await Bun.password.hash(cleartext, { algorithm: 'argon2id' });
-
-  const [key] = await apiKeyRepo.create({
-    name: `agent:${slug}`,
-    keyPrefix,
-    keyHash,
-    scopes: ['agent'],
-  });
-  const [region] = await regionRepo.create({
-    slug,
-    label,
-    apiKeyId: key.id,
-  });
+  const { region, cleartextKey } = result;
 
   if (quiet) {
-    process.stdout.write(cleartext);
+    process.stdout.write(cleartextKey);
   } else {
-    console.log(`✅ created region #${region.id} '${slug}' (${label})`);
-    console.log(`   agent key #${key.id} prefix: ${keyPrefix}`);
+    console.log(`✅ created region #${region.id} '${region.slug}' (${region.label})`);
     console.log('');
     console.log('   agent env (copy now — key will not be shown again):');
     console.log(`     OO_MASTER_URL=https://your-master.example.com`);
-    console.log(`     OO_REGION_SLUG=${slug}`);
-    console.log(`     OO_AGENT_KEY=${cleartext}`);
+    console.log(`     OO_REGION_SLUG=${region.slug}`);
+    console.log(`     OO_AGENT_KEY=${cleartextKey}`);
   }
   await sql.end();
 }

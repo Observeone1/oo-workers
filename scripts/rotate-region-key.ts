@@ -2,13 +2,13 @@
 /**
  * Rotate the agent API key for an existing region.
  *
- * Use case: the old key leaked, or you're cycling credentials on a
- * schedule. Old key gets revoked, fresh key gets bound to the region
- * row, region history (executions, last_seen_at) is preserved.
+ * Thin wrapper around services/region-admin.ts — the same code path the
+ * dashboard's Regions page uses. Old key gets revoked, fresh key gets
+ * bound to the region row, region history (executions, last_seen_at,
+ * monitor bindings) is preserved.
  *
  * The old agent (still running with the revoked key) starts getting 401
- * on its next long-poll. Restart it with the new key — the region row
- * is the same, so monitor bindings carry over.
+ * on its next long-poll. Restart it with the new key.
  *
  * Usage:
  *   bun scripts/rotate-region-key.ts --slug us-east
@@ -18,12 +18,9 @@
  *   docker compose exec worker bun scripts/rotate-region-key.ts --slug us-east
  */
 
-import { randomBytes } from 'node:crypto';
-import { eq, sql as drizzleSql } from 'drizzle-orm';
+import { sql } from '../src/config/db.ts';
 import { regionRepo } from '../src/db/repositories/region.repo.ts';
-import { db, sql } from '../src/config/db.ts';
-import { apiKeys, regions } from '../src/db/schema.ts';
-import { KEY_PREFIX_LEN } from '../src/middleware/auth.ts';
+import { rotateRegionKey, RegionAdminError } from '../src/services/region-admin.ts';
 
 interface Args {
   slug: string;
@@ -53,47 +50,34 @@ function parseArgs(): Args {
 async function main() {
   const { slug, quiet } = parseArgs();
 
-  const region = await regionRepo.findBySlug(slug);
-  if (!region) {
+  const existing = await regionRepo.findBySlug(slug);
+  if (!existing) {
     console.error(`region '${slug}' not found`);
     process.exit(1);
   }
 
-  // 32 bytes → 43 base64url chars (no padding).
-  const raw = randomBytes(32).toString('base64url');
-  const cleartext = `oo_${raw}`;
-  const keyPrefix = cleartext.slice(0, KEY_PREFIX_LEN);
-  const keyHash = await Bun.password.hash(cleartext, { algorithm: 'argon2id' });
-
-  // Atomic rotate inside one transaction: create the new key, rebind the
-  // region to it, revoke the old key. If anything fails the operator
-  // re-runs and we don't leak agent-scoped credential rows that aren't
-  // bound to any region.
-  const oldKeyId = region.apiKeyId;
-  const newKey = await db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(apiKeys)
-      .values({ name: `agent:${slug}`, keyPrefix, keyHash, scopes: ['agent'] })
-      .returning();
-    await tx.update(regions).set({ apiKeyId: created.id }).where(eq(regions.id, region.id));
-    await tx
-      .update(apiKeys)
-      .set({ revokedAt: drizzleSql`NOW()` })
-      .where(eq(apiKeys.id, oldKeyId));
-    return created;
-  });
+  let result;
+  try {
+    result = await rotateRegionKey(existing.id);
+  } catch (err) {
+    if (err instanceof RegionAdminError) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
+  const { region, cleartextKey } = result;
 
   if (quiet) {
-    process.stdout.write(cleartext);
+    process.stdout.write(cleartextKey);
   } else {
-    console.log(`✅ rotated region #${region.id} '${slug}'`);
-    console.log(`   old key #${oldKeyId} revoked`);
-    console.log(`   new key #${newKey.id} prefix: ${keyPrefix}`);
+    console.log(`✅ rotated region #${region.id} '${region.slug}'`);
+    console.log('   old agent key revoked, new key issued');
     console.log('');
     console.log('   agent env (copy now — key will not be shown again):');
     console.log(`     OO_MASTER_URL=https://your-master.example.com`);
-    console.log(`     OO_REGION_SLUG=${slug}`);
-    console.log(`     OO_AGENT_KEY=${cleartext}`);
+    console.log(`     OO_REGION_SLUG=${region.slug}`);
+    console.log(`     OO_AGENT_KEY=${cleartextKey}`);
     console.log('');
     console.log('   restart the agent on the regional box to pick up the new key.');
   }

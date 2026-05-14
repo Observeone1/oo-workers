@@ -612,6 +612,14 @@ function buildApp(connection: Redis) {
 
   // ---------- Agent (multi-region) ----------
   //
+  // Diagnostic endpoint — confirms the agent key is valid + bound, and
+  // returns the region it's bound to so the preflight CLI can flag
+  // OO_REGION_SLUG / key mismatches before the agent goes live.
+  app.get('/api/agent/me', requireAgent(), async (c) => {
+    const region = c.get('region');
+    return c.json({ region: { id: region.id, slug: region.slug, label: region.label } });
+  });
+
   // Long-poll endpoint — agent calls this repeatedly, master holds the
   // connection open until a job is available or `wait` seconds pass.
   // Returns 204 on timeout (agent reconnects). On 200, the body is the

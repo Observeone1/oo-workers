@@ -6,6 +6,22 @@
     <title>oo-workers — docs</title>
     <link rel="stylesheet" href="/tokens.css" />
     <link rel="stylesheet" href="/docs.css" />
+    <script>
+      // Apply theme from localStorage before first paint so the docs page
+      // (reached via dialog hints with target="_blank") doesn't flash the
+      // system theme when the user has picked a different one.
+      (function () {
+        try {
+          var t = localStorage.getItem('oo-workers:theme');
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.style.colorScheme = t;
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (e) {
+          /* localStorage may be blocked */
+        }
+      })();
+    </script>
   </head>
   <body>
     <header>
@@ -456,6 +472,19 @@ docker compose -f docker-compose.agent.yml logs -f agent</code></pre>
           as <code>FAILED</code> once they're older than 2× the monitor's interval. There's no
           background sweeper; the projection happens at read time. A late agent result can still
           write into the row.
+        </p>
+
+        <h3>Preflight</h3>
+        <p>
+          Before starting the agent, run the connectivity check inside the agent container. It
+          catches DNS / TLS / auth / region-slug mistakes up front and exits non-zero on the first
+          failure:
+        </p>
+        <pre><code>docker compose -f docker-compose.agent.yml run --rm agent \
+  bun scripts/check-agent-connectivity.ts</code></pre>
+        <p>
+          Reads <code>OO_MASTER_URL</code> / <code>OO_AGENT_KEY</code> /
+          <code>OO_REGION_SLUG</code> from the agent's env. Reports each step with ✅ / ❌.
         </p>
 
         <h3>Troubleshooting</h3>

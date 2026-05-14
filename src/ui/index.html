@@ -9,15 +9,24 @@
   </head>
   <body>
     <header>
-      <h1>
-        <a href="#/" class="logo">oo-workers <span class="tag">self-host</span></a>
-      </h1>
+      <div class="header-left">
+        <h1>
+          <a href="#/" class="logo">oo-workers <span class="tag">self-host</span></a>
+        </h1>
+        <nav class="header-nav" id="header-nav" hidden>
+          <a href="#/" class="nav-link" data-route="list">Monitors</a>
+          <a href="#/regions" id="regions-link" class="nav-link" data-route="regions"
+            >Regions<span id="regions-badge" class="nav-badge" hidden></span
+          ></a>
+          <a href="#/docs" class="nav-link" data-route="docs">Docs</a>
+        </nav>
+      </div>
       <div class="actions-bar">
-        <a href="#/regions" id="regions-link" class="nav-link">Regions</a>
-        <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"></button>
-        <button id="sign-out" class="icon-btn" aria-label="Sign out" hidden></button>
         <button id="import-btn">Import JSON</button>
         <button id="add-btn" class="primary">+ Add monitor</button>
+        <span class="header-divider" aria-hidden="true"></span>
+        <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"></button>
+        <button id="sign-out" class="icon-btn" aria-label="Sign out" hidden></button>
       </div>
     </header>
     <main id="main"></main>

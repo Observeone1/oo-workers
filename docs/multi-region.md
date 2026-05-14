@@ -153,9 +153,19 @@ Check the agent's logs for backoff errors. If long-polls are succeeding (`agent 
 
 Run `docker compose -f docker-compose.agent.yml pull && docker compose -f docker-compose.agent.yml up -d` on each agent box after master version bumps. Agents are bundled in the same `observeone/oo-workers` image as master, so the agent compose pulls the same tag.
 
+## Preflight
+
+Run the connectivity check before starting the agent to catch DNS, TLS, auth, and region-slug mistakes up front:
+
+```bash
+docker compose -f docker-compose.agent.yml run --rm agent \
+  bun scripts/check-agent-connectivity.ts
+```
+
+Reads `OO_MASTER_URL` / `OO_AGENT_KEY` / `OO_REGION_SLUG` from the agent's env (same vars the runtime uses), reports each step with ✅ / ❌, and exits non-zero on the first failure.
+
 ## Known gaps
 
-- **No agent-side connectivity preflight.** First sign of misconfiguration is the agent log. A `scripts/check-agent-connectivity.ts` is on the polish backlog.
 - **Self-signed TLS isn't supported** by the agent's fetch.
 - **No header badge** showing online region count — open the Regions page to see status. On the polish backlog.
 - **Browser (QA) monitors don't run on agents** — see "What works on agents" above.

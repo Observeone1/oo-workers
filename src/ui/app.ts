@@ -16,7 +16,9 @@ import type { MonType } from './types';
 import { renderList } from './list';
 import { renderDetail } from './detail';
 import { renderRegions } from './regions';
+import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
+import { getRegions } from './api';
 import { initTheme } from './theme';
 import { renderLogin } from './login';
 import { iconSignOut } from './icons';
@@ -38,15 +40,57 @@ async function checkAuth(): Promise<{ ok: boolean; state?: AuthState }> {
   }
 }
 
+async function refreshRegionBadge() {
+  const badge = document.getElementById('regions-badge');
+  if (!badge) return;
+  try {
+    const regions = await getRegions();
+    if (regions.length === 0) {
+      badge.hidden = true;
+      return;
+    }
+    const online = regions.filter((r) => r.online).length;
+    badge.textContent = `${online}/${regions.length}`;
+    badge.classList.toggle('has-online', online > 0);
+    badge.hidden = false;
+  } catch {
+    badge.hidden = true;
+  }
+}
+
+// Exposed for region admin actions (create/rotate/delete) to nudge the
+// badge without waiting for the next 5s tick.
+(globalThis as unknown as { ooRefreshRegionBadge?: () => void }).ooRefreshRegionBadge = () => {
+  void refreshRegionBadge();
+};
+
+function setActiveNav(route: 'list' | 'regions' | 'docs' | null) {
+  document.querySelectorAll<HTMLAnchorElement>('.header-nav .nav-link').forEach((a) => {
+    a.classList.toggle('active', route !== null && a.dataset.route === route);
+  });
+}
+
 function route() {
   const h = location.hash;
   if (h === '#/regions' || h.startsWith('#/regions/')) {
+    setActiveNav('regions');
     renderRegions();
     return;
   }
+  if (h === '#/docs' || h.startsWith('#/docs/')) {
+    setActiveNav('docs');
+    const section = h.startsWith('#/docs/') ? h.slice('#/docs/'.length) : null;
+    renderDocs(section);
+    return;
+  }
   const m = h.match(/^#\/(url|api|qa|tcp|udp)\/(\d+)$/);
-  if (m) renderDetail(m[1] as MonType, Number(m[2]));
-  else renderList();
+  if (m) {
+    setActiveNav(null);
+    renderDetail(m[1] as MonType, Number(m[2]));
+  } else {
+    setActiveNav('list');
+    renderList();
+  }
 }
 
 function wireSignOut(state: AuthState) {
@@ -70,21 +114,26 @@ async function boot() {
     return;
   }
   wireSignOut(state);
+  const nav = document.getElementById('header-nav');
+  if (nav) nav.hidden = false;
   initDialogs();
   route();
+  void refreshRegionBadge();
 
   window.addEventListener('hashchange', route);
 
   // Auto-refresh the list every 5s when not viewing a detail page.
   // Skipped while the search input has focus so keystrokes aren't disrupted.
   setInterval(() => {
+    void refreshRegionBadge();
     if (
       location.hash.startsWith('#/url/') ||
       location.hash.startsWith('#/api/') ||
       location.hash.startsWith('#/qa/') ||
       location.hash.startsWith('#/tcp/') ||
       location.hash.startsWith('#/udp/') ||
-      location.hash.startsWith('#/regions')
+      location.hash.startsWith('#/regions') ||
+      location.hash.startsWith('#/docs')
     )
       return;
     if (document.activeElement?.id === 'search-input') return;

@@ -544,18 +544,88 @@ textarea {
   color: var(--muted);
 }
 
-/* header nav link */
+/* header layout: logo + nav on the left, actions + utilities on the right */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
 .nav-link {
-  color: var(--fg);
+  color: var(--muted);
   text-decoration: none;
   padding: 6px 10px;
   border-radius: 0.5rem;
-  font-size: 14px;
-  transition: background 0.12s;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 0.12s,
+    color 0.12s;
 
   &:hover {
+    background: color-mix(in srgb, var(--fg) 6%, transparent);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  &.active {
+    color: var(--text);
     background: color-mix(in srgb, var(--fg) 8%, transparent);
   }
+}
+
+/* thin vertical separator between primary actions and utility icons */
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+/* online-region count next to the Regions nav link */
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+
+  &[hidden] {
+    display: none;
+  }
+
+  &::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  &.has-online::before {
+    background: var(--up, #16a34a);
+  }
+}
+
+.nav-link.active .nav-badge {
+  background: color-mix(in srgb, var(--fg) 14%, transparent);
 }
 
 /* regions settings page */
@@ -752,4 +822,187 @@ textarea {
   &.offline {
     background: var(--muted);
   }
+}
+
+/* In-SPA docs view — mirrors docs.css under a .docs-embed scope so the
+   embed inherits the dashboard shell (header, theme) without leaking
+   docs typography into other SPA pages. */
+.docs-embed {
+  max-width: 900px;
+  margin: 0 auto;
+  line-height: 1.6;
+
+  & nav.toc {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 32px;
+
+    & strong {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    & ul {
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+      columns: 2;
+      column-gap: 24px;
+    }
+
+    & li {
+      padding: 2px 0;
+    }
+  }
+
+  & section {
+    margin-bottom: 48px;
+    scroll-margin-top: 16px;
+
+    &:target h2 {
+      color: var(--link);
+    }
+  }
+
+  & h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  & h3 {
+    margin: 24px 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  & p.lead {
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+
+  & code,
+  & pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+  }
+
+  & code {
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  & pre {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 12px 0;
+
+    & code {
+      background: transparent;
+      padding: 0;
+      border: 0;
+      color: var(--text);
+    }
+  }
+
+  & .kw {
+    color: var(--kw);
+  }
+  & .str {
+    color: var(--str);
+  }
+  & .num {
+    color: var(--num);
+  }
+  & .com {
+    color: var(--com);
+    font-style: italic;
+  }
+
+  & .note {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin: 12px 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  & td code {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* hide the standalone-only back link if the docs HTML includes one */
+  & .back {
+    display: none;
+  }
+}
+
+/* per-region filter chips on monitor detail */
+.region-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 16px;
+}
+
+.region-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+
+  &:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  &.active {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--text);
+  }
+}
+
+.region-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.region-chip-count {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.region-chip.active .region-chip-count {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }

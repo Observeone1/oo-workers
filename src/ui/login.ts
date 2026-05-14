@@ -11,8 +11,10 @@ export function renderLogin(opts: { error?: string } = {}) {
   // The theme toggle stays visible so dark/light still works pre-login.
   const addBtn = document.getElementById('add-btn');
   const importBtn = document.getElementById('import-btn');
+  const divider = document.querySelector<HTMLElement>('.header-divider');
   if (addBtn) addBtn.hidden = true;
   if (importBtn) importBtn.hidden = true;
+  if (divider) divider.hidden = true;
 
   const main = $('#main');
   main.innerHTML = `
