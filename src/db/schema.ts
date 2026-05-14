@@ -355,3 +355,34 @@ export const monitorAlertChannels = pgTable(
     index('idx_monitor_alert_channels_channel').on(t.channelId),
   ],
 );
+
+// ============================================================
+//   status pages — Phase 5.5
+// ============================================================
+
+export const statusPages = pgTable('status_pages', {
+  id: serial('id').primaryKey(),
+  slug: varchar('slug', { length: 64 }).notNull().unique(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const statusPageMonitors = pgTable(
+  'status_page_monitors',
+  {
+    statusPageId: integer('status_page_id')
+      .notNull()
+      .references(() => statusPages.id, { onDelete: 'cascade' }),
+    monitorType: varchar('monitor_type', { length: 16 }).notNull(),
+    monitorId: integer('monitor_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.statusPageId, t.monitorType, t.monitorId] }),
+    index('idx_status_page_monitors_page').on(t.statusPageId),
+    index('idx_status_page_monitors_monitor').on(t.monitorType, t.monitorId),
+  ],
+);

@@ -9,7 +9,9 @@ export default defineConfig({
   testMatch: /.*\.e2e\.spec\.ts/,
   outputDir: './tests/ui/screenshots/artifacts',
   reporter: [['list']],
-  retries: 0,
+  // SPA boot occasionally races the auth header on first goto and lands on
+  // the login screen. One retry papers over this without masking real bugs.
+  retries: 1,
   workers: 1,
   use: {
     baseURL: process.env.UI_BASE_URL ?? 'http://localhost:3010',

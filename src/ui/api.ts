@@ -139,3 +139,48 @@ export const setMonitorChannels = (type: MonType, id: number, channelIds: number
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ channelIds }),
   });
+
+// ---------- status pages ----------
+
+export interface StatusPageLite {
+  id: number;
+  slug: string;
+  title: string;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface StatusPageDetail extends StatusPageLite {
+  monitors: Array<{ monitorType: MonType; monitorId: number; sortOrder: number }>;
+}
+
+export const getStatusPages = async (): Promise<StatusPageLite[]> =>
+  (await fetch('/api/status-pages', COMMON)).json();
+
+export const getStatusPage = async (id: number): Promise<StatusPageDetail> =>
+  (await fetch(`/api/status-pages/${id}`, COMMON)).json();
+
+export const createStatusPage = async (
+  slug: string,
+  title: string,
+  description: string | null,
+): Promise<{ res: Response; data: StatusPageLite | { error: string } }> => {
+  const res = await fetch('/api/status-pages', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug, title, description }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const deleteStatusPage = (id: number) =>
+  fetch(`/api/status-pages/${id}`, { ...COMMON, method: 'DELETE' });
+
+export const setStatusPageMonitors = (id: number, monitors: Array<{ type: MonType; id: number }>) =>
+  fetch(`/api/status-pages/${id}/monitors`, {
+    ...COMMON,
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ monitors }),
+  });

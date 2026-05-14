@@ -17,6 +17,7 @@ import { renderList } from './list';
 import { renderDetail } from './detail';
 import { renderRegions } from './regions';
 import { renderChannels } from './channels';
+import { renderStatusPages } from './status-pages';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
 import { getRegions } from './api';
@@ -65,7 +66,7 @@ async function refreshRegionBadge() {
   void refreshRegionBadge();
 };
 
-function setActiveNav(route: 'list' | 'regions' | 'channels' | 'docs' | null) {
+function setActiveNav(route: 'list' | 'regions' | 'channels' | 'status-pages' | 'docs' | null) {
   document.querySelectorAll<HTMLAnchorElement>('.header-nav .nav-link').forEach((a) => {
     a.classList.toggle('active', route !== null && a.dataset.route === route);
   });
@@ -81,6 +82,11 @@ function route() {
   if (h === '#/channels' || h.startsWith('#/channels/')) {
     setActiveNav('channels');
     renderChannels();
+    return;
+  }
+  if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
+    setActiveNav('status-pages');
+    renderStatusPages();
     return;
   }
   if (h === '#/docs' || h.startsWith('#/docs/')) {
@@ -140,6 +146,7 @@ async function boot() {
       location.hash.startsWith('#/udp/') ||
       location.hash.startsWith('#/regions') ||
       location.hash.startsWith('#/channels') ||
+      location.hash.startsWith('#/status-pages') ||
       location.hash.startsWith('#/docs')
     )
       return;
