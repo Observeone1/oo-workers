@@ -33,6 +33,11 @@ services:
       RUSTFS_OBS_LOGGER_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - rustfs_data:/data
+    ports:
+      # Expose the RustFS web console (browse buckets, view objects). Same
+      # localhost-bind safety pattern as the main UI — opt in to public
+      # exposure via OO_BIND_ADDR=0.0.0.0 and put TLS in front.
+      - '${OO_BIND_ADDR:-127.0.0.1}:${OO_OBJECT_STORAGE_CONSOLE_PORT:-9001}:9001'
     healthcheck:
       test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:9000/ || exit 0']
       interval: 5s
