@@ -121,14 +121,30 @@ export const qaProjectRepo = {
       .from(qaProjects)
       .where(eq(qaProjects.id, projectId))
       .limit(1);
+    // Alias startedAt → startTime so the UI's shared RunLite shape works
+    // for QA executions the same way it does for url/api/tcp/udp. Without
+    // this the detail page renders "never" for every row.
     const rows = await db
-      .select()
+      .select({
+        id: qaTestExecutions.id,
+        status: qaTestExecutions.status,
+        errorMessage: qaTestExecutions.errorMessage,
+        logs: qaTestExecutions.logs,
+        durationMs: qaTestExecutions.durationMs,
+        startTime: qaTestExecutions.startedAt,
+        completedAt: qaTestExecutions.completedAt,
+        regionId: qaTestExecutions.regionId,
+        testId: qaTestExecutions.testId,
+        projectId: qaTestExecutions.projectId,
+        traceUrl: qaTestExecutions.traceUrl,
+        screenshotUrls: qaTestExecutions.screenshotUrls,
+      })
       .from(qaTestExecutions)
       .where(eq(qaTestExecutions.projectId, projectId))
       .orderBy(desc(qaTestExecutions.startedAt))
       .limit(limit);
     if (!p) return rows;
-    return rows.map((r) => projectStalled(r, r.startedAt, p.intervalSeconds));
+    return rows.map((r) => projectStalled(r, r.startTime, p.intervalSeconds));
   },
 
   create(data: {

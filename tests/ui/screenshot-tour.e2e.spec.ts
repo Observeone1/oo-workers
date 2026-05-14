@@ -105,6 +105,19 @@ test('16b status page public', async ({ browser }) => {
   await ctx.close();
 });
 
+test('19 qa artifacts', async ({ page }) => {
+  // Requires a QA monitor with at least one failed run that has trace +
+  // screenshot uploaded. Seed via the demo script
+  // (/tmp/seed-artifacts-demo.ts) if none exist. Skips if no QA monitor
+  // detail page is reachable.
+  const projectId = Number(process.env.SCREENSHOT_QA_PROJECT_ID ?? '0');
+  test.skip(!projectId, 'set SCREENSHOT_QA_PROJECT_ID to a seeded QA project id');
+  await page.goto(`/#/qa/${projectId}`);
+  await page.waitForSelector('a.artifact-link', { timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await shot(page, '19-qa-artifacts.png');
+});
+
 test('17 docs in-app', async ({ page }) => {
   await page.goto('/#/docs');
   await page.waitForSelector('#main .docs-embed h1, #main .docs-embed h2', { timeout: 10_000 });
