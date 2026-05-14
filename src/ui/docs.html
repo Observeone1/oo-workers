@@ -21,6 +21,7 @@
           <li><a href="#jsonpath">JSONPath quick reference</a></li>
           <li><a href="#playwright">Playwright script reference</a></li>
           <li><a href="#import">Bulk JSON import</a></li>
+          <li><a href="#multi-region">Multi-region</a></li>
         </ul>
       </nav>
 
@@ -306,6 +307,203 @@ test(<span class="str">'add to cart + checkout'</span>, <span class="kw">async</
           Every section is optional — you can import only <code>urlMonitors</code> if that's all you
           have. Failed items are reported in the response's <code>skipped</code> array, the rest
           still get created.
+        </div>
+      </section>
+
+      <!-- ============================== Multi-region ============================== -->
+      <section id="multi-region">
+        <h2>Multi-region</h2>
+        <p class="lead">
+          Run probes from more than one location by attaching regional <strong>agents</strong> to
+          this master. Master holds the schedule, fans jobs out per region, and aggregates results.
+          Agents are stateless — they only need outbound HTTPS back to master, no DB, no Redis, no
+          inbound ports.
+        </p>
+
+        <h3>Architecture</h3>
+        <pre><code>                                  ┌──────────────────────────────┐
+                                  │   master (one instance)      │
+                                  │  • UI / dashboard            │
+                                  │  • scheduler + BullMQ        │
+                                  │  • Postgres + Redis          │
+                                  │  • /api/agent/{jobs,results} │
+                                  └──────┬──────────────────┬────┘
+                                         │ outbound HTTPS  │
+                       ┌─────────────────┘                 └──────────────┐
+                       │                                                  │
+                ┌──────▼──────┐                                    ┌──────▼──────┐
+                │  us-east    │                                    │  eu-west    │
+                │  agent box  │                                    │  agent box  │
+                │  (no DB)    │                                    │  (no DB)    │
+                └─────────────┘                                    └─────────────┘</code></pre>
+        <p>
+          Agents long-poll <code>GET /api/agent/jobs?wait=N</code>. Master holds the connection open
+          until a job appears or <code>N</code> seconds pass. Agent runs the probe locally and POSTs
+          the result. Each agent only sees jobs for its own region (authorized via the agent's API
+          key).
+        </p>
+
+        <h3>Prerequisite: master reachability</h3>
+        <p>
+          The agent box needs to reach this master's HTTP(S) URL. If master binds to
+          <code>127.0.0.1</code> (the default), remote agents can't connect. Options:
+        </p>
+        <ul>
+          <li>
+            <strong>Public HTTPS</strong> — front master with a TLS reverse proxy (Caddy auto-LE
+            pairs well).
+          </li>
+          <li>
+            <strong>Tailscale / Wireguard</strong> — put master and agents on the same private
+            network. Use the master's Tailscale IP or MagicDNS name as <code>OO_MASTER_URL</code>.
+          </li>
+        </ul>
+        <p>
+          Self-signed certs aren't supported by the agent (Bun's fetch validates by default). Use a
+          real cert via Let's Encrypt or a system-installed private CA.
+        </p>
+
+        <h3>Quick setup (3 steps, ~10 minutes)</h3>
+
+        <p>
+          <strong>1. On master, create the region.</strong> Click <a href="#/regions">Regions</a> in
+          the header, fill <em>Slug</em> (lowercase + dashes, e.g. <code>us-east</code>) and
+          <em>Label</em> (e.g. <code>US East (Virginia)</code>). Click <em>Create region</em>. The
+          panel shows the cleartext API key — this is the <strong>only time</strong> it's displayed.
+          Copy it.
+        </p>
+
+        <p><strong>2. On the agent box, fetch the two files and configure:</strong></p>
+        <pre><code><span class="com"># Fetch the agent compose + env template.</span>
+curl -O https://raw.githubusercontent.com/Observeone1/oo-workers/main/docker-compose.agent.yml
+curl -O https://raw.githubusercontent.com/Observeone1/oo-workers/main/.env.agent.example
+mv .env.agent.example .env
+
+<span class="com"># Edit .env — set these three values:</span>
+<span class="com">#   OO_MASTER_URL   = https://master.example.com</span>
+<span class="com">#   OO_AGENT_KEY    = oo_…  (paste from step 1)</span>
+<span class="com">#   OO_REGION_SLUG  = us-east</span>
+
+docker compose -f docker-compose.agent.yml up -d
+docker compose -f docker-compose.agent.yml logs -f agent</code></pre>
+
+        <p>
+          <strong>3. Back on master, bind monitors.</strong> Refresh the Regions page — the status
+          dot turns green within ~30s. Open <em>+ Add monitor</em>, find the "Run from" section,
+          check your region. The scheduler's next tick fans it out.
+        </p>
+
+        <div class="note">
+          To bind an existing monitor without re-creating it, use the API:
+          <code>PUT /api/monitors/&lt;type&gt;/&lt;id&gt;/regions</code> with body
+          <code>{"regionIds":[1,2]}</code>. Empty array = run on master only.
+        </div>
+
+        <h3>What works on agents</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Monitor type</th>
+              <th>Agent support</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>URL, API, TCP, UDP</td>
+              <td>✅ Full support</td>
+            </tr>
+            <tr>
+              <td>Browser (QA / Playwright)</td>
+              <td>❌ Returns <code>ERROR</code> — runs only on master</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Browser monitors need a heavy Chromium runtime that isn't yet shipped on agents. If you
+          bind a QA monitor to a region, the agent reports each run as <code>ERROR</code> with a
+          clear message. Uncheck the region in the dialog (or delete from
+          <code>monitor_regions</code>) to run it on master only.
+        </p>
+
+        <h3>Multiple agents per region</h3>
+        <p>
+          Safe — Redis <code>BRPOP</code> guarantees only one agent receives each job, and master's
+          result write is idempotent on <code>executionId</code>. You get parallel probe throughput
+          for free. Each agent box uses the same agent key.
+        </p>
+
+        <h3>Rotating an agent key</h3>
+        <p>
+          From the <a href="#/regions">Regions</a> page: click <em>Rotate key</em> on the row. A new
+          cleartext key panel appears; copy it. The running agent starts getting 401 — restart it
+          with the new env vars and it picks up where it left off. Region history is preserved.
+        </p>
+        <p>CLI equivalent (atomic):</p>
+        <pre><code>docker compose exec worker bun scripts/rotate-region-key.ts --slug us-east</code></pre>
+
+        <h3>Deleting a region</h3>
+        <p>
+          From the Regions page: click <em>Delete</em>. This revokes the agent's API key and removes
+          all <code>monitor_regions</code> bindings (cascading). Existing execution history is
+          preserved — <code>region_id</code> on those rows is set to NULL.
+        </p>
+
+        <h3>Stalled executions</h3>
+        <p>
+          If an agent crashes mid-probe, the corresponding execution row stays at
+          <code>PENDING</code>. Master keeps scheduling new probes every interval, so the metric
+          stays fresh — only the stale row leaks. The dashboard and API automatically project these
+          as <code>FAILED</code> once they're older than 2× the monitor's interval. There's no
+          background sweeper; the projection happens at read time. A late agent result can still
+          write into the row.
+        </p>
+
+        <h3>Troubleshooting</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Agent log says…</th>
+              <th>Likely cause</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ECONNREFUSED</code> or DNS errors</td>
+              <td>
+                Agent can't reach <code>OO_MASTER_URL</code>. Master is probably bound to 127.0.0.1,
+                or DNS for the master hostname is wrong. Expose master publicly with TLS or put both
+                on the same VPN.
+              </td>
+            </tr>
+            <tr>
+              <td><code>401 invalid or revoked agent key</code></td>
+              <td>
+                Key was rotated/revoked, or you mis-pasted the cleartext. Rotate from the Regions
+                page and re-paste.
+              </td>
+            </tr>
+            <tr>
+              <td><code>socket connection closed unexpectedly</code></td>
+              <td>
+                Should not happen with master at v0.7.0+ (idleTimeout was bumped to 120s). If you
+                see it, confirm master is on the latest tag.
+              </td>
+            </tr>
+            <tr>
+              <td>Region offline in UI but agent log looks healthy</td>
+              <td>Refresh the Regions page; the online threshold is 60s of inactivity.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="note">
+          After every master version bump, run
+          <code
+            >docker compose -f docker-compose.agent.yml pull &amp;&amp; docker compose -f
+            docker-compose.agent.yml up -d</code
+          >
+          on each agent box. Agents share the master's image, so version drift between them is worth
+          avoiding.
         </div>
       </section>
     </main>

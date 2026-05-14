@@ -37,10 +37,6 @@ The stack boots four services: `worker` (queue consumers + scheduler), `ui` (HTT
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues anything that's due. Workers process jobs concurrently (tunable via env).
 
-## Screenshots
-
-_(coming with the public launch post)_
-
 ## Security & deployment
 
 Two defaults out of the box:
