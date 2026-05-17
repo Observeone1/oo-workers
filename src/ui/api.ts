@@ -184,3 +184,40 @@ export const setStatusPageMonitors = (id: number, monitors: Array<{ type: MonTyp
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ monitors }),
   });
+
+// ---------- API keys ----------
+
+export type KeyScope = 'read' | 'write';
+
+export interface KeyLite {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export const getKeys = async (): Promise<KeyLite[]> => (await fetch('/api/keys', COMMON)).json();
+
+export const createKey = async (
+  name: string,
+  scopes: KeyScope[],
+): Promise<{
+  res: Response;
+  data:
+    | { id: number; name: string; keyPrefix: string; scopes: string[]; cleartextKey: string }
+    | { error: string };
+}> => {
+  const res = await fetch('/api/keys', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, scopes }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const revokeKey = (id: number) =>
+  fetch(`/api/keys/${id}/revoke`, { ...COMMON, method: 'POST' });

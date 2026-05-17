@@ -13,15 +13,18 @@ git clone https://github.com/Observeone1/oo-workers.git
 cd oo-workers
 ./scripts/setup.sh           # writes .env with random Postgres + Redis passwords
 docker compose up -d
-
-# Generate your first API key (auth is on by default).
-docker compose exec worker bun scripts/create-api-key.ts --name first
-# → copy the oo_… key it prints, you'll paste it into the login screen.
 ```
 
 This pulls the pre-built image from `observeone/oo-workers:latest` on Docker Hub. To build from source, use `docker compose -f docker-compose.build.yml up -d`.
 
-Open **http://localhost:3001**, paste the key, click _+ Add monitor_. That's it.
+Open **http://localhost:3001**. On first visit a setup wizard asks you to create an admin account (email + password); after that it's a normal email/password login. Click _+ Add monitor_ and you're going.
+
+Need programmatic access (CLI, agents, CI)? Mint API keys in the dashboard under **Keys**, or from the shell:
+
+```bash
+docker compose exec worker bun scripts/create-api-key.ts --name ci
+# → copy the oo_… key; send it as `Authorization: Bearer oo_…`
+```
 
 Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashboard), `postgres`, `redis`, `rustfs` (S3-compatible object storage for browser-check scripts). Schema migrations run automatically on first boot. The UI port binds to `127.0.0.1` by default — see _Security & deployment_ below before exposing publicly.
 
@@ -80,14 +83,19 @@ Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph — anything 
 
 Two defaults shipped on day one:
 
-Write endpoints (`POST/PATCH/DELETE` on `/api/monitors/*`, plus `/api/import` and `/run`) need an API key. The dashboard asks for one on first visit and keeps it in an HttpOnly cookie. Reads stay open.
+Write endpoints (`POST/PATCH/DELETE` on `/api/monitors/*`, plus `/api/import` and `/run`) require auth; reads stay open. Two ways to authenticate:
+
+- **Dashboard** — email/password. First visit runs a setup wizard to create the admin account; the server keeps an HttpOnly session cookie after login. Sign out from the header.
+- **Programmatic** (CLI, agents, CI) — an API key sent as `Authorization: Bearer oo_…`. Manage keys in the dashboard under **Keys** (create with a one-time reveal, revoke anytime) or via the script below.
 
 The UI port binds to `127.0.0.1`. Only your own machine reaches it until you change that.
 
-### Get your first key
+### Get an API key
+
+In the dashboard: **Keys → Create a key** (copy it from the one-time panel). Or from the shell:
 
 ```bash
-docker compose exec worker bun scripts/create-api-key.ts --name first
+docker compose exec worker bun scripts/create-api-key.ts --name ci
 # → oo_<43 chars>  (copy this — it won't be shown again)
 ```
 
