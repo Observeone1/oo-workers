@@ -16,16 +16,16 @@ export const sessionRepo = {
       .returning();
   },
 
-  findByToken(token: string): Promise<SessionRow | null> {
+  findByToken(tokenHash: string): Promise<SessionRow | null> {
     return db
       .select()
       .from(sessions)
-      .where(and(eq(sessions.tokenHash, token), gt(sessions.expiresAt, sql`NOW()`)))
+      .where(and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, sql`NOW()`)))
       .then((rows) => rows[0] ?? null);
   },
 
-  deleteByUserId(userId: number) {
-    return db.delete(sessions).where(eq(sessions.userId, userId));
+  deleteByToken(tokenHash: string) {
+    return db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
   },
 
   deleteExpired() {

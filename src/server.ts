@@ -17,6 +17,7 @@ import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
 import { extractKey, requireAgent, requireAuth, validateKey } from './middleware/auth.ts';
 import { authService, SESSION_COOKIE } from './services/auth.service.ts';
+import { sessionRepo } from './db/repositories/session.repo.ts';
 import {
   popJobForRegion,
   writeAgentResult,
@@ -109,12 +110,16 @@ function buildApp(connection: Redis) {
     const password = typeof body.password === 'string' ? body.password : '';
     const name = typeof body.name === 'string' ? body.name.trim() : '';
     if (!email || !password) return c.json({ error: 'email and password required' }, 400);
+    if (password.length < 8) {
+      return c.json({ error: 'password must be at least 8 characters' }, 400);
+    }
 
     const user = await authService.register(email, password, name);
+    const token = await authService.createSession(user);
     const maxAge = 60 * 60 * 24 * 30;
     c.header(
       'set-cookie',
-      `${SESSION_COOKIE}=${user.id}:${user.email}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+      `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
     );
     return c.json({ name: user.name, email: user.email, role: user.role });
   });
@@ -148,25 +153,21 @@ function buildApp(connection: Redis) {
     const maxAge = 60 * 60 * 24 * 30;
     c.header(
       'set-cookie',
-      `${SESSION_COOKIE}=${result.user.id}:${result.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+      `${SESSION_COOKIE}=${result.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
     );
     return c.json({ name: result.user.name, email: result.user.email, role: result.user.role });
   });
 
-  // POST /api/auth/logout — clears the cookie and destroys sessions
+  // POST /api/auth/logout — clears the cookie and destroys the session
   app.post('/api/auth/logout', async (c) => {
     const cleartext = extractKey(c);
     if (cleartext) {
+      // API-key cookie: nothing to destroy server-side, just clear it.
+      // Otherwise treat the value as a session token and delete that one
+      // session (only — never all of the user's sessions).
       const row = await validateKey(cleartext);
-      if (row) {
-        // API key session — just clear cookie
-      } else {
-        // User session — destroy it
-        const parts = cleartext.split(':');
-        if (parts.length === 2) {
-          const userId = parseInt(parts[0], 10);
-          if (!isNaN(userId)) await authService.logout(userId);
-        }
+      if (!row) {
+        await authService.logoutSession(cleartext).catch(() => {});
       }
     }
     c.header('set-cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
@@ -178,19 +179,12 @@ function buildApp(connection: Redis) {
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
 
-    // Try API key first (backwards compat)
-    if (cleartext.startsWith('oo_')) {
-      const row = await validateKey(cleartext);
-      if (row) return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
-    }
+    // API key first (backwards compat), then a dashboard session cookie.
+    const row = await validateKey(cleartext);
+    if (row) return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
 
-    // Try user session
-    const parts = cleartext.split(':');
-    if (parts.length === 2) {
-      const token = parts[1];
-      const user = await authService.validateSession(token);
-      if (user) return c.json({ name: user.name, email: user.email, role: user.role });
-    }
+    const user = await authService.validateSession(cleartext);
+    if (user) return c.json({ name: user.name, email: user.email, role: user.role });
 
     return c.json({ error: 'invalid or expired session' }, 401);
   });
@@ -1005,7 +999,18 @@ export function startServer(connection: Redis, port: number) {
   // at 60s in /api/agent/jobs so this only closes truly dead connections.
   const server = Bun.serve({ port, fetch: app.fetch, idleTimeout: 120 });
   logger.info(`🌐 server listening on http://localhost:${port}`);
+
+  // Reap expired session rows on boot, then daily. Nothing else prunes
+  // them — sessions are 30-day, so without this the table grows forever.
+  const reap = () =>
+    sessionRepo.deleteExpired().catch((err) => {
+      logger.error(`session reap failed: ${err instanceof Error ? err.message : err}`);
+    });
+  void reap();
+  const reaper = setInterval(reap, 24 * 60 * 60 * 1000);
+
   return async () => {
+    clearInterval(reaper);
     server.stop();
     await close();
   };
