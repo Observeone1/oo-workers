@@ -710,6 +710,11 @@ textarea {
   &:last-child {
     margin-bottom: 0;
   }
+
+  /* Revoked API keys stay listed as an audit trail, visually muted. */
+  &.revoked {
+    opacity: 0.5;
+  }
 }
 
 .region-row-main {
