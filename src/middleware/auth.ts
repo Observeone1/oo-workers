@@ -17,7 +17,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { apiKeyRepo, type ApiKeyRow } from '../db/repositories/api-key.repo.ts';
 import { regionRepo } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
-import { SESSION_COOKIE } from '../services/auth.service.ts';
+import { authService, SESSION_COOKIE } from '../services/auth.service.ts';
 
 export type Scope = 'read' | 'write' | 'agent';
 
@@ -64,25 +64,41 @@ export function requireAuth(scope: Scope): MiddlewareHandler {
     if (!cleartext) return c.json({ error: 'authentication required' }, 401);
 
     const row = await validateKey(cleartext);
-    if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
+    if (row) {
+      // Write implies read — a key authorised to mutate state is also
+      // authorised to read it. Keeps the create-api-key default (write)
+      // useful for the artifact proxy and any future read-only endpoints
+      // without forcing operators to mint a separate read key.
+      const allowed =
+        row.scopes.includes(scope) || (scope === 'read' && row.scopes.includes('write'));
+      if (!allowed) {
+        return c.json({ error: `key lacks '${scope}' scope` }, 403);
+      }
 
-    // Write implies read — a key authorised to mutate state is also
-    // authorised to read it. Keeps the create-api-key default (write)
-    // useful for the artifact proxy and any future read-only endpoints
-    // without forcing operators to mint a separate read key.
-    const allowed =
-      row.scopes.includes(scope) || (scope === 'read' && row.scopes.includes('write'));
-    if (!allowed) {
-      return c.json({ error: `key lacks '${scope}' scope` }, 403);
+      // Fire-and-forget — don't block the request on the write.
+      apiKeyRepo.touchLastUsed(row.id).catch((err) => {
+        logger.error(
+          `touchLastUsed(${row.id}) failed: ${err instanceof Error ? err.message : err}`,
+        );
+      });
+
+      c.set('apiKey', { id: row.id, name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+      return next();
     }
 
-    // Fire-and-forget — don't block the request on the write.
-    apiKeyRepo.touchLastUsed(row.id).catch((err) => {
-      logger.error(`touchLastUsed(${row.id}) failed: ${err instanceof Error ? err.message : err}`);
-    });
+    // Not an API key — fall back to a dashboard session cookie. A logged-in
+    // user is a full operator (single-tier authz): read + write, but never
+    // the agent scope — agents must authenticate with a region-bound key.
+    const user = await authService.validateSession(cleartext);
+    if (user) {
+      if (scope === 'agent') {
+        return c.json({ error: `key lacks '${scope}' scope` }, 403);
+      }
+      c.set('user', { id: user.id, email: user.email, name: user.name, role: user.role });
+      return next();
+    }
 
-    c.set('apiKey', { id: row.id, name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
-    return next();
+    return c.json({ error: 'invalid or revoked key' }, 401);
   };
 }
 
@@ -133,5 +149,6 @@ declare module 'hono' {
   interface ContextVariableMap {
     apiKey: { id: number; name: string; prefix: string; scopes: string[] };
     region: { id: number; slug: string; label: string };
+    user: { id: number; email: string; name: string; role: string };
   }
 }
