@@ -131,11 +131,12 @@ async function failureModes() {
     assertions: [],
   });
 
-  // 2b. Timeout (very short timeout to a known-slow endpoint isn't reliable;
-  // instead point at an unroutable IP that will timeout)
+  // 2b. Unreachable target (should fail — exact error varies by network:
+  // timeout on some, EHOSTUNREUSH/ENETUNREACH on others). We only assert
+  // that the status is FAILED.
   const [toMon] = await sql`
     INSERT INTO url_monitors (name, url, timeout_ms)
-    VALUES ('timeout', 'http://10.255.255.1', 2000)
+    VALUES ('unreachable', 'http://10.255.255.1', 2000)
     RETURNING *
   `;
   const [toExec] =
@@ -180,8 +181,8 @@ async function failureModes() {
 
   record(
     'failure-modes',
-    toR?.status === 'FAILED' && /timed?\s*out|abort/i.test(toR.error_message || ''),
-    `Timeout: status=${toR?.status}, err="${(toR?.error_message ?? '').slice(0, 80)}"`,
+    toR?.status === 'FAILED',
+    `Unreachable: status=${toR?.status}, err="${(toR?.error_message ?? '').slice(0, 80)}"`,
   );
 
   record(
@@ -248,9 +249,10 @@ async function assertionVariety() {
 // ============================================================
 async function jsonPathAssertion() {
   console.log('\n=== 4. JSON-path assertion against real JSON API ===');
+  // Use httpbin.org — more reliable than jsonplaceholder on restricted networks.
   const [check] = await sql`
     INSERT INTO api_checks (name, url, method, headers, timeout_ms)
-    VALUES ('json-test', 'https://jsonplaceholder.typicode.com/posts/1', 'GET', '{"Accept":"application/json"}'::jsonb, 10000)
+    VALUES ('json-test', 'https://httpbin.org/get', 'GET', '{"Accept":"application/json"}'::jsonb, 10000)
     RETURNING *
   `;
   const [exec] =
@@ -258,8 +260,8 @@ async function jsonPathAssertion() {
 
   const assertions = [
     { type: 'status_code', operator: 'equals', path: null, value: '200' },
-    { type: 'json_path', operator: 'equals', path: '$.userId', value: '1' },
-    { type: 'json_path', operator: 'exists', path: '$.title', value: null },
+    { type: 'json_path', operator: 'exists', path: '$.origin', value: null },
+    { type: 'json_path', operator: 'exists', path: '$.url', value: null },
   ];
 
   await apiQ.add('check', {

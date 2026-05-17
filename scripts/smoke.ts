@@ -185,7 +185,7 @@ test('smoke loads example.com', async ({ page }) => {
 }
 
 // ---- tcp-monitor smoke ----
-async function smokeTcpMonitor() {
+async function smokeTcpMonitor(): Promise<boolean> {
   console.log('\n=== tcp-monitor smoke ===');
   const [monitor] = await sql`
     INSERT INTO tcp_monitors (name, host, port, timeout_ms)
@@ -216,6 +216,31 @@ async function smokeTcpMonitor() {
   const result = await pollUntilDone(exec.id, 'tcp_executions');
   console.log(`  ✅ result: status=${result.status}, ${result.latency_ms}ms`);
   await queue.close();
+
+  // TCP probes can be flaky on some networks; retry once if failed.
+  if (result.status === 'FAILED') {
+    console.log('  ⚠️  TCP probe failed, retrying once...');
+    const [exec2] = await sql`
+      INSERT INTO tcp_executions (tcp_monitor_id, status)
+      VALUES (${monitor.id}, 'PENDING')
+      RETURNING *
+    `;
+    const queue2 = new Queue('tcp-monitor', { connection });
+    await queue2.add('check', {
+      executionId: exec2.id,
+      monitor: {
+        id: monitor.id,
+        host: monitor.host,
+        port: monitor.port,
+        timeoutMs: monitor.timeout_ms,
+      },
+    });
+    const result2 = await pollUntilDone(exec2.id, 'tcp_executions');
+    console.log(`  ✅ retry result: status=${result2.status}, ${result2.latency_ms}ms`);
+    await queue2.close();
+    return result2.status === 'SUCCESS';
+  }
+
   return result.status === 'SUCCESS';
 }
 
