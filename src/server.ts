@@ -15,13 +15,8 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
-import {
-  extractKey,
-  requireAgent,
-  requireAuth,
-  SESSION_COOKIE,
-  validateKey,
-} from './middleware/auth.ts';
+import { extractKey, requireAgent, requireAuth, validateKey } from './middleware/auth.ts';
+import { authService, SESSION_COOKIE } from './services/auth.service.ts';
 import {
   popJobForRegion,
   writeAgentResult,
@@ -98,35 +93,106 @@ function buildApp(connection: Redis) {
     return writeAuth(c, next);
   });
 
-  // POST /api/auth/login — body { key }. On match, sets HttpOnly cookie.
-  app.post('/api/auth/login', async (c) => {
+  // GET /api/auth/setup-status — returns { needsSetup: boolean }
+  app.get('/api/auth/setup-status', async (c) => {
+    const needsSetup = await authService.needsSetup();
+    return c.json({ needsSetup });
+  });
+
+  // POST /api/auth/setup — create first admin (only when no users exist)
+  app.post('/api/auth/setup', async (c) => {
+    const needsSetup = await authService.needsSetup();
+    if (!needsSetup) return c.json({ error: 'already set up' }, 409);
+
     const body = await c.req.json().catch(() => ({}));
-    const key = typeof body.key === 'string' ? body.key.trim() : '';
-    if (!key) return c.json({ error: 'key required' }, 400);
-    const row = await validateKey(key);
-    if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
-    // 30-day cookie. Secure flag flips on when TLS overlay is in front (S4).
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (!email || !password) return c.json({ error: 'email and password required' }, 400);
+
+    const user = await authService.register(email, password, name);
     const maxAge = 60 * 60 * 24 * 30;
     c.header(
       'set-cookie',
-      `${SESSION_COOKIE}=${key}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+      `${SESSION_COOKIE}=${user.id}:${user.email}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
     );
-    return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+    return c.json({ name: user.name, email: user.email, role: user.role });
   });
 
-  // POST /api/auth/logout — clears the cookie.
-  app.post('/api/auth/logout', (c) => {
+  // POST /api/auth/login — body { email, password } or { key } (backwards compat)
+  app.post('/api/auth/login', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+
+    // Backwards compat: API key login
+    if (body.key) {
+      const key = typeof body.key === 'string' ? body.key.trim() : '';
+      if (!key) return c.json({ error: 'key required' }, 400);
+      const row = await validateKey(key);
+      if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
+      const maxAge = 60 * 60 * 24 * 30;
+      c.header(
+        'set-cookie',
+        `${SESSION_COOKIE}=${key}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+      );
+      return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+    }
+
+    // Email/password login
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (!email || !password) return c.json({ error: 'email and password required' }, 400);
+
+    const result = await authService.login(email, password);
+    if (!result) return c.json({ error: 'invalid email or password' }, 401);
+
+    const maxAge = 60 * 60 * 24 * 30;
+    c.header(
+      'set-cookie',
+      `${SESSION_COOKIE}=${result.user.id}:${result.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
+    );
+    return c.json({ name: result.user.name, email: result.user.email, role: result.user.role });
+  });
+
+  // POST /api/auth/logout — clears the cookie and destroys sessions
+  app.post('/api/auth/logout', async (c) => {
+    const cleartext = extractKey(c);
+    if (cleartext) {
+      const row = await validateKey(cleartext);
+      if (row) {
+        // API key session — just clear cookie
+      } else {
+        // User session — destroy it
+        const parts = cleartext.split(':');
+        if (parts.length === 2) {
+          const userId = parseInt(parts[0], 10);
+          if (!isNaN(userId)) await authService.logout(userId);
+        }
+      }
+    }
     c.header('set-cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
     return c.body(null, 204);
   });
 
-  // GET /api/auth/me — the dashboard uses this to decide login screen vs app.
+  // GET /api/auth/me — returns user or API key info
   app.get('/api/auth/me', async (c) => {
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
-    const row = await validateKey(cleartext);
-    if (!row) return c.json({ error: 'invalid or revoked key' }, 401);
-    return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+
+    // Try API key first (backwards compat)
+    if (cleartext.startsWith('oo_')) {
+      const row = await validateKey(cleartext);
+      if (row) return c.json({ name: row.name, prefix: row.keyPrefix, scopes: row.scopes });
+    }
+
+    // Try user session
+    const parts = cleartext.split(':');
+    if (parts.length === 2) {
+      const token = parts[1];
+      const user = await authService.validateSession(token);
+      if (user) return c.json({ name: user.name, email: user.email, role: user.role });
+    }
+
+    return c.json({ error: 'invalid or expired session' }, 401);
   });
 
   // ---------- API: artifact proxy ----------

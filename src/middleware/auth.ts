@@ -17,11 +17,11 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { apiKeyRepo, type ApiKeyRow } from '../db/repositories/api-key.repo.ts';
 import { regionRepo } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
+import { SESSION_COOKIE } from '../services/auth.service.ts';
 
 export type Scope = 'read' | 'write' | 'agent';
 
 export const KEY_PREFIX_LEN = 11; // "oo_" + first 8 random chars
-export const SESSION_COOKIE = 'oo_session';
 
 export function extractKey(c: Context): string | null {
   const header = c.req.header('authorization');

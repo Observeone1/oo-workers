@@ -1,14 +1,12 @@
 /**
  * Login screen — renders into #main when /api/auth/me returns 401.
- * Single input, POST /api/auth/login with the cleartext key,
- * server sets the HttpOnly cookie, page reloads into the normal app.
+ * Email + password form. POST /api/auth/login, server sets the HttpOnly
+ * session cookie, page reloads into the normal app.
  */
 
 import { $, esc } from './helpers';
 
 export function renderLogin(opts: { error?: string } = {}) {
-  // Hide the header write-actions while unauth'd — they 401 if clicked.
-  // The theme toggle stays visible so dark/light still works pre-login.
   const addBtn = document.getElementById('add-btn');
   const importBtn = document.getElementById('import-btn');
   const divider = document.querySelector<HTMLElement>('.header-divider');
@@ -20,22 +18,12 @@ export function renderLogin(opts: { error?: string } = {}) {
   main.innerHTML = `
     <div class="login-card">
       <h2>Sign in</h2>
-      <p class="meta">
-        Paste your API key to access this oo-workers stack. Run
-        <code>docker compose exec worker bun scripts/create-api-key.ts --name first</code>
-        on the host to generate one.
-      </p>
+      <p class="meta">Enter your email and password.</p>
       <form id="login-form">
-        <label>API key</label>
-        <input
-          name="key"
-          type="password"
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          placeholder="oo_..."
-          required
-        />
+        <label>Email</label>
+        <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+        <label>Password</label>
+        <input name="password" type="password" autocomplete="current-password" placeholder="Password" required />
         ${opts.error ? `<div class="login-error">${esc(opts.error)}</div>` : ''}
         <button type="submit" class="primary">Sign in</button>
       </form>
@@ -43,21 +31,22 @@ export function renderLogin(opts: { error?: string } = {}) {
   `;
 
   const form = document.getElementById('login-form') as HTMLFormElement;
-  const input = form.querySelector('input[name="key"]') as HTMLInputElement;
-  input.focus();
+  const emailInput = form.querySelector('input[name="email"]') as HTMLInputElement;
+  emailInput.focus();
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const key = input.value.trim();
-    if (!key) return;
+    const email = (form.querySelector('input[name="email"]') as HTMLInputElement).value.trim();
+    const password = (form.querySelector('input[name="password"]') as HTMLInputElement).value;
+    if (!email || !password) return;
+
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ email, password }),
     });
     if (res.ok) {
-      // Cookie is set; reload triggers the normal route() path.
       location.reload();
       return;
     }

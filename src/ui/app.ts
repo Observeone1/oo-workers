@@ -23,6 +23,7 @@ import { initDialogs } from './dialogs';
 import { getRegions } from './api';
 import { initTheme } from './theme';
 import { renderLogin } from './login';
+import { renderSetup } from './setup';
 import { iconSignOut } from './icons';
 
 interface AuthState {
@@ -119,9 +120,23 @@ function wireSignOut(state: AuthState) {
 
 async function boot() {
   initTheme();
+
+  // Check if setup is needed (no users in DB)
+  try {
+    const setupRes = await fetch('/api/auth/setup-status', { credentials: 'include' });
+    if (setupRes.ok) {
+      const { needsSetup } = await setupRes.json();
+      if (needsSetup) {
+        renderSetup();
+        return;
+      }
+    }
+  } catch {
+    /* network blip — fall through to auth check */
+  }
+
   const { ok, state } = await checkAuth();
   if (!ok || !state) {
-    // Theme still applies; nothing else (no dialogs, no auto-refresh).
     renderLogin();
     return;
   }
