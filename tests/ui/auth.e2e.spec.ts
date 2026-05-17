@@ -1,26 +1,30 @@
-import { test, expect, waitForList } from './fixtures';
+import { test, expect, waitForList, ensureSessionAccount, E2E_USER } from './fixtures';
 
-// These specs assume OO_E2E_API_KEY is set so the playwright config
-// injects it as a Bearer header for every request. The login-flow
-// specs deliberately use a fresh page context without that header so
-// they can exercise the actual login screen.
+// The "signed-in header" spec uses the project-level Bearer header
+// (OO_E2E_API_KEY) so the app boots straight into the dashboard. The
+// login-flow specs use a fresh context with NO Bearer header so they
+// exercise the real email/password login screen + session cookie.
 
-test('sign-out button is visible when authenticated, and signs out', async ({ page, shot }) => {
+const SKIP_MSG =
+  'stack already has a different admin — use a fresh DB or set OO_E2E_USER_EMAIL/PASSWORD';
+
+test('sign-out button is visible when authenticated', async ({ page, shot }) => {
   await page.goto('/');
   await waitForList(page);
   const signOut = page.locator('#sign-out');
   await expect(signOut).toBeVisible();
-  // Title carries identity (prefix or name)
   await expect(signOut).toHaveAttribute('title', /sign out/i);
   await shot('header_signed_in');
 });
 
-test('login screen accepts a valid key and signs the user in', async ({ browser, shot }) => {
-  const key = process.env.OO_E2E_API_KEY;
-  test.skip(!key, 'OO_E2E_API_KEY not set — login spec requires auth-on stack');
+test('login screen accepts a valid email/password and signs the user in', async ({
+  browser,
+  request,
+  shot,
+}) => {
+  const ok = await ensureSessionAccount(request);
+  test.skip(!ok, SKIP_MSG);
 
-  // Fresh context with no auth header set so the page boots into login.
-  // Override the project-level Authorization header so this context starts unauth'd.
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
 
@@ -29,10 +33,10 @@ test('login screen accepts a valid key and signs the user in', async ({ browser,
   await expect(page.locator('.login-card h2')).toHaveText('Sign in');
   await shot('login_screen', page);
 
-  await page.locator('.login-card input[name="key"]').fill(key!);
+  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
+  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
   await page.locator('.login-card button[type="submit"]').click();
 
-  // Reload should land us in the normal dashboard.
   await waitForList(page);
   await expect(page.locator('#sign-out')).toBeVisible();
   await shot('after_login', page);
@@ -40,34 +44,40 @@ test('login screen accepts a valid key and signs the user in', async ({ browser,
   await ctx.close();
 });
 
-test('login screen rejects an invalid key with an inline error', async ({ browser, shot }) => {
-  // Override the project-level Authorization header so this context starts unauth'd.
+test('login screen rejects invalid credentials with an inline error', async ({
+  browser,
+  request,
+  shot,
+}) => {
+  const ok = await ensureSessionAccount(request);
+  test.skip(!ok, SKIP_MSG);
+
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
   await page.goto('/');
   await expect(page.locator('.login-card')).toBeVisible();
 
-  await page.locator('.login-card input[name="key"]').fill('oo_aaaaaaaaaaaaaaaaaaaaaa');
+  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
+  await page.locator('.login-card input[name="password"]').fill('definitely-the-wrong-password');
   await page.locator('.login-card button[type="submit"]').click();
 
   await expect(page.locator('.login-error')).toBeVisible();
-  await expect(page.locator('.login-error')).toContainText(/invalid|revoked/i);
+  await expect(page.locator('.login-error')).toContainText(/invalid/i);
   await shot('login_invalid', page);
 
   await ctx.close();
 });
 
 test('cookie session persists across reload', async ({ browser, request }) => {
-  const key = process.env.OO_E2E_API_KEY;
-  test.skip(!key, 'OO_E2E_API_KEY not set — cookie spec requires auth-on stack');
+  const ok = await ensureSessionAccount(request);
+  test.skip(!ok, SKIP_MSG);
 
-  // Override the project-level Authorization header so this context starts unauth'd.
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
 
-  // Sign in via the UI flow.
   await page.goto('/');
-  await page.locator('.login-card input[name="key"]').fill(key!);
+  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
+  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
   await page.locator('.login-card button[type="submit"]').click();
   await waitForList(page);
 
