@@ -15,6 +15,7 @@ import {
   type ChannelLite,
   type ChannelType,
 } from './api';
+import { confirmDialog, alertDialog } from './dialogs';
 
 const TYPE_LABEL: Record<ChannelType, string> = {
   webhook: 'Webhook',
@@ -146,16 +147,17 @@ function wireChannelRowActions() {
       const id = Number(btn.dataset.channelId);
       const row = btn.closest<HTMLElement>('.channel-row');
       const name = row?.dataset.channelName ?? `#${id}`;
-      if (
-        !confirm(
-          `Delete channel '${name}'? Monitor bindings using this channel are removed too — they’ll stop alerting unless you bind them to another channel.`,
-        )
-      )
-        return;
+      const ok = await confirmDialog({
+        title: 'Delete channel',
+        body: `Delete channel '${name}'? Monitor bindings using this channel are removed too — they'll stop alerting unless you bind them to another channel.`,
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       btn.disabled = true;
       const res = await deleteChannel(id);
       if (!res.ok) {
-        alert(`Delete failed: ${res.status}`);
+        alertDialog({ title: 'Delete failed', body: `Delete failed: ${res.status}` });
         btn.disabled = false;
         return;
       }

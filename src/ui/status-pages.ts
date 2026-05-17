@@ -18,6 +18,7 @@ import {
   type StatusPageLite,
 } from './api';
 import type { MonType } from './types';
+import { confirmDialog, alertDialog } from './dialogs';
 
 let lastBanner: { kind: 'ok' | 'err'; text: string } | null = null;
 
@@ -114,16 +115,17 @@ function wirePageRows() {
       const id = Number(btn.dataset.id);
       const row = btn.closest<HTMLElement>('.status-page-row');
       const slug = row?.dataset.slug ?? `#${id}`;
-      if (
-        !confirm(
-          `Delete status page '${slug}'? The public URL /status/${slug} will return 404 immediately.`,
-        )
-      )
-        return;
+      const ok = await confirmDialog({
+        title: 'Delete status page',
+        body: `Delete status page '${slug}'? The public URL /status/${slug} will return 404 immediately.`,
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       btn.disabled = true;
       const res = await deleteStatusPage(id);
       if (!res.ok) {
-        alert(`Delete failed: ${res.status}`);
+        alertDialog({ title: 'Delete failed', body: `Delete failed: ${res.status}` });
         btn.disabled = false;
         return;
       }
@@ -245,7 +247,7 @@ function wireEditorForm(detail: StatusPageDetail) {
     });
     const res = await setStatusPageMonitors(detail.id, monitors);
     if (!res.ok) {
-      alert(`Save failed: ${res.status}`);
+      alertDialog({ title: 'Save failed', body: `Save failed: ${res.status}` });
       return;
     }
     lastBanner = { kind: 'ok', text: `Saved — ${monitors.length} monitors on this page.` };

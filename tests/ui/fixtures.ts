@@ -20,11 +20,6 @@ export const test = base.extend<{
 
 export { expect };
 
-// Auto-accept window.confirm prompts (used by the Delete button).
-export function autoAcceptConfirms(page: Page) {
-  page.on('dialog', (d) => d.accept().catch(() => {}));
-}
-
 // Wait for the list view to be ready (tabs rendered).
 export async function waitForList(page: Page) {
   await page.waitForSelector('.tab[data-tab="url"]');
