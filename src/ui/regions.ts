@@ -8,6 +8,7 @@
 
 import { $, esc, fmtAge } from './helpers';
 import { createRegion, deleteRegion, getRegions, rotateRegionKey, type RegionLite } from './api';
+import { confirmDialog, alertDialog } from './dialogs';
 
 interface OneTimeKey {
   slug: string;
@@ -109,12 +110,12 @@ function wireRegionRowActions() {
   document.querySelectorAll<HTMLButtonElement>('.region-rotate').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = Number(btn.dataset.regionId);
-      if (
-        !confirm(
-          'Issue a new agent key and revoke the old one? The currently running agent will start failing until restarted with the new key.',
-        )
-      )
-        return;
+      const ok = await confirmDialog({
+        title: 'Rotate agent key',
+        body: 'Issue a new agent key and revoke the old one? The currently running agent will start failing until restarted with the new key.',
+        confirmLabel: 'Rotate key',
+      });
+      if (!ok) return;
       btn.disabled = true;
       try {
         const result = await rotateRegionKey(id);
@@ -125,7 +126,10 @@ function wireRegionRowActions() {
         };
         await renderRegions();
       } catch (err) {
-        alert(`Rotate failed: ${err instanceof Error ? err.message : String(err)}`);
+        alertDialog({
+          title: 'Rotate failed',
+          body: err instanceof Error ? err.message : String(err),
+        });
         btn.disabled = false;
       }
     });
@@ -136,16 +140,20 @@ function wireRegionRowActions() {
       const id = Number(btn.dataset.regionId);
       const row = btn.closest<HTMLElement>('.region-row');
       const slug = row?.dataset.slug ?? `#${id}`;
-      if (
-        !confirm(
-          `Delete region '${slug}'? This revokes its agent key and removes all monitor bindings (cascading). Existing execution history is preserved (region_id is set to NULL).`,
-        )
-      )
-        return;
+      const ok = await confirmDialog({
+        title: 'Delete region',
+        body: `Delete region '${slug}'? This revokes its agent key and removes all monitor bindings (cascading). Existing execution history is preserved (region_id is set to NULL).`,
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       btn.disabled = true;
       const res = await deleteRegion(id);
       if (!res.ok) {
-        alert(`Delete failed: ${res.status} ${await res.text().catch(() => '')}`);
+        alertDialog({
+          title: 'Delete failed',
+          body: `${res.status} ${await res.text().catch(() => '')}`,
+        });
         btn.disabled = false;
         return;
       }

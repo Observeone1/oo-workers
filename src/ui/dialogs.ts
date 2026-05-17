@@ -12,6 +12,107 @@ import {
 } from './api';
 import { renderList, setActiveTab } from './list';
 
+// ---------------------------------------------------------------------------
+// Generic confirm / alert backed by native <dialog>
+// ---------------------------------------------------------------------------
+
+let confirmDialogEl: HTMLDialogElement | null = null;
+let alertDialogEl: HTMLDialogElement | null = null;
+
+function getConfirmDialog(): HTMLDialogElement {
+  if (!confirmDialogEl) {
+    confirmDialogEl = document.createElement('dialog');
+    confirmDialogEl.id = 'confirm-dialog';
+    confirmDialogEl.className = 'confirm-dialog';
+    confirmDialogEl.innerHTML = `
+      <div class="confirm-dialog-inner">
+        <h3 id="confirm-title"></h3>
+        <p id="confirm-body"></p>
+        <div class="dialog-actions">
+          <button type="button" class="confirm-cancel">Cancel</button>
+          <button type="button" class="confirm-ok primary"></button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(confirmDialogEl);
+
+    // Wire up explicit close handlers — more reliable than form method="dialog".
+    confirmDialogEl.querySelector('.confirm-cancel')!.addEventListener('click', () => {
+      confirmDialogEl!.close('cancel');
+    });
+    confirmDialogEl.querySelector('.confirm-ok')!.addEventListener('click', () => {
+      confirmDialogEl!.close('confirm');
+    });
+  }
+  return confirmDialogEl;
+}
+
+function getAlertDialog(): HTMLDialogElement {
+  if (!alertDialogEl) {
+    alertDialogEl = document.createElement('dialog');
+    alertDialogEl.id = 'alert-dialog';
+    alertDialogEl.className = 'alert-dialog';
+    alertDialogEl.innerHTML = `
+      <div class="alert-dialog-inner">
+        <h3 id="alert-title"></h3>
+        <p id="alert-body"></p>
+        <div class="dialog-actions">
+          <button type="button" class="alert-ok primary">OK</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(alertDialogEl);
+
+    alertDialogEl.querySelector('.alert-ok')!.addEventListener('click', () => {
+      alertDialogEl!.close('ok');
+    });
+  }
+  return alertDialogEl;
+}
+
+/**
+ * Show a themed confirmation dialog. Returns true if the user confirmed.
+ */
+export function confirmDialog(opts: {
+  title: string;
+  body: string;
+  confirmLabel?: string;
+  danger?: boolean;
+}): Promise<boolean> {
+  const dlg = getConfirmDialog();
+  const titleEl = dlg.querySelector('#confirm-title')!;
+  const bodyEl = dlg.querySelector('#confirm-body')!;
+  const okBtn = dlg.querySelector('.confirm-ok') as HTMLButtonElement;
+
+  titleEl.textContent = opts.title;
+  bodyEl.textContent = opts.body;
+  okBtn.textContent = opts.confirmLabel ?? 'Confirm';
+  okBtn.className = `confirm-ok primary${opts.danger ? ' danger' : ''}`;
+
+  return new Promise((resolve) => {
+    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'confirm'), { once: true });
+    dlg.showModal();
+  });
+}
+
+/**
+ * Show a themed alert dialog. Resolves when dismissed.
+ */
+export function alertDialog(opts: { title: string; body: string }): Promise<void> {
+  const dlg = getAlertDialog();
+  dlg.querySelector('#alert-title')!.textContent = opts.title;
+  dlg.querySelector('#alert-body')!.textContent = opts.body;
+
+  return new Promise((resolve) => {
+    dlg.addEventListener('close', () => resolve(), { once: true });
+    dlg.showModal();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Existing dialog init
+// ---------------------------------------------------------------------------
+
 // Cache regions for the lifetime of the dialog session. Refreshed each time
 // the operator opens "Add monitor" so freshly-created regions show up.
 let cachedRegions: RegionLite[] = [];
@@ -57,7 +158,7 @@ function initAddDialog() {
     let body: unknown;
     if (type === 'url') {
       if (!url) {
-        alert('URL is required');
+        alertDialog({ title: 'Validation error', body: 'URL is required' });
         return;
       }
       body = {
@@ -68,20 +169,20 @@ function initAddDialog() {
       };
     } else if (type === 'api') {
       if (!url) {
-        alert('URL is required');
+        alertDialog({ title: 'Validation error', body: 'URL is required' });
         return;
       }
       let assertions: unknown[] = [];
       try {
         assertions = JSON.parse((fd.get('api_assertions') as string) || '[]');
       } catch {
-        alert('Assertions JSON is invalid');
+        alertDialog({ title: 'Validation error', body: 'Assertions JSON is invalid' });
         return;
       }
       body = { name, url, method: fd.get('api_method'), intervalSeconds, assertions };
     } else if (type === 'qa') {
       if (!url) {
-        alert('Target URL is required');
+        alertDialog({ title: 'Validation error', body: 'Target URL is required' });
         return;
       }
       body = {
@@ -94,7 +195,7 @@ function initAddDialog() {
       const host = String(fd.get('tcp_host') ?? '').trim();
       const port = Number(fd.get('tcp_port'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
-        alert('Host + port (1–65535) required');
+        alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
       }
       body = {
@@ -108,7 +209,7 @@ function initAddDialog() {
       const host = String(fd.get('udp_host') ?? '').trim();
       const port = Number(fd.get('udp_port'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
-        alert('Host + port (1–65535) required');
+        alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
       }
       const payloadHex = String(fd.get('udp_payload_hex') ?? '').trim();
@@ -123,7 +224,7 @@ function initAddDialog() {
     }
     const res = await createMonitor(type, body);
     if (!res.ok) {
-      alert(`Failed: ${await res.text()}`);
+      alertDialog({ title: 'Create failed', body: `Failed: ${await res.text()}` });
       return;
     }
     const created = (await res.json().catch(() => null)) as { id?: number } | null;
@@ -137,11 +238,12 @@ function initAddDialog() {
         try {
           await setMonitorRegions(type, created.id, regionIds);
         } catch (err) {
-          alert(
-            `Monitor created but region binding failed: ${
+          alertDialog({
+            title: 'Region binding failed',
+            body: `Monitor created but region binding failed: ${
               err instanceof Error ? err.message : String(err)
             }. Fix it from the Regions page.`,
-          );
+          });
         }
       }
       const channelIds = collectSelectedChannelIds();
@@ -149,11 +251,12 @@ function initAddDialog() {
         try {
           await setMonitorChannels(type, created.id, channelIds);
         } catch (err) {
-          alert(
-            `Monitor created but alert-channel binding failed: ${
+          alertDialog({
+            title: 'Channel binding failed',
+            body: `Monitor created but alert-channel binding failed: ${
               err instanceof Error ? err.message : String(err)
             }. Fix it from the Channels page.`,
-          );
+          });
         }
       }
     }
@@ -252,16 +355,19 @@ function initImportDialog() {
     try {
       payload = JSON.parse(text);
     } catch {
-      alert('Not valid JSON');
+      alertDialog({ title: 'Import error', body: 'Not valid JSON' });
       return;
     }
     const { res, result } = await importJson(payload);
     if (!res.ok) {
-      alert(`Failed: ${JSON.stringify(result)}`);
+      alertDialog({ title: 'Import failed', body: `Failed: ${JSON.stringify(result)}` });
       return;
     }
     const skipped = result.skipped?.length ? `\n\nSkipped:\n${result.skipped.join('\n')}` : '';
-    alert(`Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`);
+    alertDialog({
+      title: 'Import complete',
+      body: `Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`,
+    });
     importDialog.close();
     renderList();
   });

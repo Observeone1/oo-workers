@@ -37,9 +37,9 @@ test('create channel, send test alert (502 path), then delete', async ({ page })
   await page.locator(`.channel-row[data-channel-name="${name}"] .channel-test`).click();
   await expect(page.locator('.banner-err')).toBeVisible({ timeout: 15000 });
 
-  // Delete — auto-accept the confirm() dialog.
-  page.once('dialog', (d) => d.accept());
+  // Delete — confirm via native dialog
   await page.locator(`.channel-row[data-channel-name="${name}"] .channel-delete`).click();
+  await page.locator('#confirm-dialog .confirm-ok').click();
   await expect(page.locator(`.channel-row[data-channel-name="${name}"]`)).toHaveCount(0, {
     timeout: 5000,
   });
@@ -71,8 +71,8 @@ test('channel picker appears in add-monitor dialog when channels exist', async (
   await page.locator('#cancel-btn').click();
   await page.goto('/#/channels');
   await page.waitForSelector(`.channel-row[data-channel-name="${name}"]`);
-  page.once('dialog', (d) => d.accept());
   await page.locator(`.channel-row[data-channel-name="${name}"] .channel-delete`).click();
+  await page.locator('#confirm-dialog .confirm-ok').click();
   await expect(page.locator(`.channel-row[data-channel-name="${name}"]`)).toHaveCount(0, {
     timeout: 5000,
   });

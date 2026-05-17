@@ -1,6 +1,7 @@
 import type { MonType, Monitor } from './types';
 import { $, $$, esc, fmtAge, statusClass } from './helpers';
 import { getMonitors, runMonitor, toggleMonitor, deleteMonitor } from './api';
+import { confirmDialog } from './dialogs';
 
 const main = $('#main');
 
@@ -136,8 +137,14 @@ function wireRowActions() {
   $$('[data-del]').forEach((b) =>
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (!confirm('Delete this monitor?')) return;
       const { type, id } = (e.currentTarget as HTMLElement).dataset;
+      const ok = await confirmDialog({
+        title: 'Delete monitor',
+        body: 'Delete this monitor?',
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
       await deleteMonitor(type as MonType, Number(id));
       renderList();
     }),

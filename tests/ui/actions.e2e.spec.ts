@@ -3,7 +3,6 @@ import {
   expect,
   waitForList,
   uniqueSuffix,
-  autoAcceptConfirms,
   deleteMonitorViaApi,
 } from './fixtures';
 
@@ -67,9 +66,8 @@ test('Pause/Resume toggle flips enabled state and row opacity', async ({ page, r
   await deleteMonitorViaApi(request, 'url', seed.id);
 });
 
-test('Delete removes the row (auto-accepts confirm dialog)', async ({ page, request, shot }) => {
+test('Delete removes the row (confirms via native dialog)', async ({ page, request, shot }) => {
   const seed = await seedUrl(request, `e2e-delete-${uniqueSuffix()}`);
-  autoAcceptConfirms(page);
 
   await page.goto('/');
   await waitForList(page);
@@ -77,6 +75,8 @@ test('Delete removes the row (auto-accepts confirm dialog)', async ({ page, requ
   await row.waitFor();
 
   await row.locator('button[data-del]').click();
+  // Click the Confirm button in the native <dialog>
+  await page.locator('#confirm-dialog .confirm-ok').click();
   await expect(row).toHaveCount(0, { timeout: 5000 });
   await shot('row_deleted');
 
