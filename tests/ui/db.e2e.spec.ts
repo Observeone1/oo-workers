@@ -132,3 +132,85 @@ test('DB monitor against a closed port reports FAILED', async ({ page, request, 
   await shot('db_down');
   await deleteMonitorViaApi(request, 'db', seed.id);
 });
+
+// tls=false must behave byte-identically to the shipped plaintext path.
+test('redis with tls=false still reports SUCCESS (default-off parity)', async ({
+  page,
+  request,
+}) => {
+  test.skip(!(await reachable('127.0.0.1', 6379)), 'no redis on 127.0.0.1:6379 — dev stack not up');
+  const name = `e2e-db-tlsfalse-${uniqueSuffix()}`;
+  const seedRes = await request.post('/api/monitors/db', {
+    data: {
+      name,
+      protocol: 'redis',
+      host: '127.0.0.1',
+      port: 6379,
+      tls: false,
+      intervalSeconds: 60,
+      timeoutMs: 5000,
+    },
+  });
+  expect(seedRes.ok()).toBe(true);
+  const seed = (await seedRes.json()) as { id: number };
+
+  await page.goto('/');
+  await waitForList(page);
+  await page.locator('.tab[data-tab="db"]').click();
+  const row = page.locator(`tr[data-open][data-type="db"][data-id="${seed.id}"]`);
+  await row.waitFor();
+  await row.locator('button[data-run]').click();
+  await expect
+    .poll(
+      async () => {
+        const d = await (await request.get(`/api/monitors/db/${seed.id}`)).json();
+        return d.runs?.[0]?.status ?? null;
+      },
+      { timeout: 15_000, intervals: [500, 750, 1000] },
+    )
+    .toBe('SUCCESS');
+  await deleteMonitorViaApi(request, 'db', seed.id);
+});
+
+// Real TLS redis isn't in CI. Set OO_E2E_TLS_REDIS=host:port (e.g. a
+// `redis-server --tls-port 6380` or stunnel) to exercise the TLS path.
+test('redis with tls=true against a TLS endpoint reports SUCCESS', async ({ page, request }) => {
+  const ep = process.env.OO_E2E_TLS_REDIS;
+  const [host, portStr] = (ep ?? '').split(':');
+  const port = Number(portStr);
+  test.skip(
+    !ep || !host || !Number.isInteger(port) || !(await reachable(host, port)),
+    'OO_E2E_TLS_REDIS=host:port not set or unreachable — TLS-redis case skipped',
+  );
+  const name = `e2e-db-tls-${uniqueSuffix()}`;
+  const seedRes = await request.post('/api/monitors/db', {
+    data: {
+      name,
+      protocol: 'redis',
+      host,
+      port,
+      tls: true,
+      intervalSeconds: 60,
+      timeoutMs: 5000,
+    },
+  });
+  expect(seedRes.ok()).toBe(true);
+  const seed = (await seedRes.json()) as { id: number };
+
+  await page.goto('/');
+  await waitForList(page);
+  await page.locator('.tab[data-tab="db"]').click();
+  const row = page.locator(`tr[data-open][data-type="db"][data-id="${seed.id}"]`);
+  await row.waitFor();
+  await row.locator('button[data-run]').click();
+  await expect
+    .poll(
+      async () => {
+        const d = await (await request.get(`/api/monitors/db/${seed.id}`)).json();
+        return d.runs?.[0]?.status ?? null;
+      },
+      { timeout: 15_000, intervals: [500, 750, 1000] },
+    )
+    .toBe('SUCCESS');
+  await deleteMonitorViaApi(request, 'db', seed.id);
+});

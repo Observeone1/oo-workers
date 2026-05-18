@@ -103,6 +103,10 @@
             <label>Interval (sec)</label>
             <input name="db_interval_seconds" type="number" value="60" min="10" />
           </div>
+          <label class="checkbox-label">
+            <input type="checkbox" name="db_tls" />
+            Use TLS (rediss:// / stunnel-wrapped pg/mysql)
+          </label>
         </div>
 
         <div class="form-row" id="udp-row" hidden>
