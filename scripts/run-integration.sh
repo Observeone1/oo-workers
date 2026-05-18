@@ -29,3 +29,6 @@ bun scripts/backup-restore-test.ts
 # SaaS→self-host adapter contract — pure (no DB/server); guards the
 # snake_case/camelCase drift that silently imported zero rows.
 bun scripts/import-from-saas-test.ts
+# TCP banner/probe-read — probes the integration Redis (PING→PONG); pure
+# (no DB/HTTP), anti-vacuous (mismatch must FAIL).
+bun scripts/tcp-banner-test.ts

@@ -80,6 +80,32 @@
             <label>Interval (sec)</label>
             <input name="tcp_interval_seconds" type="number" value="60" min="10" />
           </div>
+          <div class="full-width">
+            <label
+              >Payload (hex, optional)
+              <a
+                href="/docs#tcp"
+                target="_blank"
+                class="hint"
+                data-tooltip="Hex bytes sent on connect, e.g. 50494e470d0a for PING\r\n. Leave empty to just check the port opens."
+                >?</a
+              ></label
+            >
+            <input name="tcp_payload_hex" placeholder="e.g. 50494e470d0a (PING\r\n)" />
+          </div>
+          <div class="full-width">
+            <label
+              >Expect banner contains (optional)
+              <a
+                href="/docs#tcp"
+                target="_blank"
+                class="hint"
+                data-tooltip="Substring the server's response must contain, else FAILED. Matched against the first <=256 bytes. Won't work on TLS-only ports."
+                >?</a
+              ></label
+            >
+            <input name="tcp_expect_banner" placeholder="e.g. PONG, SSH-2.0, 220" />
+          </div>
         </div>
 
         <div class="form-row" id="db-row" hidden>

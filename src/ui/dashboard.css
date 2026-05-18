@@ -450,6 +450,16 @@ textarea {
   }
 }
 
+/* Optional fields (e.g. TCP payload/banner) that should sit on their own
+   line rather than squeeze into the flex row. Scoped via :has so other
+   dialog rows are untouched. */
+.form-row:has(> .full-width) {
+  flex-wrap: wrap;
+}
+.form-row > .full-width {
+  flex-basis: 100%;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;

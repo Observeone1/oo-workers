@@ -72,6 +72,8 @@ export const tcpMonitorRepo = {
     name: string;
     host: string;
     port: number;
+    payloadHex?: string | null;
+    expectBanner?: string | null;
     timeoutMs?: number;
     intervalSeconds?: number;
     enabled?: boolean;
@@ -110,6 +112,8 @@ export const tcpMonitorRepo = {
         id: tcpMonitors.id,
         host: tcpMonitors.host,
         port: tcpMonitors.port,
+        payloadHex: tcpMonitors.payloadHex,
+        expectBanner: tcpMonitors.expectBanner,
         timeoutMs: tcpMonitors.timeoutMs,
         intervalSeconds: tcpMonitors.intervalSeconds,
         ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as(

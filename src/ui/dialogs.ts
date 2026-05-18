@@ -203,10 +203,14 @@ function initAddDialog() {
         alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
       }
+      const tcpPayloadHex = String(fd.get('tcp_payload_hex') ?? '').trim();
+      const tcpExpectBanner = String(fd.get('tcp_expect_banner') ?? '').trim();
       body = {
         name,
         host,
         port,
+        payloadHex: tcpPayloadHex || null,
+        expectBanner: tcpExpectBanner || null,
         intervalSeconds: Number(fd.get('tcp_interval_seconds')) || 60,
       };
     } else if (type === 'db') {
