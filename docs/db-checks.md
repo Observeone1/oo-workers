@@ -33,15 +33,25 @@ A wrong application password is **not** a database outage, so it
 intentionally does not page you. If you need "can my service actually
 authenticate and query", that's the deferred authenticated mode below.
 
+## TLS (rediss:// / stunnel)
+
+Tick **Use TLS** on the monitor (or send `tls: true` to
+`POST /api/monitors/db`) for endpoints that speak the protocol _inside_
+a TLS tunnel — `rediss://`, stunnel-wrapped Postgres/MySQL, a Redis
+started with `--tls-port`. The probe then performs the TLS handshake
+before the same liveness exchange. The flag is **generic across all
+three protocols** (it's a socket-constructor swap, not protocol-
+specific) and defaults off, so existing monitors are unaffected.
+
+The certificate is **not validated** (`rejectUnauthorized: false`) —
+this is liveness, not cert checking, consistent with the project's
+self-signed posture. Cert-expiry alerting would be a separate future
+feature. Note: native Postgres `ssl = require` does **not** need this
+flag — it answers a plaintext startup with an error, which already
+proves it's up.
+
 ## Known limitations
 
-- **TLS-only Redis** (`rediss://`, stunnel, a Redis that accepts _only_
-  TLS): the probe speaks plaintext, the server waits for a TLS
-  handshake, no protocol reply comes back → the check reports
-  **FAILED** even though Redis is up. This is a transport limitation,
-  not an auth one. Postgres with `ssl = require` is unaffected (it
-  answers a plaintext startup with an error, which still proves it's
-  up). Tracked for a follow-up fix.
 - **Heuristic acceptance**: a non-database service that coincidentally
   replies with bytes resembling the protocol's opening could
   false-succeed. Same risk class as the TCP/UDP probes; acceptable for

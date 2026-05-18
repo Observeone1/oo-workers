@@ -76,6 +76,7 @@ export const dbMonitorRepo = {
     description?: string | null;
     timeoutMs?: number;
     intervalSeconds?: number;
+    tls?: boolean;
     enabled?: boolean;
   }) {
     return db.insert(dbMonitors).values(data).returning();
@@ -111,6 +112,7 @@ export const dbMonitorRepo = {
       .select({
         id: dbMonitors.id,
         protocol: dbMonitors.protocol,
+        tls: dbMonitors.tls,
         host: dbMonitors.host,
         port: dbMonitors.port,
         timeoutMs: dbMonitors.timeoutMs,

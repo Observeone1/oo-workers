@@ -15,6 +15,7 @@ export const dbMonitorProcessor = async (job: Job) => {
     host: monitor.host,
     port: monitor.port,
     protocol: monitor.protocol as DbProtocol,
+    tls: monitor.tls,
     timeoutMs,
   });
   const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);

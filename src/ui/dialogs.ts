@@ -222,6 +222,7 @@ function initAddDialog() {
         protocol,
         host,
         port,
+        tls: fd.get('db_tls') === 'on',
         intervalSeconds: Number(fd.get('db_interval_seconds')) || 60,
       };
     } else {

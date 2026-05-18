@@ -208,6 +208,7 @@ export const dbMonitors = pgTable('db_monitors', {
   port: integer('port').notNull(),
   timeoutMs: integer('timeout_ms').notNull().default(5000),
   intervalSeconds: integer('interval_seconds').notNull().default(60),
+  tls: boolean('tls').notNull().default(false),
   enabled: boolean('enabled').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

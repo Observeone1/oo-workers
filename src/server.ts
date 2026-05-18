@@ -459,6 +459,7 @@ function buildApp(connection: Redis) {
       protocol,
       host: body.host,
       port,
+      tls: body.tls === true,
       timeoutMs: body.timeoutMs ?? DEFAULTS.DB_TIMEOUT_MS,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
@@ -644,6 +645,7 @@ function buildApp(connection: Redis) {
         monitor: {
           id: m.id,
           protocol: m.protocol,
+          tls: m.tls,
           host: m.host,
           port: m.port,
           timeoutMs: m.timeoutMs,

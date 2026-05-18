@@ -48,6 +48,7 @@ interface JobPayload {
     payloadHex?: string | null;
     expectResponse?: boolean;
     protocol?: string;
+    tls?: boolean;
   };
   apiCheck?: {
     id: number;
@@ -245,6 +246,7 @@ async function probeDb(job: JobPayload): Promise<AgentResultBody> {
     host: m.host!,
     port: m.port!,
     protocol: m.protocol as DbProtocol,
+    tls: m.tls,
     timeoutMs,
   });
   return {

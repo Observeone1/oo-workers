@@ -322,6 +322,7 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
           monitor: {
             id: m.id,
             protocol: m.protocol,
+            tls: m.tls,
             host: m.host,
             port: m.port,
             timeoutMs: m.timeoutMs,

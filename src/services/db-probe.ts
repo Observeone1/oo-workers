@@ -1,4 +1,5 @@
 import { createConnection, type Socket } from 'node:net';
+import { connect as tlsConnect } from 'node:tls';
 
 /**
  * Credential-free database liveness. Opens a TCP socket and confirms the
@@ -26,6 +27,9 @@ export interface DbProbeOptions {
   port: number;
   protocol: DbProtocol;
   timeoutMs: number;
+  /** Wrap the socket in TLS before the liveness exchange (rediss://,
+   *  stunnel-wrapped pg/mysql). Liveness only — cert not validated. */
+  tls?: boolean;
 }
 
 export interface DbProbeResult {
@@ -105,14 +109,29 @@ export function dbProbe(opts: DbProbeOptions): Promise<DbProbeResult> {
       opts.timeoutMs,
     );
 
-    socket = createConnection({ host: opts.host, port: opts.port });
+    // tls.connect returns a TLSSocket (a net.Socket subclass — typing +
+    // error/close/data/timeout lifecycle unchanged) but signals readiness
+    // via 'secureConnect' (post-handshake), not 'connect'. One const keeps
+    // the swap minimal and prevents double-registering.
+    const connectEvent = opts.tls ? 'secureConnect' : 'connect';
+    socket = opts.tls
+      ? tlsConnect({
+          host: opts.host,
+          port: opts.port,
+          servername: opts.host,
+          // Liveness, not cert validation (consistent with the project's
+          // documented self-signed-TLS posture). A handshake failure still
+          // emits 'error' → clean FAILED via the handler below.
+          rejectUnauthorized: false,
+        })
+      : createConnection({ host: opts.host, port: opts.port });
     socket.on('error', (e: NodeJS.ErrnoException) => fail(mapErr(e, opts)));
     socket.on('close', () => {
       // A server that accepts then drops the connection without ever
       // speaking the protocol is not a healthy DB endpoint.
       if (!settled) fail(`closed before a ${opts.protocol} response (${opts.host}:${opts.port})`);
     });
-    socket.once('connect', () => {
+    socket.once(connectEvent, () => {
       if (opts.protocol === 'redis') socket?.write('PING\r\n');
       else if (opts.protocol === 'postgres') socket?.write(pgStartup());
       // mysql: server speaks first — send nothing.
