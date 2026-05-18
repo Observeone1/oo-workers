@@ -26,3 +26,6 @@ bun scripts/load.ts
 # Backup/restore round-trip — provisions its own oo_br_* sibling DBs from
 # DATABASE_URL and drops them; never touches the integration DB.
 bun scripts/backup-restore-test.ts
+# SaaS→self-host adapter contract — pure (no DB/server); guards the
+# snake_case/camelCase drift that silently imported zero rows.
+bun scripts/import-from-saas-test.ts
