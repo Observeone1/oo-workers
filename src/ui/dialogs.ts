@@ -142,6 +142,7 @@ function initAddDialog() {
     $('#tcp-row').hidden = t !== 'tcp';
     $('#udp-row').hidden = t !== 'udp';
     $('#db-row').hidden = t !== 'db';
+    syncRegionsRow();
   };
   typeSelect.addEventListener('change', syncFields);
   $('#add-btn').addEventListener('click', async () => {
@@ -294,7 +295,6 @@ function initAddDialog() {
 }
 
 async function refreshRegionsPicker() {
-  const row = document.getElementById('regions-row') as HTMLElement;
   const container = document.getElementById('regions-checkboxes') as HTMLElement;
   try {
     cachedRegions = await getRegions();
@@ -302,11 +302,10 @@ async function refreshRegionsPicker() {
     cachedRegions = [];
   }
   if (cachedRegions.length === 0) {
-    row.hidden = true;
     container.innerHTML = '';
+    syncRegionsRow();
     return;
   }
-  row.hidden = false;
   container.innerHTML = cachedRegions
     .map(
       (r) => `
@@ -321,6 +320,16 @@ async function refreshRegionsPicker() {
     `,
     )
     .join('');
+  syncRegionsRow();
+}
+
+// QA/browser checks run on the master only — binding one to a region just
+// yields ERROR exec rows. Hide the "Run from" picker for type=qa so it
+// can't be set in the first place (also hidden when there are no regions).
+function syncRegionsRow() {
+  const row = document.getElementById('regions-row') as HTMLElement;
+  const type = (document.getElementById('type-select') as HTMLSelectElement | null)?.value;
+  row.hidden = cachedRegions.length === 0 || type === 'qa';
 }
 
 function collectSelectedRegionIds(): number[] {
