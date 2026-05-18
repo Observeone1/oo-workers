@@ -35,7 +35,7 @@ Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashb
 | **HTTP uptime** | Is the URL up? Expected status code.                                                                                                                                                                  |
 | **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents.                                                                        |
 | **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.                                                                                  |
-| **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Works for any port — SSH, SMTP, Postgres, Redis, custom services.                                                                          |
+| **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Optionally send a payload and assert on the response banner (SSH/SMTP/Redis/IMAP). See [docs/tcp-checks.md](docs/tcp-checks.md).           |
 | **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services.                                                          |
 | **Database**    | Postgres / MySQL / Redis liveness — connects and confirms the server speaks the protocol (no credentials stored; "is it up?", not authenticated queries). See [docs/db-checks.md](docs/db-checks.md). |
 
@@ -128,7 +128,7 @@ An authenticated caller can ask the worker to probe any host:port it can reach, 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), and [import from SaaS](docs/import-from-saas.md).
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), and [TCP banner checks](docs/tcp-checks.md).
 
 ## Configuration
 

@@ -418,10 +418,19 @@ function buildApp(connection: Redis) {
     if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
       return c.json({ error: 'name + host + port (1-65535) required' }, 400);
     }
+    if (body.payloadHex) {
+      try {
+        parseHexPayload(body.payloadHex);
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : 'invalid payloadHex' }, 400);
+      }
+    }
     const [m] = await tcpMonitorRepo.create({
       name: body.name,
       host: body.host,
       port,
+      payloadHex: body.payloadHex ?? null,
+      expectBanner: body.expectBanner ?? null,
       timeoutMs: body.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
@@ -626,7 +635,14 @@ function buildApp(connection: Redis) {
       const [exec] = await tcpMonitorRepo.createExecution(id, 'PENDING');
       await tcpQ.add('check', {
         executionId: exec.id,
-        monitor: { id: m.id, host: m.host, port: m.port, timeoutMs: m.timeoutMs },
+        monitor: {
+          id: m.id,
+          host: m.host,
+          port: m.port,
+          payloadHex: m.payloadHex,
+          expectBanner: m.expectBanner,
+          timeoutMs: m.timeoutMs,
+        },
       });
       return c.json({ executionId: exec.id });
     }
@@ -726,6 +742,8 @@ function buildApp(connection: Redis) {
           name: t.name,
           host: t.host,
           port: Number(t.port),
+          payloadHex: t.payloadHex ?? null,
+          expectBanner: t.expectBanner ?? null,
           timeoutMs: t.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
           intervalSeconds: t.intervalSeconds ?? 60,
           enabled: t.enabled ?? true,

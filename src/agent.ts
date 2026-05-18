@@ -47,6 +47,7 @@ interface JobPayload {
     timeoutMs: number;
     payloadHex?: string | null;
     expectResponse?: boolean;
+    expectBanner?: string | null;
     protocol?: string;
     tls?: boolean;
   };
@@ -198,12 +199,30 @@ async function probeApi(job: JobPayload): Promise<AgentResultBody> {
 async function probeTcp(job: JobPayload): Promise<AgentResultBody> {
   const m = job.monitor!;
   const timeoutMs = m.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS;
-  const result = await tcpProbe(m.host!, m.port!, timeoutMs);
+  let payload: Buffer | null;
+  try {
+    payload = parseHexPayload(m.payloadHex);
+  } catch (err) {
+    return {
+      type: 'tcp',
+      executionId: job.executionId,
+      status: 'FAILED',
+      errorMessage: err instanceof Error ? err.message : 'invalid payload_hex',
+    };
+  }
+  const result = await tcpProbe({
+    host: m.host!,
+    port: m.port!,
+    timeoutMs,
+    payload,
+    expectBanner: m.expectBanner ?? null,
+  });
   return {
     type: 'tcp',
     executionId: job.executionId,
     status: result.ok ? 'SUCCESS' : 'FAILED',
     latencyMs: result.latencyMs,
+    banner: result.banner ?? null,
     errorMessage: result.errorMessage ?? null,
   };
 }

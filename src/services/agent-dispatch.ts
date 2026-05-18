@@ -63,6 +63,8 @@ export interface AgentResultBody {
   responseHeaders?: Record<string, string> | null;
   // udp-specific
   responseBytes?: number | null;
+  // tcp-specific
+  banner?: string | null;
 }
 
 export interface WriteResultOutcome {
@@ -148,6 +150,7 @@ export async function writeAgentResult(
         .set({
           status,
           latencyMs: body.latencyMs ?? null,
+          banner: body.banner ?? null,
           errorMessage: errorMessage ?? null,
           endTime,
         })

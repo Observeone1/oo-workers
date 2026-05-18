@@ -1,6 +1,6 @@
 {
   "name": "oo-workers",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "Self-hosted distributed monitoring workers — HTTP, API, and Playwright browser checks. The OSS engine behind ObserveOne.",
   "private": true,
   "type": "module",
@@ -18,6 +18,7 @@
     "test:integration": "sh scripts/run-integration.sh",
     "test:backup": "bun scripts/backup-restore-test.ts",
     "test:import": "bun scripts/import-from-saas-test.ts",
+    "test:tcp": "bun scripts/tcp-banner-test.ts",
     "test:ui:e2e": "playwright test --config=playwright.ui.config.ts",
     "prepare": "husky"
   },
