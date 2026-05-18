@@ -15,6 +15,7 @@ import {
   dbExecutions,
   qaTestExecutions,
   tcpExecutions,
+  tlsExecutions,
   udpExecutions,
   urlMonitorExecutions,
 } from '../db/schema.ts';
@@ -65,6 +66,10 @@ export interface AgentResultBody {
   responseBytes?: number | null;
   // tcp-specific
   banner?: string | null;
+  // tls-specific
+  daysRemaining?: number | null;
+  validTo?: string | null;
+  certSummary?: string | null;
 }
 
 export interface WriteResultOutcome {
@@ -202,6 +207,30 @@ export async function writeAgentResult(
       if (rows.length !== 1) return { updated: false, reason: 'no_match' };
       if (status === 'SUCCESS' || status === 'FAILED') {
         void maybeAlertOnTransition('db', rows[0].monitorId, executionId, status, {
+          durationMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
+    }
+    case 'tls': {
+      const rows = await db
+        .update(tlsExecutions)
+        .set({
+          status,
+          latencyMs: body.latencyMs ?? null,
+          daysRemaining: body.daysRemaining ?? null,
+          validTo: body.validTo ? new Date(body.validTo) : null,
+          certSummary: body.certSummary ?? null,
+          errorMessage: errorMessage ?? null,
+          endTime,
+        })
+        .where(and(eq(tlsExecutions.id, executionId), eq(tlsExecutions.regionId, agentRegionId)))
+        .returning({ id: tlsExecutions.id, monitorId: tlsExecutions.tlsMonitorId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('tls', rows[0].monitorId, executionId, status, {
           durationMs: body.latencyMs ?? null,
           errorMessage: errorMessage ?? null,
           regionId: agentRegionId,

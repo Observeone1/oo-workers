@@ -51,6 +51,7 @@
           <option value="tcp">TCP — host:port reachability probe</option>
           <option value="udp">UDP — send datagram, optionally await response</option>
           <option value="db">Database — postgres/mysql/redis liveness</option>
+          <option value="tls">TLS — certificate expiry</option>
         </select>
 
         <label>Name</label>
@@ -134,6 +135,47 @@
             <input type="checkbox" name="db_tls" />
             Use TLS (rediss:// / stunnel-wrapped pg/mysql)
           </label>
+        </div>
+
+        <div class="form-row" id="tls-row" hidden>
+          <div>
+            <label>Host</label>
+            <input name="tls_host" placeholder="example.com" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input name="tls_port" type="number" min="1" max="65535" value="443" />
+          </div>
+          <div>
+            <label>Interval (sec)</label>
+            <input name="tls_interval_seconds" type="number" value="60" min="10" />
+          </div>
+          <div class="full-width">
+            <label
+              >Warn when expiring within (days)
+              <a
+                href="/docs#tls"
+                target="_blank"
+                class="hint"
+                data-tooltip="FAILED once the certificate has this many days or fewer left."
+                >?</a
+              ></label
+            >
+            <input name="tls_warn_days" type="number" min="0" value="30" />
+          </div>
+          <div class="full-width">
+            <label
+              >SNI servername (optional)
+              <a
+                href="/docs#tls"
+                target="_blank"
+                class="hint"
+                data-tooltip="Override SNI when the cert's hostname differs from Host (vhosts). Leave blank to use Host."
+                >?</a
+              ></label
+            >
+            <input name="tls_servername" placeholder="(defaults to Host)" />
+          </div>
         </div>
 
         <div class="form-row" id="udp-row" hidden>

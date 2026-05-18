@@ -22,6 +22,7 @@ import {
   qaTestExecutions,
   tcpExecutions,
   tcpMonitors,
+  tlsExecutions,
   udpExecutions,
   udpMonitors,
   urlMonitorExecutions,
@@ -47,6 +48,7 @@ const PALETTE = {
   tcp: { table: tcpExecutions, monitorIdCol: tcpExecutions.tcpMonitorId },
   udp: { table: udpExecutions, monitorIdCol: udpExecutions.udpMonitorId },
   db: { table: dbExecutions, monitorIdCol: dbExecutions.dbMonitorId },
+  tls: { table: tlsExecutions, monitorIdCol: tlsExecutions.tlsMonitorId },
   qa: { table: qaTestExecutions, monitorIdCol: qaTestExecutions.projectId },
 } as const;
 
