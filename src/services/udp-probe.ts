@@ -1,4 +1,5 @@
-import { createSocket } from 'node:dgram';
+import { createSocket, type SocketType } from 'node:dgram';
+import { lookup } from 'node:dns';
 
 export interface UdpProbeOptions {
   host: string;
@@ -23,71 +24,104 @@ export interface UdpProbeResult {
  * UDP is connectionless — there's no "did the server receive it" feedback
  * unless the server replies. So when `expectResponse=false` we treat
  * "the send() callback fired without error" as success; when
- * `expectResponse=true` we wait up to `timeoutMs` for any datagram from
- * the same address.
+ * `expectResponse=true` we wait up to `timeoutMs` for a datagram **from
+ * the probe target**.
+ *
+ * The host is resolved up front so we can (1) pick the right socket
+ * family for IPv6 targets instead of hardcoding `udp4`, and (2) reject
+ * datagrams whose source isn't the target — an unrelated UDP service or
+ * a spoofed packet hitting our ephemeral source port would otherwise be
+ * counted as a false success.
  */
 export function udpProbe(opts: UdpProbeOptions): Promise<UdpProbeResult> {
   return new Promise((resolve) => {
     const start = Date.now();
-    const socket = createSocket('udp4');
     let settled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let socket: ReturnType<typeof createSocket> | null = null;
 
     const finish = (result: UdpProbeResult) => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
-      try {
-        socket.close();
-      } catch {
-        /* already closed */
+      clearTimeout(timer);
+      if (socket) {
+        try {
+          socket.close();
+        } catch {
+          /* already closed */
+        }
       }
       resolve(result);
     };
 
-    socket.on('error', (err: NodeJS.ErrnoException) => {
+    // One budget covering DNS + send + (optional) response wait.
+    const timer = setTimeout(() => {
       finish({
         ok: false,
         latencyMs: Date.now() - start,
-        errorMessage: mapSocketError(err, opts.host, opts.port),
+        errorMessage: opts.expectResponse
+          ? `No response within ${opts.timeoutMs}ms (${opts.host}:${opts.port})`
+          : `send timed out after ${opts.timeoutMs}ms (${opts.host}:${opts.port})`,
       });
-    });
+    }, opts.timeoutMs);
 
-    if (opts.expectResponse) {
-      socket.on('message', (msg) => {
-        finish({ ok: true, latencyMs: Date.now() - start, responseBytes: msg.length });
-      });
-      timer = setTimeout(() => {
+    // Strip brackets so an IPv6 literal pasted as `[2001:db8::1]` resolves.
+    const hostname = opts.host.replace(/^\[|\]$/g, '');
+    lookup(hostname, { all: true }, (err, addresses) => {
+      if (settled) return;
+      if (err || addresses.length === 0) {
         finish({
           ok: false,
           latencyMs: Date.now() - start,
-          errorMessage: `No response within ${opts.timeoutMs}ms (${opts.host}:${opts.port})`,
-        });
-      }, opts.timeoutMs);
-    } else {
-      // Generic guard so a stuck DNS lookup or kernel-buffer issue can't hang us.
-      timer = setTimeout(() => {
-        finish({
-          ok: false,
-          latencyMs: Date.now() - start,
-          errorMessage: `send timed out after ${opts.timeoutMs}ms (${opts.host}:${opts.port})`,
-        });
-      }, opts.timeoutMs);
-    }
-
-    const payload = opts.payload ?? Buffer.alloc(0);
-    socket.send(payload, opts.port, opts.host, (err) => {
-      if (err) {
-        finish({
-          ok: false,
-          latencyMs: Date.now() - start,
-          errorMessage: mapSocketError(err as NodeJS.ErrnoException, opts.host, opts.port),
+          errorMessage: mapSocketError(
+            (err as NodeJS.ErrnoException) ?? ({ code: 'ENOTFOUND' } as NodeJS.ErrnoException),
+            opts.host,
+            opts.port,
+          ),
         });
         return;
       }
-      if (!opts.expectResponse) {
-        finish({ ok: true, latencyMs: Date.now() - start });
+
+      const target = addresses[0];
+      const validSources = new Set(addresses.map((a) => a.address));
+      const type: SocketType = target.family === 6 ? 'udp6' : 'udp4';
+      socket = createSocket(type);
+
+      socket.on('error', (e: NodeJS.ErrnoException) => {
+        finish({
+          ok: false,
+          latencyMs: Date.now() - start,
+          errorMessage: mapSocketError(e, opts.host, opts.port),
+        });
+      });
+
+      if (opts.expectResponse) {
+        socket.on('message', (msg, rinfo) => {
+          // Count only a datagram from the exact target host:port. UDP
+          // services reply from the port they received on (DNS:53,
+          // NTP:123, …); anything else is unrelated traffic or a spoof
+          // landing on our ephemeral source port — keep waiting.
+          if (rinfo.port !== opts.port || !validSources.has(rinfo.address)) return;
+          finish({ ok: true, latencyMs: Date.now() - start, responseBytes: msg.length });
+        });
       }
+
+      const payload = opts.payload ?? Buffer.alloc(0);
+      // Send to the resolved IP (not the hostname) so the socket family
+      // matches and the expected source address is known.
+      socket.send(payload, opts.port, target.address, (sendErr) => {
+        if (settled) return;
+        if (sendErr) {
+          finish({
+            ok: false,
+            latencyMs: Date.now() - start,
+            errorMessage: mapSocketError(sendErr as NodeJS.ErrnoException, opts.host, opts.port),
+          });
+          return;
+        }
+        if (!opts.expectResponse) {
+          finish({ ok: true, latencyMs: Date.now() - start });
+        }
+      });
     });
   });
 }
@@ -96,6 +130,8 @@ function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number):
   switch (err.code) {
     case 'ENOTFOUND':
       return `DNS resolution failed: Host not found (${host})`;
+    case 'EAI_AGAIN':
+      return `DNS resolution failed: temporary failure (${host})`;
     case 'EHOSTUNREACH':
       return `Host unreachable (${host})`;
     case 'ENETUNREACH':
