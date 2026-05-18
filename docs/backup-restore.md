@@ -83,3 +83,13 @@ The dashboard's **Import JSON** / `POST /api/import` is a thin adapter for
 pulling an ObserveOne SaaS export (or a hand-written config) into a fresh
 instance. It's config-only and not idempotent. Backup/restore is the
 DB-direct full snapshot described here — different tool, different job.
+
+## Testing
+
+`bun run test:backup` runs the round-trip end to end — it provisions its
+own `oo_br_*` databases from `DATABASE_URL`, exercises export/import (all
+scopes, the 90-day window per execution table, single-vs-split parity, the
+schema-head guard, force semantics, and sequence reset), and drops them
+again. It never touches the working database, and it runs as part of
+`bun run test:integration` (pre-push hook + CI). The dashboard flow has a
+manual Playwright spec at `tests/ui/backup.e2e.spec.ts`.
