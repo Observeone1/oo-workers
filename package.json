@@ -17,6 +17,7 @@
     "knip": "knip",
     "test:integration": "sh scripts/run-integration.sh",
     "test:backup": "bun scripts/backup-restore-test.ts",
+    "test:import": "bun scripts/import-from-saas-test.ts",
     "test:ui:e2e": "playwright test --config=playwright.ui.config.ts",
     "prepare": "husky"
   },
