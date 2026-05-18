@@ -17,6 +17,8 @@ import { db } from '../config/db.ts';
 import {
   apiChecks,
   apiExecutions,
+  dbExecutions,
+  dbMonitors,
   qaProjects,
   qaTestExecutions,
   regions,
@@ -91,6 +93,15 @@ async function previousStatus(
       .limit(1);
     return rows[0]?.status ?? null;
   }
+  if (monitorType === 'db') {
+    const rows = await db
+      .select({ status: dbExecutions.status })
+      .from(dbExecutions)
+      .where(and(eq(dbExecutions.dbMonitorId, monitorId), ne(dbExecutions.id, currentExecutionId)))
+      .orderBy(desc(dbExecutions.startTime))
+      .limit(1);
+    return rows[0]?.status ?? null;
+  }
   // qa — exec rows are per-test; alert when *any* test in the project flips.
   // For "did this project's last run pass overall" semantics, prefer
   // qa_test_executions ordered by startedAt with project_id filter.
@@ -140,6 +151,19 @@ async function monitorMeta(
       .where(eq(udpMonitors.id, monitorId))
       .limit(1);
     return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
+  }
+  if (monitorType === 'db') {
+    const [r] = await db
+      .select({
+        name: dbMonitors.name,
+        protocol: dbMonitors.protocol,
+        host: dbMonitors.host,
+        port: dbMonitors.port,
+      })
+      .from(dbMonitors)
+      .where(eq(dbMonitors.id, monitorId))
+      .limit(1);
+    return r ? { name: r.name, target: `${r.protocol} ${r.host}:${r.port}` } : null;
   }
   // qa
   const [r] = await db

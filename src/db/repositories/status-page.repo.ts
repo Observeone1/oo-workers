@@ -3,7 +3,7 @@ import { db } from '../../config/db.ts';
 import { statusPageMonitors, statusPages } from '../schema.ts';
 
 export type StatusPageRow = typeof statusPages.$inferSelect;
-export type MonitorType = 'url' | 'api' | 'tcp' | 'udp' | 'qa';
+export type MonitorType = 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
 
 export interface StatusPageMonitorBinding {
   monitorType: MonitorType;

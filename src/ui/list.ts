@@ -19,7 +19,10 @@ export function setActiveTab(t: MonType) {
 }
 
 function targetFor(m: Monitor): string {
-  if (m.host) return `${m.host}:${m.port ?? ''}`;
+  if (m.host) {
+    const hostPort = `${m.host}:${m.port ?? ''}`;
+    return m.protocol ? `${m.protocol} ${hostPort}` : hostPort;
+  }
   return m.url ?? m.targetUrl ?? '';
 }
 
@@ -42,6 +45,7 @@ export async function renderList() {
     qa: data.qa.length,
     tcp: data.tcp.length,
     udp: data.udp.length,
+    db: data.db.length,
   };
 
   const allForTab = data[activeTab];
@@ -56,7 +60,7 @@ export async function renderList() {
 
   main.innerHTML = `
     <div class="tabs">
-      ${(['url', 'api', 'qa', 'tcp', 'udp'] as const)
+      ${(['url', 'api', 'qa', 'tcp', 'udp', 'db'] as const)
         .map(
           (t) =>
             `<div class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></div>`,

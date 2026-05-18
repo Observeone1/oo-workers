@@ -49,6 +49,7 @@
           <option value="qa">Browser — Playwright script</option>
           <option value="tcp">TCP — host:port reachability probe</option>
           <option value="udp">UDP — send datagram, optionally await response</option>
+          <option value="db">Database — postgres/mysql/redis liveness</option>
         </select>
 
         <label>Name</label>
@@ -77,6 +78,30 @@
           <div>
             <label>Interval (sec)</label>
             <input name="tcp_interval_seconds" type="number" value="60" min="10" />
+          </div>
+        </div>
+
+        <div class="form-row" id="db-row" hidden>
+          <div>
+            <label>Protocol</label>
+            <select name="db_protocol">
+              <option value="">— select —</option>
+              <option value="postgres">PostgreSQL</option>
+              <option value="mysql">MySQL</option>
+              <option value="redis">Redis</option>
+            </select>
+          </div>
+          <div>
+            <label>Host</label>
+            <input name="db_host" placeholder="db.internal" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input name="db_port" type="number" min="1" max="65535" placeholder="5432" />
+          </div>
+          <div>
+            <label>Interval (sec)</label>
+            <input name="db_interval_seconds" type="number" value="60" min="10" />
           </div>
         </div>
 

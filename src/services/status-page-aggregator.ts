@@ -16,6 +16,8 @@ import { db } from '../config/db.ts';
 import {
   apiChecks,
   apiExecutions,
+  dbExecutions,
+  dbMonitors,
   qaProjects,
   qaTestExecutions,
   tcpExecutions,
@@ -44,6 +46,7 @@ const PALETTE = {
   api: { table: apiExecutions, monitorIdCol: apiExecutions.apiCheckId },
   tcp: { table: tcpExecutions, monitorIdCol: tcpExecutions.tcpMonitorId },
   udp: { table: udpExecutions, monitorIdCol: udpExecutions.udpMonitorId },
+  db: { table: dbExecutions, monitorIdCol: dbExecutions.dbMonitorId },
   qa: { table: qaTestExecutions, monitorIdCol: qaTestExecutions.projectId },
 } as const;
 
@@ -89,6 +92,19 @@ async function monitorMeta(
       .where(sql`${udpMonitors.id} = ${id}`)
       .limit(1);
     return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
+  }
+  if (type === 'db') {
+    const [r] = await db
+      .select({
+        name: dbMonitors.name,
+        protocol: dbMonitors.protocol,
+        host: dbMonitors.host,
+        port: dbMonitors.port,
+      })
+      .from(dbMonitors)
+      .where(sql`${dbMonitors.id} = ${id}`)
+      .limit(1);
+    return r ? { name: r.name, target: `${r.protocol} ${r.host}:${r.port}` } : null;
   }
   const [r] = await db
     .select({ name: qaProjects.name })

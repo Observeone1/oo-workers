@@ -134,10 +134,11 @@ function initAddDialog() {
     $('#api-fields').hidden = t !== 'api';
     $('#qa-fields').hidden = t !== 'qa';
     $('#udp-fields').hidden = t !== 'udp';
-    // The shared URL row is for url/api/qa; TCP/UDP swap in their own host+port rows.
-    $('#url-row').hidden = t === 'tcp' || t === 'udp';
+    // The shared URL row is for url/api/qa; TCP/UDP/DB swap in their own rows.
+    $('#url-row').hidden = t === 'tcp' || t === 'udp' || t === 'db';
     $('#tcp-row').hidden = t !== 'tcp';
     $('#udp-row').hidden = t !== 'udp';
+    $('#db-row').hidden = t !== 'db';
   };
   typeSelect.addEventListener('change', syncFields);
   $('#add-btn').addEventListener('click', async () => {
@@ -203,6 +204,25 @@ function initAddDialog() {
         host,
         port,
         intervalSeconds: Number(fd.get('tcp_interval_seconds')) || 60,
+      };
+    } else if (type === 'db') {
+      const host = String(fd.get('db_host') ?? '').trim();
+      const port = Number(fd.get('db_port'));
+      const protocol = String(fd.get('db_protocol') ?? '');
+      if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+        alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
+        return;
+      }
+      if (protocol !== 'postgres' && protocol !== 'mysql' && protocol !== 'redis') {
+        alertDialog({ title: 'Validation error', body: 'Pick a database protocol' });
+        return;
+      }
+      body = {
+        name,
+        protocol,
+        host,
+        port,
+        intervalSeconds: Number(fd.get('db_interval_seconds')) || 60,
       };
     } else {
       // udp
