@@ -459,7 +459,7 @@ function buildApp(connection: Redis) {
       protocol,
       host: body.host,
       port,
-      timeoutMs: body.timeoutMs ?? 5000,
+      timeoutMs: body.timeoutMs ?? DEFAULTS.DB_TIMEOUT_MS,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });

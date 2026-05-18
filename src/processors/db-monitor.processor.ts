@@ -1,4 +1,5 @@
 import { Job } from 'bullmq';
+import { DEFAULTS } from '../constants.ts';
 import { dbMonitorRepo } from '../db/repositories/db-monitor.repo.ts';
 import { dbProbe, type DbProtocol } from '../services/db-probe.ts';
 import { logger } from '../utils/logger.ts';
@@ -6,7 +7,7 @@ import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 
 export const dbMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
-  const timeoutMs = monitor.timeoutMs || 5000;
+  const timeoutMs = monitor.timeoutMs || DEFAULTS.DB_TIMEOUT_MS;
 
   logger.info(`Processing DB Monitor job ${job.id} (Execution: ${executionId})`);
 

@@ -240,7 +240,7 @@ async function probeUdp(job: JobPayload): Promise<AgentResultBody> {
 
 async function probeDb(job: JobPayload): Promise<AgentResultBody> {
   const m = job.monitor!;
-  const timeoutMs = m.timeoutMs || 5000;
+  const timeoutMs = m.timeoutMs || DEFAULTS.DB_TIMEOUT_MS;
   const result = await dbProbe({
     host: m.host!,
     port: m.port!,
