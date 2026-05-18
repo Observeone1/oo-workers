@@ -120,7 +120,7 @@ An authenticated caller can ask the worker to probe any host:port it can reach, 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema.
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md) and [database checks](docs/db-checks.md).
 
 ## Configuration
 
@@ -143,7 +143,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Releases
 
-Active releases live on [GitHub Releases](https://github.com/Observeone1/oo-workers/releases) and Docker Hub (`observeone/oo-workers`). Latest stable is **v1.2.1**.
+Every `v*` git tag auto-publishes to Docker Hub (`observeone/oo-workers`) as three tags from one build: `:<version>` (e.g. `:1.6.0`), `:<major>.<minor>` (e.g. `:1.6`), and `:latest`. Pull `:latest` for the newest stable, or pin an exact `:<version>`. Browse [all tags](https://github.com/Observeone1/oo-workers/tags).
 
 ## Contributing
 
