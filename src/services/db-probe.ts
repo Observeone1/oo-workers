@@ -1,4 +1,4 @@
-import { createConnection, type Socket } from 'node:net';
+import { createConnection, isIP, type Socket } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
 
 /**
@@ -118,7 +118,9 @@ export function dbProbe(opts: DbProbeOptions): Promise<DbProbeResult> {
       ? tlsConnect({
           host: opts.host,
           port: opts.port,
-          servername: opts.host,
+          // SNI only for hostnames — tls.connect THROWS if servername is an
+          // IP, and DB monitors are usually IP-addressed.
+          servername: isIP(opts.host) ? undefined : opts.host,
           // Liveness, not cert validation (consistent with the project's
           // documented self-signed-TLS posture). A handshake failure still
           // emits 'error' → clean FAILED via the handler below.
