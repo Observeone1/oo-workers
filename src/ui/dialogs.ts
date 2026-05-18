@@ -407,10 +407,11 @@ function initBackupDialog() {
     const scope =
       document.querySelector<HTMLInputElement>('input[name="backup_scope"]:checked')?.value ??
       'window';
-    // Plain authed navigation — the browser streams the gzip to disk.
+    // Plain authed navigation — the browser streams the gzip to disk and
+    // names it from the server's Content-Disposition. No `download` attr:
+    // an empty one would override the header with a junk filename.
     const a = document.createElement('a');
     a.href = backupUrl(scope, 90);
-    a.download = '';
     a.click();
   });
 

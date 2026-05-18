@@ -23,3 +23,6 @@ sleep 3
 bun scripts/smoke.ts
 bun scripts/scheduler-test.ts
 bun scripts/load.ts
+# Backup/restore round-trip — provisions its own oo_br_* sibling DBs from
+# DATABASE_URL and drops them; never touches the integration DB.
+bun scripts/backup-restore-test.ts
