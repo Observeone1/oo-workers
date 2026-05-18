@@ -117,7 +117,9 @@ export function dbProbe(opts: DbProbeOptions): Promise<DbProbeResult> {
       else if (opts.protocol === 'postgres') socket?.write(pgStartup());
       // mysql: server speaks first — send nothing.
     });
-    socket.on('data', (buf: Buffer) => {
+    // First chunk is enough to decide — every protocol's opening bytes
+    // (redis +/-, mysql handshake header, postgres R/E) land in packet one.
+    socket.once('data', (buf: Buffer) => {
       if (settled) return;
       if (speaksProtocol(opts.protocol, buf)) {
         finish({ ok: true, latencyMs: Date.now() - start });

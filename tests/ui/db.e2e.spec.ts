@@ -1,4 +1,22 @@
+import { connect } from 'node:net';
 import { test, expect, waitForList, uniqueSuffix, deleteMonitorViaApi } from './fixtures';
+
+// The happy-path tests probe the dev stack's own PG/Redis. On a stack
+// where those aren't on the expected port, skip rather than fail noisily
+// (same posture as the auth specs' ensureSessionAccount skip).
+function reachable(host: string, port: number, timeoutMs = 1500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = connect({ host, port });
+    const done = (ok: boolean) => {
+      s.destroy();
+      resolve(ok);
+    };
+    s.setTimeout(timeoutMs);
+    s.once('connect', () => done(true));
+    s.once('timeout', () => done(false));
+    s.once('error', () => done(false));
+  });
+}
 
 // DB protocol checks — credential-free liveness. The dev stack's own
 // Postgres (127.0.0.1:5442) and Redis (127.0.0.1:6379) are live, so a
@@ -45,6 +63,10 @@ for (const { protocol, port } of [
     request,
     shot,
   }) => {
+    test.skip(
+      !(await reachable('127.0.0.1', port)),
+      `no ${protocol} reachable on 127.0.0.1:${port} — dev stack not up`,
+    );
     const name = `e2e-db-${protocol}-${uniqueSuffix()}`;
     const seedRes = await request.post('/api/monitors/db', {
       data: { name, protocol, host: '127.0.0.1', port, intervalSeconds: 60, timeoutMs: 5000 },
