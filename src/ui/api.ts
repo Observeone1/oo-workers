@@ -45,6 +45,28 @@ export const importJson = async (
   return { res, result };
 };
 
+// ---------- backup / restore ----------
+
+// Download is a plain authed navigation: the oo_session cookie rides along
+// on a same-origin GET, and the browser streams the gzip straight to disk
+// without buffering it in JS — important for large dumps.
+export const backupUrl = (scope: string, since: number) =>
+  `/api/backup?scope=${encodeURIComponent(scope)}&since=${since}`;
+
+export const restoreBackup = async (
+  file: File,
+  force: boolean,
+): Promise<{ res: Response; result: { error?: string; counts?: Record<string, number> } }> => {
+  const res = await fetch(`/api/restore${force ? '?force=1' : ''}`, {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/gzip' },
+    body: file,
+  });
+  const result = await res.json().catch(() => ({ error: 'unexpected server response' }));
+  return { res, result };
+};
+
 // ---------- regions ----------
 
 export interface RegionLite {

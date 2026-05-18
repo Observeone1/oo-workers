@@ -1,10 +1,12 @@
 import type { MonType } from './types';
 import { $, esc } from './helpers';
 import {
+  backupUrl,
   createMonitor,
   getChannels,
   getRegions,
   importJson,
+  restoreBackup,
   setMonitorChannels,
   setMonitorRegions,
   type ChannelLite,
@@ -121,6 +123,7 @@ let cachedChannels: ChannelLite[] = [];
 export function initDialogs() {
   initAddDialog();
   initImportDialog();
+  initBackupDialog();
 }
 
 function initAddDialog() {
@@ -390,6 +393,50 @@ function initImportDialog() {
       body: `Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`,
     });
     importDialog.close();
+    renderList();
+  });
+}
+
+function initBackupDialog() {
+  const dlg = $<HTMLDialogElement>('#backup-dialog');
+
+  $('#backup-btn').addEventListener('click', () => dlg.showModal());
+  $('#backup-cancel').addEventListener('click', () => dlg.close());
+
+  $('#backup-download').addEventListener('click', () => {
+    const scope =
+      document.querySelector<HTMLInputElement>('input[name="backup_scope"]:checked')?.value ??
+      'window';
+    // Plain authed navigation — the browser streams the gzip to disk.
+    const a = document.createElement('a');
+    a.href = backupUrl(scope, 90);
+    a.download = '';
+    a.click();
+  });
+
+  $('#backup-restore').addEventListener('click', async () => {
+    const input = $<HTMLInputElement>('#backup-file');
+    const file = input.files?.[0];
+    if (!file) {
+      alertDialog({ title: 'Restore', body: 'Choose a .oodump.gz file first.' });
+      return;
+    }
+    const ok = await confirmDialog({
+      title: 'Replace all data?',
+      body: `Restoring "${file.name}" wipes every monitor, channel, and execution in this instance and replaces them with the backup. This cannot be undone.`,
+      confirmLabel: 'Wipe and restore',
+      danger: true,
+    });
+    if (!ok) return;
+
+    const { res, result } = await restoreBackup(file, true);
+    if (!res.ok) {
+      alertDialog({ title: 'Restore failed', body: result.error ?? 'Unknown error' });
+      return;
+    }
+    const total = Object.values(result.counts ?? {}).reduce((a, b) => a + b, 0);
+    alertDialog({ title: 'Restore complete', body: `${total} rows restored.` });
+    dlg.close();
     renderList();
   });
 }
