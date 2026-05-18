@@ -798,7 +798,7 @@ function buildApp(connection: Redis) {
   });
 
   // ---------- Alert channels (Phase 5) ----------
-  const VALID_CHANNEL_TYPES: ChannelType[] = ['webhook', 'discord', 'slack'];
+  const VALID_CHANNEL_TYPES: ChannelType[] = ['webhook', 'discord', 'slack', 'email'];
 
   app.get('/api/channels', async (c) => {
     const rows = await alertChannelRepo.list();
@@ -814,13 +814,25 @@ function buildApp(connection: Redis) {
     if (!VALID_CHANNEL_TYPES.includes(type as ChannelType)) {
       return c.json({ error: `type must be one of ${VALID_CHANNEL_TYPES.join(', ')}` }, 400);
     }
-    if (!url || !/^https?:\/\//i.test(url)) {
-      return c.json({ error: 'url is required (http:// or https://)' }, 400);
+    // The wire field is `url` for every type; for email it carries the
+    // recipient address and is stored as config.to (SMTP server itself is
+    // operator env config, not per-channel).
+    let config: Record<string, unknown>;
+    if (type === 'email') {
+      if (!url || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(url)) {
+        return c.json({ error: 'a recipient email address is required' }, 400);
+      }
+      config = { to: url };
+    } else {
+      if (!url || !/^https?:\/\//i.test(url)) {
+        return c.json({ error: 'url is required (http:// or https://)' }, 400);
+      }
+      config = { url };
     }
     const [row] = await alertChannelRepo.create({
       name,
       type: type as ChannelType,
-      config: { url },
+      config,
     });
     return c.json(row, 201);
   });

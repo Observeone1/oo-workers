@@ -45,6 +45,38 @@ test('create channel, send test alert (502 path), then delete', async ({ page })
   });
 });
 
+test('create an email channel (recipient field) and test-fire without SMTP → error', async ({
+  page,
+}) => {
+  const name = `e2e-email-${uniqueSuffix()}`;
+  await page.goto('/#/channels');
+  await page.waitForSelector('.channels-page');
+
+  const form = page.locator('#channel-create-form');
+  await form.locator('input[name="name"]').fill(name);
+  // Selecting email swaps the destination field from URL → Recipient.
+  await form.locator('select[name="type"]').selectOption('email');
+  await expect(page.locator('#channel-dest-label')).toHaveText('Recipient');
+  await expect(page.locator('#channel-dest-input')).toHaveAttribute('type', 'email');
+  await form.locator('input[name="url"]').fill('alerts@example.com');
+  await form.locator('button[type="submit"]').click();
+
+  // Created (validates the email-address path + config.to server-side).
+  await expect(page.locator(`.channel-row[data-channel-name="${name}"]`)).toBeVisible();
+  await expect(page.locator('.banner-ok')).toBeVisible();
+
+  // Test-fire: e2e stack has no OO_SMTP_* → sendEmail throws "SMTP not
+  // configured", surfaced as the 502 error banner (same as webhook 502).
+  await page.locator(`.channel-row[data-channel-name="${name}"] .channel-test`).click();
+  await expect(page.locator('.banner-err')).toBeVisible({ timeout: 15000 });
+
+  await page.locator(`.channel-row[data-channel-name="${name}"] .channel-delete`).click();
+  await page.locator('#confirm-dialog .confirm-ok').click();
+  await expect(page.locator(`.channel-row[data-channel-name="${name}"]`)).toHaveCount(0, {
+    timeout: 5000,
+  });
+});
+
 test('channel picker appears in add-monitor dialog when channels exist', async ({ page, shot }) => {
   const name = `e2e-pick-${uniqueSuffix()}`;
   await page.goto('/#/channels');

@@ -3,7 +3,7 @@ import { db } from '../../config/db.ts';
 import { alertChannels, monitorAlertChannels } from '../schema.ts';
 
 export type AlertChannelRow = typeof alertChannels.$inferSelect;
-export type ChannelType = 'webhook' | 'discord' | 'slack';
+export type ChannelType = 'webhook' | 'discord' | 'slack' | 'email';
 export type MonitorType = 'url' | 'api' | 'tcp' | 'udp' | 'qa';
 
 export interface AlertChannelLite {

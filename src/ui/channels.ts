@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<ChannelType, string> = {
   webhook: 'Webhook',
   discord: 'Discord',
   slack: 'Slack',
+  email: 'Email',
 };
 
 const TYPE_HINT: Record<ChannelType, string> = {
@@ -28,6 +29,16 @@ const TYPE_HINT: Record<ChannelType, string> = {
   discord:
     'Paste the channel’s incoming-webhook URL from Discord → Server settings → Integrations.',
   slack: 'Paste an incoming-webhook URL from Slack → Apps → Incoming Webhooks.',
+  email:
+    'Recipient address. The SMTP server is configured once on the server via OO_SMTP_* env vars — see docs.',
+};
+
+// Email collects a recipient address; the others collect a webhook URL.
+const DEST_FIELD: Record<ChannelType, { label: string; type: string; placeholder: string }> = {
+  webhook: { label: 'URL', type: 'url', placeholder: 'https://example.com/hook' },
+  discord: { label: 'URL', type: 'url', placeholder: 'https://discord.com/api/webhooks/...' },
+  slack: { label: 'URL', type: 'url', placeholder: 'https://hooks.slack.com/services/...' },
+  email: { label: 'Recipient', type: 'email', placeholder: 'alerts@example.com' },
 };
 
 let lastBanner: { kind: 'ok' | 'err'; text: string } | null = null;
@@ -73,14 +84,21 @@ export async function renderChannels() {
               <option value="webhook">Webhook (raw JSON)</option>
               <option value="discord">Discord</option>
               <option value="slack">Slack</option>
+              <option value="email">Email (SMTP)</option>
             </select>
             <p class="meta" id="channel-type-hint">${esc(TYPE_HINT.webhook)}</p>
 
             <label>Name</label>
             <input name="name" required placeholder="oncall-discord" />
 
-            <label>URL</label>
-            <input name="url" required type="url" placeholder="https://discord.com/api/webhooks/..." />
+            <label id="channel-dest-label">${esc(DEST_FIELD.webhook.label)}</label>
+            <input
+              name="url"
+              id="channel-dest-input"
+              required
+              type="${DEST_FIELD.webhook.type}"
+              placeholder="${esc(DEST_FIELD.webhook.placeholder)}"
+            />
 
             <div class="dialog-actions">
               <button type="submit" class="primary">Create channel</button>
@@ -171,8 +189,16 @@ function wireCreateForm() {
   if (!form) return;
   const typeSelect = document.getElementById('channel-type') as HTMLSelectElement;
   const typeHint = document.getElementById('channel-type-hint') as HTMLElement;
+  const destLabel = document.getElementById('channel-dest-label') as HTMLElement;
+  const destInput = document.getElementById('channel-dest-input') as HTMLInputElement;
   typeSelect.addEventListener('change', () => {
-    typeHint.textContent = TYPE_HINT[typeSelect.value as ChannelType];
+    const t = typeSelect.value as ChannelType;
+    typeHint.textContent = TYPE_HINT[t];
+    const d = DEST_FIELD[t];
+    destLabel.textContent = d.label;
+    destInput.type = d.type;
+    destInput.placeholder = d.placeholder;
+    destInput.value = '';
   });
 
   form.addEventListener('submit', async (e) => {
