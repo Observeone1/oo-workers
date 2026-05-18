@@ -9,3 +9,6 @@ public/
 playwright-report/
 test-results/
 tests/ui/screenshots/
+# qa-project worker writes generated specs to tests/<projectId>-<ts>/ at
+# runtime — never source. (Real e2e specs live in tests/ui/.)
+tests/[0-9]*/
