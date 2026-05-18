@@ -95,7 +95,7 @@ export const setMonitorRegions = (type: MonType, id: number, regionIds: number[]
 
 // ---------- alert channels ----------
 
-export type ChannelType = 'webhook' | 'discord' | 'slack';
+export type ChannelType = 'webhook' | 'discord' | 'slack' | 'email';
 
 export interface ChannelLite {
   id: number;

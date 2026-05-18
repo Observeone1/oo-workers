@@ -15,6 +15,7 @@
  */
 
 import { logger } from '../utils/logger.ts';
+import { sendEmail } from './email.ts';
 import {
   monitorAlertChannelRepo,
   type AlertChannelRow,
@@ -145,8 +146,44 @@ function formatFor(
   return formatWebhook(ctx);
 }
 
-/** Send to a single channel. Returns true on 2xx, false otherwise. */
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Email channel — SMTP, not an HTTP POST. Recipient is per-channel
+ * (`config.to`); the SMTP server is operator-level env config. A clear
+ * failure (incl. "SMTP not configured") is logged and surfaces as a
+ * failed test/alert, same best-effort posture as the webhook path.
+ */
+async function sendEmailChannel(channel: AlertChannelRow, ctx: AlertContext): Promise<boolean> {
+  const to = (channel.config?.to as string | undefined)?.trim();
+  if (!to) {
+    logger.error(`channel #${channel.id} ${channel.name}: missing config.to`);
+    return false;
+  }
+  const text = description(ctx).replace(/\*\*/g, '');
+  try {
+    await sendEmail({
+      to,
+      subject: headline(ctx),
+      text,
+      html: `<p><strong>${escapeHtml(headline(ctx))}</strong></p><pre style="font:14px ui-monospace,monospace">${escapeHtml(text)}</pre>`,
+    });
+    return true;
+  } catch (err) {
+    logger.error(
+      `channel #${channel.id} ${channel.name} (email) failed: ${err instanceof Error ? err.message : err}`,
+    );
+    return false;
+  }
+}
+
+/** Send to a single channel. Returns true on success, false otherwise. */
 export async function sendToChannel(channel: AlertChannelRow, ctx: AlertContext): Promise<boolean> {
+  if ((channel.type as ChannelType) === 'email') {
+    return sendEmailChannel(channel, ctx);
+  }
   const url = (channel.config?.url as string | undefined)?.trim();
   if (!url) {
     logger.error(`channel #${channel.id} ${channel.name}: missing config.url`);

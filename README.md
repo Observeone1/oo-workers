@@ -42,7 +42,7 @@ Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ti
 
 ## Alerts and status pages
 
-When a monitor flips down or recovers, oo-workers can fire to a **webhook**, **Discord**, or **Slack** channel. Set up channels under `#/channels`, bind them per-monitor in the create dialog. Trigger model is status _transition_ only: `SUCCESS → FAILED` fires outage, `FAILED → SUCCESS` fires recovery. Sustained failure stays quiet so flaky checks don't paginate you to death.
+When a monitor flips down or recovers, oo-workers can fire to a **webhook**, **Discord**, **Slack**, or **email** channel. Set up channels under `#/channels`, bind them per-monitor in the create dialog. Email needs SMTP configured once via `OO_SMTP_*` env (see [`.env.example`](.env.example)); the channel just stores the recipient. Trigger model is status _transition_ only: `SUCCESS → FAILED` fires outage, `FAILED → SUCCESS` fires recovery. Sustained failure stays quiet so flaky checks don't paginate you to death.
 
 Public status pages live at `/status/<slug>` — anonymous, server-rendered, auto-refresh every 60s. Headline banner, 90-day uptime bars per monitor, 24h uptime %. Operators curate which monitors appear (no auto-publish). Admin under `#/status-pages`.
 
