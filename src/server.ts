@@ -14,6 +14,7 @@ import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
+import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
 import { randomBytes } from 'node:crypto';
 import {
@@ -50,7 +51,7 @@ import {
 import { getObjectResponse } from './services/object-storage.ts';
 import { logger } from './utils/logger.ts';
 
-const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa'];
+const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db'];
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
 
@@ -74,6 +75,7 @@ function buildApp(connection: Redis) {
   const qaQ = new Queue('qa-project', { connection });
   const tcpQ = new Queue('tcp-monitor', { connection });
   const udpQ = new Queue('udp-monitor', { connection });
+  const dbQ = new Queue('db-monitor', { connection });
 
   // Dedicated connection for blocking pops in /api/agent/jobs. BRPOP holds
   // the connection for the duration of the wait, so it must not share with
@@ -275,14 +277,15 @@ function buildApp(connection: Redis) {
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const [urls, apis, qas, tcps, udps] = await Promise.all([
+    const [urls, apis, qas, tcps, udps, dbs] = await Promise.all([
       urlMonitorRepo.findAllWithLatest(),
       apiCheckRepo.findAllWithLatest(),
       qaProjectRepo.findAllWithLatest(),
       tcpMonitorRepo.findAllWithLatest(),
       udpMonitorRepo.findAllWithLatest(),
+      dbMonitorRepo.findAllWithLatest(),
     ]);
-    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps });
+    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps, db: dbs });
   });
 
   // ---------- API: detail ----------
@@ -333,6 +336,15 @@ function buildApp(connection: Redis) {
       const runs = await udpMonitorRepo.findExecutionsByMonitorId(id);
       return c.json({
         monitor: { ...m, type: 'udp' },
+        runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
+      });
+    }
+    if (type === 'db') {
+      const [m] = await dbMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const runs = await dbMonitorRepo.findExecutionsByMonitorId(id);
+      return c.json({
+        monitor: { ...m, type: 'db' },
         runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
       });
     }
@@ -432,6 +444,28 @@ function buildApp(connection: Redis) {
     return c.json(m, 201);
   });
 
+  app.post('/api/monitors/db', async (c) => {
+    const body = await c.req.json();
+    const port = Number(body.port);
+    const protocol = body.protocol;
+    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+    }
+    if (protocol !== 'postgres' && protocol !== 'mysql' && protocol !== 'redis') {
+      return c.json({ error: 'protocol must be postgres, mysql, or redis' }, 400);
+    }
+    const [m] = await dbMonitorRepo.create({
+      name: body.name,
+      protocol,
+      host: body.host,
+      port,
+      timeoutMs: body.timeoutMs ?? 5000,
+      intervalSeconds: body.intervalSeconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(m, 201);
+  });
+
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
@@ -468,6 +502,7 @@ function buildApp(connection: Redis) {
     else if (type === 'qa') await qaProjectRepo.deleteById(id);
     else if (type === 'tcp') await tcpMonitorRepo.deleteById(id);
     else if (type === 'udp') await udpMonitorRepo.deleteById(id);
+    else if (type === 'db') await dbMonitorRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     // monitor_alert_channels and status_page_monitors have no real FK
     // (different monitor types live in different tables) — clean them up
@@ -528,6 +563,7 @@ function buildApp(connection: Redis) {
     else if (type === 'qa') await qaProjectRepo.updateEnabled(id, body.enabled);
     else if (type === 'tcp') await tcpMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'udp') await udpMonitorRepo.updateEnabled(id, body.enabled);
+    else if (type === 'db') await dbMonitorRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -594,6 +630,22 @@ function buildApp(connection: Redis) {
           port: m.port,
           payloadHex: m.payloadHex,
           expectResponse: m.expectResponse,
+          timeoutMs: m.timeoutMs,
+        },
+      });
+      return c.json({ executionId: exec.id });
+    }
+    if (type === 'db') {
+      const [m] = await dbMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const [exec] = await dbMonitorRepo.createExecution(id, 'PENDING');
+      await dbQ.add('check', {
+        executionId: exec.id,
+        monitor: {
+          id: m.id,
+          protocol: m.protocol,
+          host: m.host,
+          port: m.port,
           timeoutMs: m.timeoutMs,
         },
       });
@@ -938,7 +990,7 @@ function buildApp(connection: Redis) {
       return c.json({ error: 'monitors must be an array of {type, id}' }, 400);
     }
     const bindings: Array<{
-      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa';
+      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
       monitorId: number;
     }> = [];
     for (const m of body.monitors as Array<{ type?: unknown; id?: unknown }>) {

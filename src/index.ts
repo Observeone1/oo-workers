@@ -53,6 +53,7 @@ async function runMasterRole(): Promise<void> {
   const { createQaProjectProcessor } = await import('./processors/qa-project.processor.ts');
   const { tcpMonitorProcessor } = await import('./processors/tcp-monitor.processor.ts');
   const { udpMonitorProcessor } = await import('./processors/udp-monitor.processor.ts');
+  const { dbMonitorProcessor } = await import('./processors/db-monitor.processor.ts');
   const { startScheduler } = await import('./scheduler.ts');
 
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -88,6 +89,11 @@ async function runMasterRole(): Promise<void> {
     concurrency: parseInt(process.env.UDP_MONITOR_CONCURRENCY || '20'),
   });
 
+  const dbMonitorWorker = new Worker('db-monitor', dbMonitorProcessor, {
+    connection,
+    concurrency: parseInt(process.env.DB_MONITOR_CONCURRENCY || '20'),
+  });
+
   apiCheckWorker.on('completed', (job) => logger.info(`✅ api-check #${job.id} completed`));
   apiCheckWorker.on('failed', (job, err) =>
     logger.error(`❌ api-check #${job?.id} failed: ${err.message}`),
@@ -111,6 +117,11 @@ async function runMasterRole(): Promise<void> {
   udpMonitorWorker.on('completed', (job) => logger.info(`✅ udp-monitor #${job.id} completed`));
   udpMonitorWorker.on('failed', (job, err) =>
     logger.error(`❌ udp-monitor #${job?.id} failed: ${err.message}`),
+  );
+
+  dbMonitorWorker.on('completed', (job) => logger.info(`✅ db-monitor #${job.id} completed`));
+  dbMonitorWorker.on('failed', (job, err) =>
+    logger.error(`❌ db-monitor #${job?.id} failed: ${err.message}`),
   );
 
   const stopScheduler = startScheduler(connection);
@@ -141,6 +152,7 @@ async function runMasterRole(): Promise<void> {
       qaProjectWorker.close(),
       tcpMonitorWorker.close(),
       udpMonitorWorker.close(),
+      dbMonitorWorker.close(),
     ]);
     process.exit(0);
   });

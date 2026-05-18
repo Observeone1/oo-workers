@@ -37,6 +37,7 @@ import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
+import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -124,6 +125,7 @@ export function startScheduler(connection: Redis) {
         tickQaProjects(getQueue, connection),
         tickTcpMonitors(getQueue, connection),
         tickUdpMonitors(getQueue, connection),
+        tickDbMonitors(getQueue, connection),
       ]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -290,6 +292,47 @@ async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
       );
       logger.info(
         `scheduled udp-monitor #${m.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
+  }
+}
+
+// ---------------- db-monitor ----------------
+async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
+  const due = await dbMonitorRepo.findDue();
+
+  for (const m of due) {
+    if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
+
+    const targets = await fanOutTargets('db', m.id);
+    const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
+
+    for (const target of targets) {
+      const [exec] = await dbMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
+      await dispatch(
+        'db-monitor',
+        target,
+        {
+          jobId: `db:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'db',
+          executionId: exec.id,
+          regionId: target.regionId,
+          monitor: {
+            id: m.id,
+            protocol: m.protocol,
+            host: m.host,
+            port: m.port,
+            timeoutMs: m.timeoutMs,
+          },
+        },
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled db-monitor #${m.id} → exec #${exec.id}${
           target.regionSlug ? ` [${target.regionSlug}]` : ''
         }`,
       );

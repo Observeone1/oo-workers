@@ -30,13 +30,14 @@ Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashb
 
 ## What you can monitor
 
-| Type            | Checks                                                                                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **HTTP uptime** | Is the URL up? Expected status code.                                                                                                         |
-| **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents.               |
-| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.                         |
-| **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Works for any port — SSH, SMTP, Postgres, Redis, custom services.                 |
-| **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services. |
+| Type            | Checks                                                                                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP uptime** | Is the URL up? Expected status code.                                                                                                                      |
+| **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents.                            |
+| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.                                      |
+| **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Works for any port — SSH, SMTP, Postgres, Redis, custom services.                              |
+| **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services.              |
+| **Database**    | Postgres / MySQL / Redis liveness — connects and confirms the server speaks the protocol (no credentials stored; "is it up?", not authenticated queries). |
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues whatever's due. Workers process jobs concurrently (tunable via env).
 

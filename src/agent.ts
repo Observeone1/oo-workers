@@ -19,6 +19,7 @@
 import { DEFAULTS } from './constants.ts';
 import { tcpProbe } from './services/tcp-probe.ts';
 import { parseHexPayload, udpProbe } from './services/udp-probe.ts';
+import { dbProbe, type DbProtocol } from './services/db-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
@@ -35,7 +36,7 @@ export interface AgentConfig {
 
 interface JobPayload {
   jobId: string;
-  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa';
+  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
   executionId: number;
   regionId: number;
   monitor?: {
@@ -46,6 +47,7 @@ interface JobPayload {
     timeoutMs: number;
     payloadHex?: string | null;
     expectResponse?: boolean;
+    protocol?: string;
   };
   apiCheck?: {
     id: number;
@@ -236,6 +238,24 @@ async function probeUdp(job: JobPayload): Promise<AgentResultBody> {
   };
 }
 
+async function probeDb(job: JobPayload): Promise<AgentResultBody> {
+  const m = job.monitor!;
+  const timeoutMs = m.timeoutMs || 5000;
+  const result = await dbProbe({
+    host: m.host!,
+    port: m.port!,
+    protocol: m.protocol as DbProtocol,
+    timeoutMs,
+  });
+  return {
+    type: 'db',
+    executionId: job.executionId,
+    status: result.ok ? 'SUCCESS' : 'FAILED',
+    latencyMs: result.latencyMs,
+    errorMessage: result.errorMessage ?? null,
+  };
+}
+
 async function runProbe(job: JobPayload): Promise<AgentResultBody> {
   switch (job.type) {
     case 'url':
@@ -246,6 +266,8 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
       return probeTcp(job);
     case 'udp':
       return probeUdp(job);
+    case 'db':
+      return probeDb(job);
     case 'qa':
       return {
         type: 'qa',

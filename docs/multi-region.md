@@ -97,6 +97,7 @@ curl -X PUT https://master.example.com/api/monitors/url/42/regions \
 | API          | ✅                                       |
 | TCP          | ✅                                       |
 | UDP          | ✅                                       |
+| Database     | ✅                                       |
 | Browser (QA) | ❌ Returns `ERROR` — runs only on master |
 
 Browser (Playwright) monitors need a heavy Chromium runtime; we haven't yet shipped that on agents. If you bind a QA monitor to a region, the agent will report each run as `ERROR` with a clear message. To run it on master only, delete the matching row from `monitor_regions` (or uncheck the region in the dialog).

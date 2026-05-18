@@ -12,6 +12,7 @@ import type { Redis } from 'ioredis';
 import { db } from '../config/db.ts';
 import {
   apiExecutions,
+  dbExecutions,
   qaTestExecutions,
   tcpExecutions,
   udpExecutions,
@@ -177,6 +178,27 @@ export async function writeAgentResult(
       if (rows.length !== 1) return { updated: false, reason: 'no_match' };
       if (status === 'SUCCESS' || status === 'FAILED') {
         void maybeAlertOnTransition('udp', rows[0].monitorId, executionId, status, {
+          durationMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          regionId: agentRegionId,
+        });
+      }
+      return { updated: true };
+    }
+    case 'db': {
+      const rows = await db
+        .update(dbExecutions)
+        .set({
+          status,
+          latencyMs: body.latencyMs ?? null,
+          errorMessage: errorMessage ?? null,
+          endTime,
+        })
+        .where(and(eq(dbExecutions.id, executionId), eq(dbExecutions.regionId, agentRegionId)))
+        .returning({ id: dbExecutions.id, monitorId: dbExecutions.dbMonitorId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+      if (status === 'SUCCESS' || status === 'FAILED') {
+        void maybeAlertOnTransition('db', rows[0].monitorId, executionId, status, {
           durationMs: body.latencyMs ?? null,
           errorMessage: errorMessage ?? null,
           regionId: agentRegionId,
