@@ -49,6 +49,13 @@ import {
   rotateRegionKey,
 } from './services/region-admin.ts';
 import { getObjectResponse } from './services/object-storage.ts';
+import {
+  DEFAULT_SINCE_DAYS,
+  exportStream,
+  restore,
+  RestoreError,
+  type DataScope,
+} from './services/backup.ts';
 import { logger } from './utils/logger.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db'];
@@ -91,6 +98,10 @@ function buildApp(connection: Redis) {
     return writeAuth(c, next);
   });
   app.use('/api/import', writeAuth);
+  // Backup/restore is write-gated even on GET — the dump contains API-key
+  // and password hashes, so it must never be reachable unauthenticated.
+  app.use('/api/backup', writeAuth);
+  app.use('/api/restore', writeAuth);
   app.use('/api/channels/*', async (c, next) => {
     if (c.req.method === 'GET') return next();
     return writeAuth(c, next);
@@ -768,6 +779,39 @@ function buildApp(connection: Redis) {
       }
     }
     return c.json(created);
+  });
+
+  // ---------- API: full logical backup & restore ----------
+  // GET streams a gzip NDJSON dump (config + windowed execution data).
+  // scope: window (default, last `since` days) | all | none (config only).
+  app.get('/api/backup', (c) => {
+    const scopeParam = c.req.query('scope');
+    const scope: DataScope = scopeParam === 'all' || scopeParam === 'none' ? scopeParam : 'window';
+    const since = Number(c.req.query('since')) || DEFAULT_SINCE_DAYS;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return new Response(exportStream({ scope, sinceDays: since }), {
+      headers: {
+        'content-type': 'application/gzip',
+        'content-disposition': `attachment; filename="oo-backup-${stamp}.oodump.gz"`,
+        'cache-control': 'no-store',
+      },
+    });
+  });
+
+  // POST the raw gzip dump as the request body. Fresh-restore: refuses a
+  // non-empty target unless ?force=1 (UI collects a typed confirmation).
+  app.post('/api/restore', async (c) => {
+    const force = c.req.query('force') === '1';
+    const body = c.req.raw.body;
+    if (!body) return c.json({ error: 'request body required (the .oodump.gz)' }, 400);
+    try {
+      const result = await restore(body, { force });
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof RestoreError) return c.json({ error: err.message }, 400);
+      logger.error(`restore failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'restore failed' }, 500);
+    }
   });
 
   // ---------- Regions (multi-region admin) ----------

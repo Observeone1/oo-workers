@@ -80,6 +80,14 @@ OO_OBJECT_STORAGE_SECRET_KEY=...
 
 Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph — anything that speaks the S3 protocol. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
 
+## Backup & restore
+
+Take a full logical snapshot — config + execution history — from the
+dashboard's **Backup** button or `bun scripts/export.ts`, and restore it on
+another instance. It's a portable, schema-versioned dump (not `pg_dump`),
+windowed to 90 days of history by default. See
+[docs/backup-restore.md](docs/backup-restore.md).
+
 ## Security & deployment
 
 Two defaults shipped on day one:
@@ -120,7 +128,7 @@ An authenticated caller can ask the worker to probe any host:port it can reach, 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md) and [database checks](docs/db-checks.md).
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), and [backup & restore](docs/backup-restore.md).
 
 ## Configuration
 

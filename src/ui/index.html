@@ -30,6 +30,7 @@
       </div>
       <div class="actions-bar">
         <button id="import-btn">Import JSON</button>
+        <button id="backup-btn">Backup</button>
         <button id="add-btn" class="primary">+ Add monitor</button>
         <span class="header-divider" aria-hidden="true"></span>
         <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"></button>
@@ -251,6 +252,40 @@
       <div class="dialog-actions">
         <button type="button" id="import-cancel">Cancel</button>
         <button type="button" id="import-submit" class="primary">Import</button>
+      </div>
+    </dialog>
+
+    <!-- Backup / restore dialog -->
+    <dialog id="backup-dialog">
+      <h2>Backup &amp; restore</h2>
+      <p class="meta">
+        A full logical dump (config + execution history) you can restore on another instance.
+        Restore replaces <strong>all</strong> data and needs a matching schema version.
+      </p>
+
+      <label>Download a backup</label>
+      <div id="backup-scope" class="radio-row">
+        <label class="checkbox-label"
+          ><input type="radio" name="backup_scope" value="window" checked /> Last 90 days</label
+        >
+        <label class="checkbox-label"
+          ><input type="radio" name="backup_scope" value="all" /> All history</label
+        >
+        <label class="checkbox-label"
+          ><input type="radio" name="backup_scope" value="none" /> Config only</label
+        >
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="backup-download" class="primary">Download backup</button>
+      </div>
+
+      <hr />
+
+      <label>Restore from a backup file</label>
+      <input type="file" id="backup-file" accept=".gz,application/gzip" />
+      <div class="dialog-actions">
+        <button type="button" id="backup-cancel">Close</button>
+        <button type="button" id="backup-restore" class="danger">Restore</button>
       </div>
     </dialog>
 
