@@ -14,7 +14,7 @@
  * `--seed` is an internal re-exec mode: the orchestrator spawns this file
  * with DATABASE_URL pointed at oo_br_src so the drizzle singleton binds to
  * the right DB; it seeds one row of every config table plus, for each of
- * the six execution tables, one recent and one >120d-old row.
+ * the seven execution tables, one recent and one >120d-old row.
  */
 
 import postgres from 'postgres';
@@ -38,6 +38,7 @@ const CONFIG_TABLES = [
   'tcp_monitors',
   'udp_monitors',
   'db_monitors',
+  'tls_monitors',
   'qa_projects',
   'url_monitor_assertions',
   'api_assertions',
@@ -54,6 +55,7 @@ const EXEC_TABLES = [
   'tcp_executions',
   'udp_executions',
   'db_executions',
+  'tls_executions',
   'qa_test_executions',
 ];
 const ALL_TABLES = [...CONFIG_TABLES, ...EXEC_TABLES];
@@ -102,6 +104,10 @@ async function seed() {
   const [dm] = await db
     .insert(s.dbMonitors)
     .values({ name: 'br-db', protocol: 'redis', host: 'x.io', port: 6379, tls: true })
+    .returning();
+  const [tlsm] = await db
+    .insert(s.tlsMonitors)
+    .values({ name: 'br-tls', host: 'x.io', port: 443, warnDays: 30 })
     .returning();
   const [qp] = await db
     .insert(s.qaProjects)
@@ -162,6 +168,15 @@ async function seed() {
     await db
       .insert(s.dbExecutions)
       .values({ dbMonitorId: dm.id, status: 'SUCCESS', latencyMs: 3, startTime: t });
+    await db.insert(s.tlsExecutions).values({
+      tlsMonitorId: tlsm.id,
+      status: 'SUCCESS',
+      latencyMs: 9,
+      daysRemaining: 45,
+      validTo: new Date('2027-01-01T00:00:00Z'),
+      certSummary: 'CN=x.io; issuer=br; valid_to=Jan  1 00:00:00 2027 GMT',
+      startTime: t,
+    });
     await db.insert(s.qaTestExecutions).values({
       testId: qt.id,
       projectId: qp.id,
