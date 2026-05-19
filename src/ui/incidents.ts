@@ -387,6 +387,7 @@ async function renderEditor(id: number) {
               <div class="t">Resolve incident</div>
               <div class="d">Marks the incident as resolved and closes it on the status page.</div>
             </div>
+            <button class="btn sm danger" id="resolve-incident-btn">Resolve</button>
           </div>
         </div>`
         }
@@ -397,6 +398,7 @@ async function renderEditor(id: number) {
   lastBanner = null;
   wireTitleForm(inc);
   wireUpdateForm(inc);
+  wireResolveBtn(inc);
 }
 
 function wireTitleForm(inc: IncidentDetail) {
@@ -440,6 +442,40 @@ function wireUpdateForm(inc: IncidentDetail) {
       kind: 'ok',
       text: severity === 'resolved' ? 'Update posted — incident resolved.' : 'Update posted.',
     };
+    await renderEditor(inc.id);
+  });
+}
+
+function wireResolveBtn(inc: IncidentDetail) {
+  const btn = document.getElementById('resolve-incident-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Resolve incident',
+      body: `Mark "${inc.title}" as resolved? This will close it on the public status page.`,
+      confirmLabel: 'Resolve',
+      danger: false,
+    });
+    if (!ok) return;
+    btn.disabled = true;
+    btn.textContent = 'Resolving…';
+    const { res, data } = await addIncidentUpdate(inc.id, {
+      severity: 'resolved',
+      body: 'Incident resolved.',
+    });
+    if (!res.ok) {
+      await alertDialog({
+        title: 'Resolve failed',
+        body:
+          data && typeof data === 'object' && 'error' in data
+            ? String((data as { error: unknown }).error)
+            : `Request failed (${res.status})`,
+      });
+      btn.disabled = false;
+      btn.textContent = 'Resolve';
+      return;
+    }
+    lastBanner = { kind: 'ok', text: 'Incident resolved.' };
     await renderEditor(inc.id);
   });
 }
