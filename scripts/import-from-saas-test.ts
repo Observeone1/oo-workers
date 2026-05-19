@@ -74,7 +74,7 @@ const SAAS = {
   incidents: [{ a: 1 }],
 };
 
-const { payload, skipped } = adaptSaaSExport(SAAS);
+const { payload, skipped, warnings } = adaptSaaSExport(SAAS);
 const flat = JSON.stringify(payload);
 
 // 1. Top-level keys are exactly what /api/import reads (camelCase), and
@@ -234,6 +234,31 @@ check(
     !JSON.stringify(noName.payload).includes('undefined'),
   JSON.stringify(noName),
 );
+
+// 8. Adapter warnings (v1.13.2). Only SaaS-export-derived advisories
+//    live here — the monitor→channel binding advisory is emitted
+//    SERVER-side by /api/import (path-independent), NOT by the adapter.
+check(
+  'exactly one adapter warning — the imported suite uses unmigrated secrets',
+  warnings.length === 1 && warnings[0].includes('checkout') && warnings[0].includes('STRIPE_KEY'),
+  JSON.stringify(warnings),
+);
+check(
+  'adapter does NOT emit the binding advisory (that is server-side)',
+  !warnings.some((w) => /alert-channel|routing|bind/i.test(w)),
+  JSON.stringify(warnings),
+);
+// Anti-vacuous: a mapped suite with NO secret_keys → no warning.
+const noSecret = adaptSaaSExport({
+  monitors: [{ name: 'm', url: 'https://x', timeout_ms: 1 }],
+  suites: [{ suite_name: 's', target_url: 'https://y', tests: [{ name: 'a', script: 'b' }] }],
+});
+check(
+  'mapped suite without secret_keys produces NO warning (and no binding warning here)',
+  noSecret.payload.qaProjects.length === 1 && noSecret.warnings.length === 0,
+  JSON.stringify(noSecret.warnings),
+);
+check('empty input → no warnings, no throw', adaptSaaSExport({}).warnings.length === 0);
 
 console.log(
   failed ? '\nimport-from-saas-test: FAILED' : '\nimport-from-saas-test: all checks passed',

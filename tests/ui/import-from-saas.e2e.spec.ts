@@ -122,11 +122,18 @@ test('SaaS export → adapter → /api/import: qa suites + channels land and wor
       qa: number;
       channels: number;
       skipped: string[];
+      warnings: string[];
     };
     expect(created.url, 'url monitor imported').toBe(1);
     expect(created.qa, 'exactly the scripted suite imported as a qaProject').toBe(1);
     expect(created.channels, 'exactly email + webhook imported').toBe(2);
     expect(created.skipped, 'no per-item server creation errors').toEqual([]);
+    // v1.13.2: server emits the path-independent binding advisory so the
+    // UI dialog + CLI both see it. Monitors were imported → it must fire.
+    expect(
+      created.warnings.some((w) => /no alert-channel bindings/i.test(w)),
+      'server warns that imported monitors have no channel bindings',
+    ).toBe(true);
 
     // --- 3.1: qaProject + its test, read back through the public API ---
     const monitors = (await (await request.get('/api/monitors')).json()) as {

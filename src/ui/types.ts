@@ -52,5 +52,9 @@ export interface ImportResult {
   qa: number;
   tcp: number;
   udp: number;
+  channels: number;
   skipped?: string[];
+  // Imported, but won't fully work without operator follow-up (e.g.
+  // monitors have no alert-channel bindings yet). Server-emitted.
+  warnings?: string[];
 }
