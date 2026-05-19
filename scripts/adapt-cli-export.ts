@@ -5,10 +5,16 @@
 // Importable: `import { adaptSaaSExport } from './adapt-cli-export.ts'`.
 // Also a CLI:  `bun scripts/adapt-cli-export.ts <input.json> <output.json>`
 //
-// SaaS-only resources that have no clean self-host mapping yet — suites
-// (QA), heartbeats, alert_channels, status_pages, incidents — are reported
-// as skipped, not silently dropped. Bringing those across is the
-// full-parity follow-up, deliberately out of scope here.
+// Mapped: monitors→urlMonitors, api_checks→apiChecks, and (3.1)
+// suites→qaProjects — but ONLY suites that carry inline `tests[]`
+// (i.e. the export was run with `obs export --include-scripts`). A
+// suite with no scripts would import as a QA project that monitors
+// nothing; rather than create that silent footgun it is reported in
+// `skipped.suites` so the operator knows to re-export with scripts.
+// SaaS suite fields with no oo-workers equivalent (max_tests,
+// is_public, allow_form_submit, secret_keys) are intentionally not
+// carried. Still skipped (no self-host target yet): heartbeats,
+// alert_channels, status_pages, incidents.
 
 export interface ImportPayload {
   version: 1;
@@ -31,7 +37,13 @@ export interface ImportPayload {
     enabled: boolean;
     assertions: Array<{ type: string; operator: string; path: string | null; value: unknown }>;
   }>;
-  qaProjects: never[];
+  qaProjects: Array<{
+    name: string;
+    targetUrl: string;
+    intervalSeconds: number;
+    enabled: boolean;
+    tests: Array<{ name: string; script: string }>;
+  }>;
 }
 
 export interface AdaptResult {
@@ -48,11 +60,24 @@ const cronToSeconds = (cron: string | null | undefined, fallback = 60): number =
   return fallback;
 };
 
+// Mirrors DEFAULTS.QA_INTERVAL_SECONDS (src/constants.ts). QA runs are
+// heavy — an unparseable/missing suite cron must fall back to the QA
+// default, NOT the 60s url/api default (would force tight QA polls).
+const QA_DEFAULT_INTERVAL_S = 300;
+
+interface SaaSSuite {
+  suite_name?: string;
+  target_url?: string;
+  cron_expression?: string;
+  schedule_active?: boolean;
+  tests?: Array<{ name?: unknown; script?: unknown }>;
+}
+
 interface SaaSExport {
   monitors?: Array<Record<string, unknown>>;
   api_checks?: Array<Record<string, unknown>>;
   heartbeats?: unknown[];
-  suites?: unknown[];
+  suites?: SaaSSuite[];
   alert_channels?: unknown[];
   status_pages?: unknown[];
   incidents?: unknown[];
@@ -86,11 +111,35 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
     })),
   }));
 
+  // suites → qaProjects, but only suites with inline tests (see header).
+  const qaProjects: ImportPayload['qaProjects'] = [];
+  let suitesSkipped = 0;
+  for (const s of src.suites ?? []) {
+    const tests = (Array.isArray(s.tests) ? s.tests : [])
+      .filter((t) => t && typeof t.name === 'string' && typeof t.script === 'string')
+      .map((t) => ({ name: t.name as string, script: t.script as string }));
+    // No suite_name / target_url / no inline scripts → would be an empty
+    // QA project that monitors nothing; skip + count, don't fabricate.
+    if (!s.suite_name || !s.target_url || tests.length === 0) {
+      suitesSkipped++;
+      continue;
+    }
+    qaProjects.push({
+      name: s.suite_name,
+      targetUrl: s.target_url,
+      intervalSeconds: cronToSeconds(s.cron_expression, QA_DEFAULT_INTERVAL_S),
+      enabled: s.schedule_active ?? true,
+      tests,
+    });
+  }
+
   return {
-    payload: { version: 1, urlMonitors, apiChecks, qaProjects: [] },
+    payload: { version: 1, urlMonitors, apiChecks, qaProjects },
     skipped: {
       heartbeats: src.heartbeats?.length ?? 0,
-      suites: src.suites?.length ?? 0,
+      // suites NOT brought across (no inline scripts / malformed) — a
+      // re-export with `obs export --include-scripts` recovers them.
+      suites: suitesSkipped,
       alert_channels: src.alert_channels?.length ?? 0,
       status_pages: src.status_pages?.length ?? 0,
       incidents: src.incidents?.length ?? 0,
@@ -109,9 +158,16 @@ if (import.meta.main) {
   console.log(`✓ wrote ${outPath}`);
   console.log(`  urlMonitors: ${payload.urlMonitors.length}`);
   console.log(`  apiChecks:   ${payload.apiChecks.length}`);
+  console.log(`  qaProjects:  ${payload.qaProjects.length}`);
   console.log(
     `  skipped:     ${Object.entries(skipped)
       .map(([k, v]) => `${k}=${v}`)
       .join(', ')}`,
   );
+  if (skipped.suites > 0) {
+    console.log(
+      `  ⚠ ${skipped.suites} QA suite(s) skipped (no inline scripts). ` +
+        `Re-run the SaaS export with \`obs export --include-scripts\` to bring them across.`,
+    );
+  }
 }

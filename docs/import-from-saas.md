@@ -27,12 +27,24 @@ HTTP uptime monitors and API checks (with their assertions). HTTP monitors
 import with a `status == 200` assertion, since SaaS treats them as uptime
 checks.
 
+**QA suites → QA projects**, _provided the SaaS export carried the test
+scripts_. Run the SaaS export as `obs export --include-scripts`: each suite
+becomes a QA project (name, target URL, schedule, and its Playwright tests).
+A suite exported **without** `--include-scripts` has no scripts to run, so
+it would import as a QA project that monitors nothing — those are reported
+as skipped (count under `suites`) rather than created empty; re-run the
+export with `--include-scripts` to bring them across. SaaS-only suite
+settings with no self-host equivalent (`max_tests`, `is_public`,
+`allow_form_submit`, `secret_keys`) are not carried.
+
 ## What doesn't (yet)
 
-SaaS QA suites, alert channels, status pages, heartbeats, and incidents are
-**not** transferred — the script reports their counts as skipped so nothing
-is silently lost. Bringing those across is a separate piece of work; for
-now, recreate them on the self-host, or use
+SaaS alert channels, status pages, heartbeats, and incidents are **not**
+transferred — the script reports their counts as skipped so nothing is
+silently lost. Bringing channels and status pages across is the next piece
+of work; heartbeats need a self-host heartbeat monitor type first;
+incidents are runtime state (the SaaS itself doesn't re-create them on
+apply). For now, recreate those on the self-host, or use
 [backup & restore](backup-restore.md) for instance→instance moves (a
 different job — that's a full DB snapshot, not a SaaS migration).
 
