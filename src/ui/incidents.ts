@@ -47,7 +47,7 @@ function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
   return `<div class="banner banner-${b.kind}">${esc(b.text)}</div>`;
 }
 
-export function sevPill(s: string): string {
+function sevPill(s: string): string {
   const sev = (SEVERITIES as string[]).includes(s) ? (s as Severity) : 'investigating';
   return `<span class="sev-pill sev-${sev}">${esc(SEV_LABEL[sev])}</span>`;
 }
@@ -104,23 +104,29 @@ async function renderList() {
         </select>
       </div>
       <div class="seg-tabs" role="tablist">
-        ${(['all', 'active', 'resolved'] as const).map((f) => `
+        ${(['all', 'active', 'resolved'] as const)
+          .map(
+            (f) => `
           <button class="seg-tab ${f === filter ? 'active' : ''}" data-filter="${f}" role="tab">
             ${f.charAt(0).toUpperCase() + f.slice(1)}
             ${f === 'active' && activeCount > 0 ? `<span class="seg-badge">${activeCount}</span>` : ''}
-          </button>`).join('')}
+          </button>`,
+          )
+          .join('')}
       </div>
     </div>
 
     <div class="inc-layout">
       <!-- Incident list -->
       <div class="inc-list">
-        ${incidents.length === 0
-          ? `<div class="empty" style="padding:32px;text-align:center">
+        ${
+          incidents.length === 0
+            ? `<div class="empty" style="padding:32px;text-align:center">
                No ${filter !== 'all' ? filter + ' ' : ''}incidents.
                ${filter !== 'all' ? `<a href="#" data-filter="all">Show all</a>` : ''}
              </div>`
-          : incidents.map(renderIncidentCard).join('')}
+            : incidents.map(renderIncidentCard).join('')
+        }
       </div>
 
       <!-- Create panel -->
@@ -257,9 +263,18 @@ function wireCreateForm() {
     const body = String(fd.get('body') ?? '').trim();
     const severity = String(fd.get('severity') ?? 'investigating') as Severity;
     const errEl = document.getElementById('incident-create-error') as HTMLElement;
-    if (!title || !body) { errEl.textContent = 'Title and first update are required.'; errEl.hidden = false; return; }
+    if (!title || !body) {
+      errEl.textContent = 'Title and first update are required.';
+      errEl.hidden = false;
+      return;
+    }
     errEl.hidden = true;
-    const { res, data } = await createIncident({ statusPageId: selectedPageId as number, title, severity, body });
+    const { res, data } = await createIncident({
+      statusPageId: selectedPageId as number,
+      title,
+      severity,
+      body,
+    });
     if (!res.ok) {
       errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
       errEl.hidden = false;
@@ -317,9 +332,13 @@ async function renderEditor(id: number) {
 
         <!-- Update thread -->
         <div class="inc-thread">
-          ${inc.updates.length === 0
-            ? `<div class="empty" style="padding:24px;text-align:center">No updates yet.</div>`
-            : [...inc.updates].reverse().map((u) => `
+          ${
+            inc.updates.length === 0
+              ? `<div class="empty" style="padding:24px;text-align:center">No updates yet.</div>`
+              : [...inc.updates]
+                  .reverse()
+                  .map(
+                    (u) => `
               <div class="inc-upd">
                 <div class="inc-upd-dot" style="background:${SEV_COLOR[u.severity as Severity] ?? 'var(--up)'}"></div>
                 <div class="inc-upd-body">
@@ -330,7 +349,10 @@ async function renderEditor(id: number) {
                   </div>
                   <pre class="upd-raw">${esc(u.body)}</pre>
                 </div>
-              </div>`).join('')}
+              </div>`,
+                  )
+                  .join('')
+          }
         </div>
       </div>
 
@@ -355,7 +377,10 @@ async function renderEditor(id: number) {
           </form>
         </div>
 
-        ${resolved ? '' : `
+        ${
+          resolved
+            ? ''
+            : `
         <div class="set-card danger-zone" style="margin-top:12px;padding:16px 20px">
           <div class="danger-row">
             <div>
@@ -363,7 +388,8 @@ async function renderEditor(id: number) {
               <div class="d">Marks the incident as resolved and closes it on the status page.</div>
             </div>
           </div>
-        </div>`}
+        </div>`
+        }
       </aside>
     </div>
   `;
@@ -381,7 +407,10 @@ function wireTitleForm(inc: IncidentDetail) {
     const title = String(new FormData(form).get('title') ?? '').trim();
     if (!title || title === inc.title) return;
     const res = await updateIncidentTitle(inc.id, title);
-    if (!res.ok) { alertDialog({ title: 'Rename failed', body: `Failed: ${res.status}` }); return; }
+    if (!res.ok) {
+      alertDialog({ title: 'Rename failed', body: `Failed: ${res.status}` });
+      return;
+    }
     lastBanner = { kind: 'ok', text: 'Title updated.' };
     await renderEditor(inc.id);
   });
@@ -400,11 +429,17 @@ function wireUpdateForm(inc: IncidentDetail) {
     errEl.hidden = true;
     const { res, data } = await addIncidentUpdate(inc.id, { severity, body });
     if (!res.ok) {
-      errEl.textContent = data && typeof data === 'object' && 'error' in data ? String((data as { error: unknown }).error) : `request failed (${res.status})`;
+      errEl.textContent =
+        data && typeof data === 'object' && 'error' in data
+          ? String((data as { error: unknown }).error)
+          : `request failed (${res.status})`;
       errEl.hidden = false;
       return;
     }
-    lastBanner = { kind: 'ok', text: severity === 'resolved' ? 'Update posted — incident resolved.' : 'Update posted.' };
+    lastBanner = {
+      kind: 'ok',
+      text: severity === 'resolved' ? 'Update posted — incident resolved.' : 'Update posted.',
+    };
     await renderEditor(inc.id);
   });
 }
@@ -419,20 +454,28 @@ export async function getActiveIncidents(): Promise<{ widget: string; count: num
   try {
     const pages = await getStatusPages();
     if (pages.length === 0) return { widget: '', count: 0 };
-    const allActive = (await Promise.all(
-      pages.map((p) => getIncidents(p.id, 'active').catch(() => [] as IncidentLite[]))
-    )).flat();
+    const allActive = (
+      await Promise.all(
+        pages.map((p) => getIncidents(p.id, 'active').catch(() => [] as IncidentLite[])),
+      )
+    ).flat();
     if (allActive.length === 0) return { widget: '', count: 0 };
-    const items = allActive.slice(0, 3).map((i) => {
-      const pageTitle = pages.find((p) => p.id === i.statusPageId)?.title ?? '';
-      return `
+    const items = allActive
+      .slice(0, 3)
+      .map((i) => {
+        const pageTitle = pages.find((p) => p.id === i.statusPageId)?.title ?? '';
+        return `
         <a class="inc-widget-row" href="#/incidents/${i.id}">
           ${sevPill(i.severity)}
           <span class="inc-widget-title">${esc(i.title)}</span>
           <span class="inc-widget-meta">${esc(pageTitle)} · ${fmtAge(i.updatedAt)}</span>
         </a>`;
-    }).join('');
-    const more = allActive.length > 3 ? `<a class="inc-widget-more" href="#/incidents">+${allActive.length - 3} more →</a>` : '';
+      })
+      .join('');
+    const more =
+      allActive.length > 3
+        ? `<a class="inc-widget-more" href="#/incidents">+${allActive.length - 3} more →</a>`
+        : '';
     const widget = `
       <div class="inc-widget">
         <div class="inc-widget-head">

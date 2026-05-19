@@ -37,21 +37,53 @@
       <div class="right" id="header-right">
         <button class="btn" id="import-btn" hidden>Import JSON</button>
         <button class="btn primary" id="add-btn" hidden>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
           Add monitor
         </button>
         <span class="divider" id="header-divider" hidden></span>
         <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme">
-          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="4"/>
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          <svg
+            id="theme-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            />
           </svg>
         </button>
         <button class="icon-btn" id="settings-btn" aria-label="Settings" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            width="16"
+            height="16"
+          >
+            <path
+              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+            />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
         </button>
         <button class="icon-btn" id="sign-out" aria-label="Sign out" hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="m16 17 5-5-5-5M21 12H9" />
+          </svg>
         </button>
       </div>
     </header>
@@ -69,9 +101,21 @@
           <a class="rail-step" data-step="check"><span class="num">3</span> Check</a>
           <a class="rail-step" data-step="regions"><span class="num">4</span> Where to run</a>
           <a class="rail-step" data-step="alerts"><span class="num">5</span> Alerts</a>
-          <div class="rail-title" style="margin-top:18px">Help</div>
-          <a class="rail-step" href="/docs#assertions-url" target="_blank" style="font-size:11.5px;color:var(--muted)">→ Assertions reference</a>
-          <a class="rail-step" href="/docs#playwright" target="_blank" style="font-size:11.5px;color:var(--muted)">→ Playwright guide</a>
+          <div class="rail-title" style="margin-top: 18px">Help</div>
+          <a
+            class="rail-step"
+            href="/docs#assertions-url"
+            target="_blank"
+            style="font-size: 11.5px; color: var(--muted)"
+            >→ Assertions reference</a
+          >
+          <a
+            class="rail-step"
+            href="/docs#playwright"
+            target="_blank"
+            style="font-size: 11.5px; color: var(--muted)"
+            >→ Playwright guide</a
+          >
         </aside>
 
         <!-- Main content -->
@@ -83,7 +127,16 @@
               <span class="pill mono" id="dlg-type-pill">URL</span>
             </div>
             <button class="icon-btn" data-close-dialog aria-label="Close">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                width="14"
+                height="14"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
 
@@ -238,7 +291,16 @@
               <div class="check-pane" id="url-fields" data-for="url">
                 <div class="field-grid cols-2">
                   <div class="field">
-                    <label>Expected status <a href="/docs#assertions-url" target="_blank" class="hint" data-tooltip="URL assertions reference">?</a></label>
+                    <label
+                      >Expected status
+                      <a
+                        href="/docs#assertions-url"
+                        target="_blank"
+                        class="hint"
+                        data-tooltip="URL assertions reference"
+                        >?</a
+                      ></label
+                    >
                     <input name="url_status" type="number" value="200" />
                   </div>
                   <div class="field">
@@ -262,8 +324,11 @@
                   <div class="field">
                     <label>Method</label>
                     <select name="api_method">
-                      <option>GET</option><option>POST</option><option>PUT</option>
-                      <option>PATCH</option><option>DELETE</option>
+                      <option>GET</option>
+                      <option>POST</option>
+                      <option>PUT</option>
+                      <option>PATCH</option>
+                      <option>DELETE</option>
                     </select>
                   </div>
                   <div class="field">
@@ -275,19 +340,43 @@
                     </select>
                   </div>
                 </div>
-                <div class="field" style="margin-top:10px">
-                  <label>Assertions (JSON) <a href="/docs#assertions-api" target="_blank" class="hint" data-tooltip="API assertions reference">?</a></label>
-                  <textarea name="api_assertions" placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'></textarea>
+                <div class="field" style="margin-top: 10px">
+                  <label
+                    >Assertions (JSON)
+                    <a
+                      href="/docs#assertions-api"
+                      target="_blank"
+                      class="hint"
+                      data-tooltip="API assertions reference"
+                      >?</a
+                    ></label
+                  >
+                  <textarea
+                    name="api_assertions"
+                    placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'
+                  ></textarea>
                 </div>
               </div>
 
               <!-- QA check -->
               <div class="check-pane" id="qa-fields" data-for="qa" hidden>
                 <div class="field">
-                  <label>Playwright script <a href="/docs#playwright" target="_blank" class="hint" data-tooltip="Playwright script reference">?</a></label>
-                  <textarea name="qa_script" placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"></textarea>
+                  <label
+                    >Playwright script
+                    <a
+                      href="/docs#playwright"
+                      target="_blank"
+                      class="hint"
+                      data-tooltip="Playwright script reference"
+                      >?</a
+                    ></label
+                  >
+                  <textarea
+                    name="qa_script"
+                    placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"
+                  ></textarea>
                 </div>
-                <label class="checkbox-label" style="margin-top:8px">
+                <label class="checkbox-label" style="margin-top: 8px">
                   <input type="checkbox" name="qa_capture" checked />
                   Capture screenshot + trace on failure
                 </label>
@@ -297,7 +386,7 @@
               <div class="check-pane" data-for="tcp" hidden>
                 <div class="field">
                   <label>Timeout</label>
-                  <div class="input-addon" style="max-width:160px">
+                  <div class="input-addon" style="max-width: 160px">
                     <input type="number" value="5" />
                     <span class="suffix">seconds</span>
                   </div>
@@ -308,7 +397,16 @@
               <!-- UDP check -->
               <div class="check-pane" id="udp-fields" data-for="udp" hidden>
                 <div class="field">
-                  <label>Payload (hex) <a href="/docs#udp" target="_blank" class="hint" data-tooltip="Hex bytes to send. Leave empty for an empty datagram.">?</a></label>
+                  <label
+                    >Payload (hex)
+                    <a
+                      href="/docs#udp"
+                      target="_blank"
+                      class="hint"
+                      data-tooltip="Hex bytes to send. Leave empty for an empty datagram."
+                      >?</a
+                    ></label
+                  >
                   <input name="udp_payload_hex" placeholder="1234010000010000…" />
                   <div class="help">Leave blank for an empty datagram.</div>
                 </div>
@@ -329,7 +427,7 @@
                     <option value="redis">Redis</option>
                   </select>
                 </div>
-                <label class="checkbox-label" style="margin-top:8px">
+                <label class="checkbox-label" style="margin-top: 8px">
                   <input type="checkbox" name="db_tls" />
                   Use TLS (rediss:// / stunnel-wrapped pg/mysql)
                 </label>
@@ -347,12 +445,12 @@
                     Verify hostname
                   </label>
                 </div>
-                <div class="field" style="margin-top:10px">
+                <div class="field" style="margin-top: 10px">
                   <label>SNI override (optional)</label>
                   <input name="tls_servername" placeholder="Leave blank to use host" />
                   <div class="help">Useful when connecting by IP or CDN edge.</div>
                 </div>
-                <div class="field" style="margin-top:8px">
+                <div class="field" style="margin-top: 8px">
                   <label>Expected CN/SAN regex (optional)</label>
                   <input name="tls_expect_cn_regex" placeholder="e.g. \.example\.com$" />
                   <div class="help">Alert if the leaf cert CN/SAN doesn't match.</div>
@@ -360,13 +458,31 @@
               </div>
 
               <!-- TCP banner/payload (optional) -->
-              <div class="check-pane" data-for="tcp" hidden style="margin-top:12px">
+              <div class="check-pane" data-for="tcp" hidden style="margin-top: 12px">
                 <div class="field">
-                  <label>Payload hex (optional) <a href="/docs#tcp" target="_blank" class="hint" data-tooltip="Hex bytes sent on connect. Leave empty to just check the port opens.">?</a></label>
+                  <label
+                    >Payload hex (optional)
+                    <a
+                      href="/docs#tcp"
+                      target="_blank"
+                      class="hint"
+                      data-tooltip="Hex bytes sent on connect. Leave empty to just check the port opens."
+                      >?</a
+                    ></label
+                  >
                   <input name="tcp_payload_hex" placeholder="e.g. 50494e470d0a (PING\r\n)" />
                 </div>
-                <div class="field" style="margin-top:8px">
-                  <label>Expect banner contains (optional) <a href="/docs#tcp" target="_blank" class="hint" data-tooltip="Substring the server response must contain. Matched against first ≤256 bytes.">?</a></label>
+                <div class="field" style="margin-top: 8px">
+                  <label
+                    >Expect banner contains (optional)
+                    <a
+                      href="/docs#tcp"
+                      target="_blank"
+                      class="hint"
+                      data-tooltip="Substring the server response must contain. Matched against first ≤256 bytes."
+                      >?</a
+                    ></label
+                  >
                   <input name="tcp_expect_banner" placeholder="e.g. PONG, SSH-2.0, 220" />
                 </div>
               </div>
@@ -378,7 +494,9 @@
                 <span class="ttl">Where to run</span>
                 <span class="opt"><a href="#/regions">manage regions →</a></span>
               </div>
-              <div class="help" style="margin-bottom:8px">Pick zero or more regions. Empty = run from master only.</div>
+              <div class="help" style="margin-bottom: 8px">
+                Pick zero or more regions. Empty = run from master only.
+              </div>
               <div class="picker" id="regions-picker"></div>
             </div>
 
@@ -388,7 +506,7 @@
                 <span class="ttl">Alerts</span>
                 <span class="opt"><a href="#/channels">manage channels →</a></span>
               </div>
-              <div class="help" style="margin-bottom:8px">Notify on up→down and recovery.</div>
+              <div class="help" style="margin-bottom: 8px">Notify on up→down and recovery.</div>
               <div class="picker" id="channels-picker"></div>
             </div>
           </form>
@@ -398,8 +516,10 @@
             <button type="button" class="btn" data-close-dialog>Cancel</button>
             <button type="submit" class="btn primary" form="add-form">Create monitor</button>
           </div>
-        </div><!-- .dialog-main -->
-      </div><!-- .dialog-shell -->
+        </div>
+        <!-- .dialog-main -->
+      </div>
+      <!-- .dialog-shell -->
     </dialog>
 
     <!-- ============ IMPORT DIALOG ============ -->
@@ -407,16 +527,22 @@
       <div class="dialog-head">
         <h2>Import from JSON</h2>
         <button class="icon-btn" data-close-import-dialog aria-label="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <div class="dialog-body">
         <p class="form-help">
-          Schema: <code>{"version":1, "urlMonitors":[...], "apiChecks":[...], "qaProjects":[...]}</code>
-          <a href="/docs#import" target="_blank" class="hint" data-tooltip="Full schema reference">?</a>
+          Schema:
+          <code>{"version":1, "urlMonitors":[...], "apiChecks":[...], "qaProjects":[...]}</code>
+          <a href="/docs#import" target="_blank" class="hint" data-tooltip="Full schema reference"
+            >?</a
+          >
         </p>
         <p class="form-help">
-          Already on ObserveOne SaaS? Run <code>obs export --include-scripts</code> and paste the output here.
+          Already on ObserveOne SaaS? Run <code>obs export --include-scripts</code> and paste the
+          output here.
         </p>
         <label>JSON</label>
         <textarea id="import-text" placeholder='{ "version": 1, "urlMonitors": [...] }'></textarea>
@@ -426,7 +552,6 @@
         <button type="button" class="btn primary" id="import-submit">Import</button>
       </div>
     </dialog>
-
 
     <script src="/app.js" type="module"></script>
   </body>

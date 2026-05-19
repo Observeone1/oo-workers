@@ -78,10 +78,7 @@ export const authService = {
     return count === 0;
   },
 
-  async updateProfile(
-    userId: number,
-    data: { name?: string; email?: string },
-  ): Promise<AuthUser> {
+  async updateProfile(userId: number, data: { name?: string; email?: string }): Promise<AuthUser> {
     const [user] = await userRepo.updateUser(userId, data);
     return { id: user.id, email: user.email, name: user.name, role: user.role };
   },

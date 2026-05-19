@@ -53,7 +53,9 @@ export function openSlideover(opts: SlideoverOpts): void {
     }
   });
 
-  const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') closeSlideover(); };
+  const esc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') closeSlideover();
+  };
   document.addEventListener('keydown', esc, { once: true });
 }
 

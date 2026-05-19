@@ -131,8 +131,13 @@ function initAddDialog() {
   const addForm = $<HTMLFormElement>('#add-form');
 
   const CHECK_TITLE: Record<MonType, string> = {
-    url: 'Check', api: 'Assertions', qa: 'Script', tcp: 'Check', udp: 'Check',
-    db: 'Check', tls: 'Certificate',
+    url: 'Check',
+    api: 'Assertions',
+    qa: 'Script',
+    tcp: 'Check',
+    udp: 'Check',
+    db: 'Check',
+    tls: 'Certificate',
   };
 
   const syncFields = (t: MonType = 'url') => {
@@ -524,4 +529,3 @@ function initImportDialog() {
     renderList();
   });
 }
-

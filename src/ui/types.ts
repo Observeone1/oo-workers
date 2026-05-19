@@ -47,7 +47,7 @@ export interface MonitorDetail {
 }
 
 export interface AvailabilityDay {
-  date: string;   // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
   total: number;
   passed: number;
 }

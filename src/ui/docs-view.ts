@@ -39,11 +39,13 @@ export async function renderDocs(section: string | null) {
   // ── Extract TOC links ──────────────────────────────────────────────────────
   const tocAnchors = Array.from(docMain.querySelectorAll<HTMLAnchorElement>('nav.toc a'));
 
-  const tocHtml = tocAnchors.map((a) => {
-    const href = a.getAttribute('href') ?? '';
-    const id = href.startsWith('#') ? href.slice(1) : href;
-    return `<a class="docs-nav-link" href="#/docs/${id}" data-section="${id}">${a.textContent?.trim() ?? id}</a>`;
-  }).join('');
+  const tocHtml = tocAnchors
+    .map((a) => {
+      const href = a.getAttribute('href') ?? '';
+      const id = href.startsWith('#') ? href.slice(1) : href;
+      return `<a class="docs-nav-link" href="#/docs/${id}" data-section="${id}">${a.textContent?.trim() ?? id}</a>`;
+    })
+    .join('');
 
   // ── Extract content (without the <nav.toc>) ────────────────────────────────
   const clone = docMain.cloneNode(true) as HTMLElement;

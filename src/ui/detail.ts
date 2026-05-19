@@ -125,8 +125,7 @@ function renderWithFilter(
           const active = b === filter ? 'active' : '';
           const count = applyFilter(allRuns, b).length;
           const color = colorForFilter(b, regionOrder);
-          const dot =
-            b === 'all' ? '' : `<span class="dot" style="background:${color}"></span>`;
+          const dot = b === 'all' ? '' : `<span class="dot" style="background:${color}"></span>`;
           return `<button class="region-chip ${active}" data-filter="${b}">${dot}${esc(regionLabel(b, regions))}<span class="ct">${count}</span></button>`;
         })
         .join('')}</div>`

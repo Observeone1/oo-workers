@@ -9,20 +9,18 @@
   scrollbar-color: light-dark(#d4d4d0, #1f2a25) transparent;
 
   /* ---------- typography ---------- */
-  --font-sans:
-    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono:
-    'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas,
-    monospace;
+    'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
 
-  --fs-11: 11px;   /* caps labels, micro-meta */
-  --fs-12: 12px;   /* meta, table sub, pill */
-  --fs-13: 13px;   /* default UI, table cells */
-  --fs-14: 14px;   /* body */
-  --fs-16: 16px;   /* page H2 */
-  --fs-18: 18px;   /* dialog H2, login */
-  --fs-22: 22px;   /* page H1 / hero stats */
-  --fs-28: 28px;   /* big stat numerals */
+  --fs-11: 11px; /* caps labels, micro-meta */
+  --fs-12: 12px; /* meta, table sub, pill */
+  --fs-13: 13px; /* default UI, table cells */
+  --fs-14: 14px; /* body */
+  --fs-16: 16px; /* page H2 */
+  --fs-18: 18px; /* dialog H2, login */
+  --fs-22: 22px; /* page H1 / hero stats */
+  --fs-28: 28px; /* big stat numerals */
 
   --lh-tight: 1.2;
   --lh: 1.5;
@@ -51,56 +49,62 @@
 
   /* ---------- surfaces ---------- */
   /* Light: warm-neutral whites, no blue. Dark: near-black w/ a whisper of green. */
-  --bg:           light-dark(#fafaf9, #07090a);
-  --panel:        light-dark(#ffffff, #0c100e);
-  --panel-2:      light-dark(#f4f4f1, #11161a);
-  --panel-inset:  light-dark(#f8f8f5, #0a0d0f);
-  --border:       light-dark(#e7e7e2, #1a221f);
-  --border-strong:light-dark(#d4d4cf, #28332e);
-  --hover:        light-dark(#f4f4f1, #11171a);
+  --bg: light-dark(#fafaf9, #07090a);
+  --panel: light-dark(#ffffff, #0c100e);
+  --panel-2: light-dark(#f4f4f1, #11161a);
+  --panel-inset: light-dark(#f8f8f5, #0a0d0f);
+  --border: light-dark(#e7e7e2, #1a221f);
+  --border-strong: light-dark(#d4d4cf, #28332e);
+  --hover: light-dark(#f4f4f1, #11171a);
 
   /* ---------- text ---------- */
-  --text:         light-dark(#0a0a0a, #ededed);
-  --text-2:       light-dark(#2a2a28, #d4d4d0);
-  --muted:        light-dark(#6c6c66, #8a8a83);
-  --muted-2:      light-dark(#94948e, #5d6660);
-  --link:         light-dark(#047857, #34d399);
+  --text: light-dark(#0a0a0a, #ededed);
+  --text-2: light-dark(#2a2a28, #d4d4d0);
+  --muted: light-dark(#6c6c66, #8a8a83);
+  --muted-2: light-dark(#94948e, #5d6660);
+  --link: light-dark(#047857, #34d399);
 
   /* ---------- brand + status (single value, theme-independent) ---------- */
-  --accent:       #10b981;
+  --accent: #10b981;
   --accent-hover: #059669;
-  --accent-glow:  #34d399;
-  --on-accent:    light-dark(#ffffff, #03130d);
+  --accent-glow: #34d399;
+  --on-accent: light-dark(#ffffff, #03130d);
 
-  --up:           #10b981;
-  --down:         #ef4444;
-  --warn:         #f59e0b;
-  --info:         #38bdf8;
-  --unknown:      light-dark(#94948e, #5d6660);
+  --up: #10b981;
+  --down: #ef4444;
+  --warn: #f59e0b;
+  --info: #38bdf8;
+  --unknown: light-dark(#94948e, #5d6660);
 
   /* status text variants (more readable on tinted bg) */
-  --up-text:      light-dark(#047857, #6ee7b7);
-  --down-text:    light-dark(#b91c1c, #fca5a5);
-  --warn-text:    light-dark(#b45309, #fcd34d);
+  --up-text: light-dark(#047857, #6ee7b7);
+  --down-text: light-dark(#b91c1c, #fca5a5);
+  --warn-text: light-dark(#b45309, #fcd34d);
 
   /* ---------- shadows ---------- */
-  --shadow-sm:    light-dark(0 1px 1px rgba(15,15,12,0.04), 0 1px 1px rgba(0,0,0,0.4));
-  --shadow:       light-dark(
-                    0 1px 2px rgba(15,15,12,0.05), 0 4px 12px rgba(15,15,12,0.06),
-                    0 1px 2px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.4));
-  --shadow-lg:    light-dark(
-                    0 10px 30px rgba(15,15,12,0.10), 0 4px 8px rgba(15,15,12,0.04),
-                    0 14px 40px rgba(0,0,0,0.6), 0 4px 10px rgba(0,0,0,0.5));
-  --ring:         0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
-  --ring-down:    0 0 0 3px color-mix(in srgb, var(--down) 26%, transparent);
+  --shadow-sm: light-dark(0 1px 1px rgba(15, 15, 12, 0.04), 0 1px 1px rgba(0, 0, 0, 0.4));
+  --shadow: light-dark(
+    0 1px 2px rgba(15, 15, 12, 0.05),
+    0 4px 12px rgba(15, 15, 12, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 4px 14px rgba(0, 0, 0, 0.4)
+  );
+  --shadow-lg: light-dark(
+    0 10px 30px rgba(15, 15, 12, 0.1),
+    0 4px 8px rgba(15, 15, 12, 0.04),
+    0 14px 40px rgba(0, 0, 0, 0.6),
+    0 4px 10px rgba(0, 0, 0, 0.5)
+  );
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  --ring-down: 0 0 0 3px color-mix(in srgb, var(--down) 26%, transparent);
 
   /* ---------- density (set by tweaks panel) ---------- */
-  --row-h:        38px;   /* tight by default */
-  --pad-y:        9px;
-  --pad-x:        14px;
+  --row-h: 38px; /* tight by default */
+  --pad-y: 9px;
+  --pad-x: 14px;
 
   /* docs syntax highlighting */
-  --kw:  light-dark(#047857, #34d399);
+  --kw: light-dark(#047857, #34d399);
   --str: light-dark(#b45309, #f59e0b);
   --num: light-dark(#1d4ed8, #93c5fd);
   --com: light-dark(#94948e, #5d6660);

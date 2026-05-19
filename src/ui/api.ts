@@ -1,4 +1,10 @@
-import type { MonType, MonitorsByType, MonitorDetail, ImportResult, AvailabilityDay } from './types';
+import type {
+  MonType,
+  MonitorsByType,
+  MonitorDetail,
+  ImportResult,
+  AvailabilityDay,
+} from './types';
 
 // All requests carry `credentials: 'include'` so the oo_session cookie
 // flows on same-origin fetches — required for the auth gate.
@@ -330,7 +336,10 @@ export const deleteIncident = (id: number) =>
 export const updateProfile = async (
   name: string,
   email: string,
-): Promise<{ res: Response; data: { name: string; email: string; role: string } | { error: string } }> => {
+): Promise<{
+  res: Response;
+  data: { name: string; email: string; role: string } | { error: string };
+}> => {
   const res = await fetch('/api/auth/profile', {
     ...COMMON,
     method: 'PATCH',

@@ -24,7 +24,8 @@ const TYPE_LABEL: Record<ChannelType, string> = {
 
 const TYPE_HINT: Record<ChannelType, string> = {
   webhook: 'Raw JSON POST to any URL.',
-  discord: "Paste the channel's incoming-webhook URL from Discord → Server settings → Integrations.",
+  discord:
+    "Paste the channel's incoming-webhook URL from Discord → Server settings → Integrations.",
   slack: 'Paste an incoming-webhook URL from Slack → Apps → Incoming Webhooks.',
   email:
     'Recipient address. The SMTP server is configured once on the server via OO_SMTP_* env vars — see docs.',
@@ -40,9 +41,9 @@ const DEST_FIELD: Record<ChannelType, { label: string; type: string; placeholder
 
 const CHANNEL_ICON: Record<ChannelType, string> = {
   webhook: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-  slack:   `<svg viewBox="0 0 127 127" width="16" height="16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z" fill="currentColor" opacity=".9"/><path d="M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z" fill="currentColor" opacity=".9"/><path d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z" fill="currentColor" opacity=".9"/><path d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z" fill="currentColor" opacity=".9"/></svg>`,
+  slack: `<svg viewBox="0 0 127 127" width="16" height="16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2C6.7 93.2.8 87.3.8 80c0-7.3 5.9-13.2 13.2-13.2h13.2V80zm6.6 0c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V80z" fill="currentColor" opacity=".9"/><path d="M47 27c-7.3 0-13.2-5.9-13.2-13.2C33.8 6.5 39.7.6 47 .6c7.3 0 13.2 5.9 13.2 13.2V27H47zm0 6.7c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H13.9C6.6 60.1.7 54.2.7 46.9c0-7.3 5.9-13.2 13.2-13.2H47z" fill="currentColor" opacity=".9"/><path d="M99.9 46.9c0-7.3 5.9-13.2 13.2-13.2 7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H99.9V46.9zm-6.6 0c0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V13.8C66.9 6.5 72.8.6 80.1.6c7.3 0 13.2 5.9 13.2 13.2v33.1z" fill="currentColor" opacity=".9"/><path d="M80.1 99.8c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2-7.3 0-13.2-5.9-13.2-13.2V99.8h13.2zm0-6.6c-7.3 0-13.2-5.9-13.2-13.2 0-7.3 5.9-13.2 13.2-13.2h33.1c7.3 0 13.2 5.9 13.2 13.2 0 7.3-5.9 13.2-13.2 13.2H80.1z" fill="currentColor" opacity=".9"/></svg>`,
   discord: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026c.462-.62.874-1.275 1.226-1.963.021-.04.001-.088-.041-.104a13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.245.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/></svg>`,
-  email:   `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>`,
+  email: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>`,
 };
 
 let lastBanner: { kind: 'ok' | 'err'; text: string } | null = null;
@@ -92,8 +93,8 @@ function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
 const DEST_HINT: Record<ChannelType, string> = {
   webhook: 'https://…  (stored encrypted)',
   discord: 'https://discord.com/api/webhooks/…  (stored encrypted)',
-  slack:   'https://hooks.slack.com/…  (stored encrypted)',
-  email:   'recipient address  (stored encrypted)',
+  slack: 'https://hooks.slack.com/…  (stored encrypted)',
+  email: 'recipient address  (stored encrypted)',
 };
 
 function renderChannelCard(c: ChannelLite): string {
@@ -195,9 +196,10 @@ function wireChannelRowActions() {
 }
 
 function wireCreateBtn() {
-  const openCreate = () => openSlideover({
-    title: 'New alert channel',
-    body: `
+  const openCreate = () =>
+    openSlideover({
+      title: 'New alert channel',
+      body: `
       <div class="form-section">
         <div class="sec-head"><span class="ttl">Channel type</span></div>
         <div class="choice-row" id="so-ch-type-row">
@@ -263,33 +265,33 @@ function wireCreateBtn() {
 }</div>
       </div>
     `,
-    primaryLabel: 'Create channel',
-    onPrimary: async (so) => {
-      const typeEl = so.querySelector<HTMLInputElement>('input[name="so-ch-type"]:checked');
-      const nameEl = so.querySelector<HTMLInputElement>('#so-ch-name')!;
-      const urlEl  = so.querySelector<HTMLInputElement>('#so-ch-url')!;
-      const emailEl = so.querySelector<HTMLInputElement>('#so-ch-email')!;
-      const errEl  = so.querySelector<HTMLElement>('#so-ch-err')!;
-      const name = nameEl.value.trim();
-      const type = (typeEl?.value ?? 'webhook') as ChannelType;
-      const url  = type === 'email' ? emailEl.value.trim() : urlEl.value.trim();
-      if (!name || !url) {
-        errEl.textContent = 'Name and destination are required.';
-        errEl.hidden = false;
-        throw new Error('validation');
-      }
-      errEl.hidden = true;
-      const { res, data } = await createChannel(name, type, url);
-      if (!res.ok) {
-        errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
-        errEl.hidden = false;
-        throw new Error('api');
-      }
-      closeSlideover();
-      lastBanner = { kind: 'ok', text: `Channel '${name}' created — try Test next.` };
-      await renderChannels();
-    },
-  });
+      primaryLabel: 'Create channel',
+      onPrimary: async (so) => {
+        const typeEl = so.querySelector<HTMLInputElement>('input[name="so-ch-type"]:checked');
+        const nameEl = so.querySelector<HTMLInputElement>('#so-ch-name')!;
+        const urlEl = so.querySelector<HTMLInputElement>('#so-ch-url')!;
+        const emailEl = so.querySelector<HTMLInputElement>('#so-ch-email')!;
+        const errEl = so.querySelector<HTMLElement>('#so-ch-err')!;
+        const name = nameEl.value.trim();
+        const type = (typeEl?.value ?? 'webhook') as ChannelType;
+        const url = type === 'email' ? emailEl.value.trim() : urlEl.value.trim();
+        if (!name || !url) {
+          errEl.textContent = 'Name and destination are required.';
+          errEl.hidden = false;
+          throw new Error('validation');
+        }
+        errEl.hidden = true;
+        const { res, data } = await createChannel(name, type, url);
+        if (!res.ok) {
+          errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
+          errEl.hidden = false;
+          throw new Error('api');
+        }
+        closeSlideover();
+        lastBanner = { kind: 'ok', text: `Channel '${name}' created — try Test next.` };
+        await renderChannels();
+      },
+    });
 
   const openAndWire = () => {
     openCreate();

@@ -134,7 +134,6 @@ function wireSignOut(state: AuthState) {
   });
 }
 
-
 async function boot() {
   initTheme();
 

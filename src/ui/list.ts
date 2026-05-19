@@ -1,6 +1,13 @@
 import type { MonType, Monitor } from './types';
 import { $, $$, esc, fmtAge, statusClass } from './helpers';
-import { getMonitors, getRegions, getAvailability, runMonitor, toggleMonitor, deleteMonitor } from './api';
+import {
+  getMonitors,
+  getRegions,
+  getAvailability,
+  runMonitor,
+  toggleMonitor,
+  deleteMonitor,
+} from './api';
 import type { AvailabilityDay } from './types';
 import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
@@ -76,27 +83,35 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
     return `<div class="row" style="justify-content:center;color:var(--muted);padding:14px">No runs yet</div>`;
   }
 
-  return runs.map((m, i) => {
-    const lat = m.latest?.responseTimeMs ?? m.latest?.durationMs;
-    const cls = statusClass(m.latest?.status);
-    const regionSlug = m.latest?.regionId != null ? regionMap.get(m.latest.regionId) : null;
-    const atRegion = regionSlug ? `<span class="at"> · @${esc(regionSlug)}</span>` : '';
-    // Format as HH:MM:SS if available, else relative
-    let timeStr = fmtAge(m.latest?.startTime);
-    try {
-      if (m.latest?.startTime) {
-        const d = new Date(m.latest.startTime);
-        timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return runs
+    .map((m, i) => {
+      const lat = m.latest?.responseTimeMs ?? m.latest?.durationMs;
+      const cls = statusClass(m.latest?.status);
+      const regionSlug = m.latest?.regionId != null ? regionMap.get(m.latest.regionId) : null;
+      const atRegion = regionSlug ? `<span class="at"> · @${esc(regionSlug)}</span>` : '';
+      // Format as HH:MM:SS if available, else relative
+      let timeStr = fmtAge(m.latest?.startTime);
+      try {
+        if (m.latest?.startTime) {
+          const d = new Date(m.latest.startTime);
+          timeStr = d.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          });
+        }
+      } catch {
+        /* keep relative */
       }
-    } catch { /* keep relative */ }
-    return `
+      return `
       <div class="row${i < 2 ? ' new' : ''}">
         <span class="time">${timeStr}</span>
         <span class="target">${esc(m.name)}${atRegion}</span>
         <span class="lat">${lat != null ? `${lat}ms` : '—'}</span>
         <span class="dot ${cls}"></span>
       </div>`;
-  }).join('');
+    })
+    .join('');
 }
 
 export async function renderList() {
@@ -133,8 +148,12 @@ export async function renderList() {
 
   // Fleet stats
   const allMonitors = [...data.url, ...data.api, ...data.qa, ...data.tcp, ...data.udp, ...data.db];
-  const upCount = allMonitors.filter((m) => m.enabled && statusClass(m.latest?.status) === 'up').length;
-  const downCount = allMonitors.filter((m) => m.enabled && statusClass(m.latest?.status) === 'down').length;
+  const upCount = allMonitors.filter(
+    (m) => m.enabled && statusClass(m.latest?.status) === 'up',
+  ).length;
+  const downCount = allMonitors.filter(
+    (m) => m.enabled && statusClass(m.latest?.status) === 'down',
+  ).length;
   const totalActive = allMonitors.filter((m) => m.enabled).length;
   const totalAll = allMonitors.length;
   const latencies = allMonitors
@@ -146,18 +165,30 @@ export async function renderList() {
   const isIncident = downCount > 0;
 
   // 30-bar real uptime strip from historical execution data
-  const availBuckets = avail.length === 30 ? avail : Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(); d.setUTCDate(d.getUTCDate() - (29 - i));
-    return avail.find(a => a.date === d.toISOString().slice(0, 10)) ?? { date: '', total: 0, passed: 0 };
-  });
-  const uptimeBars = availBuckets.map((day) => {
-    if (day.total === 0) return `<i class="empty" title="${day.date || 'No data'}"></i>`;
-    const pct = day.passed / day.total;
-    const label = `${day.date}: ${Math.round(pct * 100)}% (${day.passed}/${day.total})`;
-    if (pct >= 0.99) return `<i title="${label}"></i>`;
-    if (pct >= 0.5) return `<i class="warn" title="${label}"></i>`;
-    return `<i class="down" title="${label}"></i>`;
-  }).join('');
+  const availBuckets =
+    avail.length === 30
+      ? avail
+      : Array.from({ length: 30 }, (_, i) => {
+          const d = new Date();
+          d.setUTCDate(d.getUTCDate() - (29 - i));
+          return (
+            avail.find((a) => a.date === d.toISOString().slice(0, 10)) ?? {
+              date: '',
+              total: 0,
+              passed: 0,
+            }
+          );
+        });
+  const uptimeBars = availBuckets
+    .map((day) => {
+      if (day.total === 0) return `<i class="empty" title="${day.date || 'No data'}"></i>`;
+      const pct = day.passed / day.total;
+      const label = `${day.date}: ${Math.round(pct * 100)}% (${day.passed}/${day.total})`;
+      if (pct >= 0.99) return `<i title="${label}"></i>`;
+      if (pct >= 0.5) return `<i class="warn" title="${label}"></i>`;
+      return `<i class="down" title="${label}"></i>`;
+    })
+    .join('');
 
   const statusBanner = isIncident
     ? `<div class="status-banner down">
@@ -216,7 +247,10 @@ export async function renderList() {
     </div>`;
 
   const onlineRegions = regions.filter((r) => r.online).length;
-  const fleetSection = regions.length === 0 ? '' : `
+  const fleetSection =
+    regions.length === 0
+      ? ''
+      : `
     <div class="fleet">
       <section class="panel">
         <div class="panel-head">
@@ -264,33 +298,37 @@ export async function renderList() {
     <div class="list-toolbar">
       <input id="search-input" class="search" type="search" placeholder="Filter by name or URL…" value="${esc(search)}" autocomplete="off" />
       <span class="showing-count">
-        ${filtered.length === 0
-      ? search
-        ? `No matches for "${esc(search)}"`
-        : 'No monitors'
-      : `${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
-    }
+        ${
+          filtered.length === 0
+            ? search
+              ? `No matches for "${esc(search)}"`
+              : 'No monitors'
+            : `${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
+        }
       </span>
     </div>
-    ${pageRows.length === 0
-      ? `<div class="empty">${search
-        ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search>Clear search</a>.`
-        : `No ${activeTab.toUpperCase()} monitors yet. Click <b>Add monitor</b> to create one.`
-      }</div>`
-      : `<div class="tbl-wrap">
+    ${
+      pageRows.length === 0
+        ? `<div class="empty">${
+            search
+              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search>Clear search</a>.`
+              : `No ${activeTab.toUpperCase()} monitors yet. Click <b>Add monitor</b> to create one.`
+          }</div>`
+        : `<div class="tbl-wrap">
           <table>
             <thead><tr><th></th><th>Name</th><th>Interval</th><th>Last run</th><th>Latency · 30 runs</th><th></th></tr></thead>
             <tbody>${pageRows.map(rowFor).join('')}</tbody>
           </table>
         </div>
-        ${totalPages > 1
-        ? `<div class="pagination">
+        ${
+          totalPages > 1
+            ? `<div class="pagination">
                 <button class="btn sm" data-page-prev ${page === 1 ? 'disabled' : ''}>← Prev</button>
                 <span class="cell-meta">Page ${page} of ${totalPages}</span>
                 <button class="btn sm" data-page-next ${page === totalPages ? 'disabled' : ''}>Next →</button>
               </div>`
-        : ''
-      }`
+            : ''
+        }`
     }
   `;
 
@@ -421,9 +459,11 @@ function rowFor(m: Monitor): string {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>
           <button class="btn sm" data-toggle data-type="${m.type}" data-id="${m.id}" data-enabled="${m.enabled}" title="${m.enabled ? 'Pause' : 'Resume'}">
-            ${m.enabled
-      ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
-      : `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`}
+            ${
+              m.enabled
+                ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+                : `<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
+            }
           </button>
           <button class="btn sm danger" data-del data-type="${m.type}" data-id="${m.id}" title="Delete">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>

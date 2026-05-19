@@ -20,13 +20,27 @@ import { openSlideover, closeSlideover } from './slideover';
 
 type SettingsTab = 'profile' | 'security' | 'keys' | 'backup';
 
-interface MeRes { name?: string; email?: string; role?: string; prefix?: string; }
-interface OneTimeKey { name: string; cleartextKey: string; }
+interface MeRes {
+  name?: string;
+  email?: string;
+  role?: string;
+  prefix?: string;
+}
+interface OneTimeKey {
+  name: string;
+  cleartextKey: string;
+}
 
 let activeTab: SettingsTab = 'profile';
 let oneTimeKey: OneTimeKey | null = null;
 
-const SECTIONS: { id: SettingsTab; label: string; sub: string; icon: string; hideForApiKey?: boolean }[] = [
+const SECTIONS: {
+  id: SettingsTab;
+  label: string;
+  sub: string;
+  icon: string;
+  hideForApiKey?: boolean;
+}[] = [
   {
     id: 'profile',
     label: 'Profile',
@@ -61,7 +75,8 @@ export async function renderSettings(tab?: SettingsTab) {
 
   const main = $('#main');
   const meRes: MeRes = await fetch('/api/auth/me', { credentials: 'include' })
-    .then((r) => r.json()).catch(() => ({}));
+    .then((r) => r.json())
+    .catch(() => ({}));
   const isApiKey = !!meRes.prefix;
 
   const initials = getInitials(meRes.name ?? meRes.email ?? '?');
@@ -70,7 +85,9 @@ export async function renderSettings(tab?: SettingsTab) {
   // If active tab got hidden (e.g. password when using API key), fall back
   if (!visibleSections.find((s) => s.id === activeTab)) activeTab = 'profile';
 
-  const rail = visibleSections.map((s) => `
+  const rail = visibleSections
+    .map(
+      (s) => `
     <button class="set-step${s.id === activeTab ? ' active' : ''}" data-section="${s.id}">
       <span class="ico">${s.icon}</span>
       <span class="lbl">
@@ -78,7 +95,9 @@ export async function renderSettings(tab?: SettingsTab) {
         <span class="d">${s.sub}</span>
       </span>
     </button>
-  `).join('');
+  `,
+    )
+    .join('');
 
   main.innerHTML = `
     <div class="page-head">
@@ -129,10 +148,14 @@ async function renderPanel(meRes: MeRes, initials: string) {
   const panel = document.getElementById('settings-content');
   if (!panel) return;
   switch (activeTab) {
-    case 'profile':  return renderProfile(panel, meRes, initials);
-    case 'security': return renderSecurity(panel);
-    case 'keys':     return renderKeys(panel);
-    case 'backup':   return renderBackup(panel);
+    case 'profile':
+      return renderProfile(panel, meRes, initials);
+    case 'security':
+      return renderSecurity(panel);
+    case 'keys':
+      return renderKeys(panel);
+    case 'backup':
+      return renderBackup(panel);
   }
 }
 
@@ -176,12 +199,16 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
               <input id="s-email" type="email" value="${esc(meRes.email ?? '')}" placeholder="you@example.com" />
               <div class="help">Used for sign-in and password recovery.</div>
             </div>
-            ${meRes.role ? `
+            ${
+              meRes.role
+                ? `
             <div class="field">
               <label>Role</label>
               <input value="${esc(meRes.role)}" readonly style="color:var(--muted);cursor:default" />
               <div class="help">Contact an admin to change your role.</div>
-            </div>` : ''}
+            </div>`
+                : ''
+            }
           </div>
         </div>
       </div>
@@ -195,17 +222,19 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
             <label>Theme</label>
             <div class="seg-inline" id="set-theme">
               <button data-val="system" class="${storedTheme === 'system' || storedTheme === '' ? 'on' : ''}">System</button>
-              <button data-val="light"  class="${storedTheme === 'light'  ? 'on' : ''}">Light</button>
-              <button data-val="dark"   class="${storedTheme === 'dark'   ? 'on' : ''}">Dark</button>
+              <button data-val="light"  class="${storedTheme === 'light' ? 'on' : ''}">Light</button>
+              <button data-val="dark"   class="${storedTheme === 'dark' ? 'on' : ''}">Dark</button>
             </div>
           </div>
         </div>
         <div class="field" style="margin-top:var(--s-3)">
           <label>Accent color</label>
           <div class="set-swatches" id="set-accent">
-            ${ACCENTS.map((c) => `
+            ${ACCENTS.map(
+              (c) => `
               <button class="sw${storedAccent === c ? ' on' : ''}" style="--sw:${c}" data-val="${c}" title="${c}"></button>
-            `).join('')}
+            `,
+            ).join('')}
           </div>
         </div>
       </div>
@@ -245,19 +274,27 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
 
   // Save profile
   document.getElementById('s-profile-save')?.addEventListener('click', async () => {
-    const name  = ($<HTMLInputElement>('#s-name')).value.trim();
-    const email = ($<HTMLInputElement>('#s-email')).value.trim();
+    const name = $<HTMLInputElement>('#s-name').value.trim();
+    const email = $<HTMLInputElement>('#s-email').value.trim();
     const errEl = $<HTMLElement>('#s-profile-err');
-    const okEl  = $<HTMLElement>('#s-profile-ok');
-    errEl.hidden = true; okEl.hidden = true;
-    if (!name || !email) { errEl.textContent = 'Name and email are required.'; errEl.hidden = false; return; }
+    const okEl = $<HTMLElement>('#s-profile-ok');
+    errEl.hidden = true;
+    okEl.hidden = true;
+    if (!name || !email) {
+      errEl.textContent = 'Name and email are required.';
+      errEl.hidden = false;
+      return;
+    }
     const { res, data } = await updateProfile(name, email);
     if (!res.ok || 'error' in data) {
       errEl.textContent = ('error' in data ? data.error : null) ?? `Failed (${res.status})`;
-      errEl.hidden = false; return;
+      errEl.hidden = false;
+      return;
     }
     okEl.hidden = false;
-    setTimeout(() => { okEl.hidden = true; }, 3000);
+    setTimeout(() => {
+      okEl.hidden = true;
+    }, 3000);
   });
 }
 
@@ -363,7 +400,11 @@ function renderSecurity(panel: HTMLElement) {
   const cfmHint = panel.querySelector<HTMLElement>('#pw-cfm-hint');
   if (pwCfm && cfmHint) {
     pwCfm.addEventListener('input', () => {
-      if (!pwCfm.value) { cfmHint.style.opacity = '0'; cfmHint.textContent = '\xa0'; return; }
+      if (!pwCfm.value) {
+        cfmHint.style.opacity = '0';
+        cfmHint.textContent = '\xa0';
+        return;
+      }
       const match = pwNew?.value === pwCfm.value;
       cfmHint.style.opacity = '1';
       cfmHint.style.color = match ? 'var(--up-text)' : 'var(--down-text)';
@@ -379,24 +420,41 @@ function renderSecurity(panel: HTMLElement) {
     });
     updatePwMeter('', panel);
     const cfmH = panel.querySelector<HTMLElement>('#pw-cfm-hint');
-    if (cfmH) { cfmH.style.opacity = '0'; cfmH.textContent = '\xa0'; }
+    if (cfmH) {
+      cfmH.style.opacity = '0';
+      cfmH.textContent = '\xa0';
+    }
   });
 
   // Save
   panel.querySelector('#s-pw-save')?.addEventListener('click', async () => {
-    const cur  = (panel.querySelector<HTMLInputElement>('#pw-cur'))!.value;
-    const next = (panel.querySelector<HTMLInputElement>('#pw-new'))!.value;
-    const cfm  = (panel.querySelector<HTMLInputElement>('#pw-cfm'))!.value;
+    const cur = panel.querySelector<HTMLInputElement>('#pw-cur')!.value;
+    const next = panel.querySelector<HTMLInputElement>('#pw-new')!.value;
+    const cfm = panel.querySelector<HTMLInputElement>('#pw-cfm')!.value;
     const errEl = panel.querySelector<HTMLElement>('#s-pw-err')!;
-    const okEl  = panel.querySelector<HTMLElement>('#s-pw-ok')!;
-    errEl.hidden = true; okEl.hidden = true;
-    if (!cur || !next) { errEl.textContent = 'All fields are required.'; errEl.hidden = false; return; }
-    if (next !== cfm)  { errEl.textContent = 'New passwords do not match.'; errEl.hidden = false; return; }
-    if (next.length < 8) { errEl.textContent = 'New password must be at least 8 characters.'; errEl.hidden = false; return; }
+    const okEl = panel.querySelector<HTMLElement>('#s-pw-ok')!;
+    errEl.hidden = true;
+    okEl.hidden = true;
+    if (!cur || !next) {
+      errEl.textContent = 'All fields are required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (next !== cfm) {
+      errEl.textContent = 'New passwords do not match.';
+      errEl.hidden = false;
+      return;
+    }
+    if (next.length < 8) {
+      errEl.textContent = 'New password must be at least 8 characters.';
+      errEl.hidden = false;
+      return;
+    }
     const { res, data } = await changePassword(cur, next);
     if (!res.ok || 'error' in data) {
       errEl.textContent = ('error' in data ? data.error : null) ?? `Failed (${res.status})`;
-      errEl.hidden = false; return;
+      errEl.hidden = false;
+      return;
     }
     ['pw-cur', 'pw-new', 'pw-cfm'].forEach((id) => {
       const el = panel.querySelector<HTMLInputElement>('#' + id);
@@ -404,16 +462,18 @@ function renderSecurity(panel: HTMLElement) {
     });
     updatePwMeter('', panel);
     okEl.hidden = false;
-    setTimeout(() => { okEl.hidden = true; }, 4000);
+    setTimeout(() => {
+      okEl.hidden = true;
+    }, 4000);
   });
 }
 
 function updatePwMeter(v: string, panel: HTMLElement) {
   const meter = panel.querySelector<HTMLElement>('#pw-meter');
-  const hint  = panel.querySelector<HTMLElement>('#pw-hint');
+  const hint = panel.querySelector<HTMLElement>('#pw-hint');
   if (!meter) return;
   let score = 0;
-  if (v.length >= 8)  score++;
+  if (v.length >= 8) score++;
   if (v.length >= 12) score++;
   if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
   if (/[0-9]/.test(v) && /[^A-Za-z0-9]/.test(v)) score++;
@@ -505,7 +565,12 @@ async function loadKeys(panel: HTMLElement) {
         if (!oneTimeKey) return;
         await navigator.clipboard.writeText(oneTimeKey.cleartextKey).catch(() => {});
         const btn = panel.querySelector<HTMLButtonElement>('#s-copy-key');
-        if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 1500); }
+        if (btn) {
+          btn.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.textContent = 'Copy to clipboard';
+          }, 1500);
+        }
       });
       panel.querySelector('#s-dismiss-key')?.addEventListener('click', () => {
         oneTimeKey = null;
@@ -520,17 +585,22 @@ async function loadKeys(panel: HTMLElement) {
 
   panel.querySelectorAll<HTMLButtonElement>('.key-revoke').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const id   = Number(btn.dataset.keyId);
+      const id = Number(btn.dataset.keyId);
       const name = btn.closest<HTMLElement>('tr')?.dataset.name ?? `#${id}`;
       const ok = await confirmDialog({
         title: 'Revoke API key',
-        body:  `Revoke key '${name}'? Any client using it gets 401 immediately. This cannot be undone.`,
-        confirmLabel: 'Revoke', danger: true,
+        body: `Revoke key '${name}'? Any client using it gets 401 immediately. This cannot be undone.`,
+        confirmLabel: 'Revoke',
+        danger: true,
       });
       if (!ok) return;
       btn.disabled = true;
       const res = await revokeKey(id);
-      if (!res.ok) { alertDialog({ title: 'Revoke failed', body: `${res.status}` }); btn.disabled = false; return; }
+      if (!res.ok) {
+        alertDialog({ title: 'Revoke failed', body: `${res.status}` });
+        btn.disabled = false;
+        return;
+      }
       await loadKeys(panel);
     });
   });
@@ -571,18 +641,27 @@ function openNewKeySlide(panel: HTMLElement) {
     `,
     primaryLabel: 'Create key',
     onPrimary: async (so) => {
-      const nameEl   = so.querySelector<HTMLInputElement>('#so-key-name')!;
+      const nameEl = so.querySelector<HTMLInputElement>('#so-key-name')!;
       const scopeEls = so.querySelectorAll<HTMLInputElement>('input[name="so-scope"]:checked');
-      const errEl    = so.querySelector<HTMLElement>('#so-key-err')!;
-      const name     = nameEl.value.trim();
-      const scopes   = Array.from(scopeEls).map((el) => el.value) as KeyScope[];
-      if (!name)          { errEl.textContent = 'Name is required.';        errEl.hidden = false; throw new Error('v'); }
-      if (!scopes.length) { errEl.textContent = 'Pick at least one scope.'; errEl.hidden = false; throw new Error('v'); }
+      const errEl = so.querySelector<HTMLElement>('#so-key-err')!;
+      const name = nameEl.value.trim();
+      const scopes = Array.from(scopeEls).map((el) => el.value) as KeyScope[];
+      if (!name) {
+        errEl.textContent = 'Name is required.';
+        errEl.hidden = false;
+        throw new Error('v');
+      }
+      if (!scopes.length) {
+        errEl.textContent = 'Pick at least one scope.';
+        errEl.hidden = false;
+        throw new Error('v');
+      }
       errEl.hidden = true;
       const { res, data } = await createKey(name, scopes);
       if (!res.ok || 'error' in data) {
         errEl.textContent = ('error' in data ? data.error : null) ?? `Failed (${res.status})`;
-        errEl.hidden = false; throw new Error('api');
+        errEl.hidden = false;
+        throw new Error('api');
       }
       closeSlideover();
       oneTimeKey = { name: data.name, cleartextKey: data.cleartextKey };
@@ -593,8 +672,8 @@ function openNewKeySlide(panel: HTMLElement) {
 
 function renderKeyRow(k: KeyLite): string {
   const revoked = !!k.revokedAt;
-  const heat    = heatFor(k.lastUsedAt);
-  const status  = revoked
+  const heat = heatFor(k.lastUsedAt);
+  const status = revoked
     ? `<span class="pill">revoked</span>`
     : `<span class="pill up"><span class="dot up"></span>active</span>`;
   return `
@@ -618,10 +697,10 @@ function renderKeyRow(k: KeyLite): string {
 function heatFor(lastUsed: string | null | undefined): number {
   if (!lastUsed) return 5;
   const hours = (Date.now() - new Date(lastUsed).getTime()) / 3_600_000;
-  if (hours < 0.5)  return 95;
-  if (hours < 2)    return 80;
-  if (hours < 24)   return 60;
-  if (hours < 168)  return 40;
+  if (hours < 0.5) return 95;
+  if (hours < 2) return 80;
+  if (hours < 24) return 60;
+  if (hours < 168) return 40;
   return 15;
 }
 
@@ -700,7 +779,8 @@ function renderBackup(panel: HTMLElement) {
 
   // Download
   panel.querySelector('#s-backup-download')?.addEventListener('click', () => {
-    const scope = panel.querySelector<HTMLButtonElement>('#s-scope-seg button.on')?.dataset.val ?? 'window';
+    const scope =
+      panel.querySelector<HTMLButtonElement>('#s-scope-seg button.on')?.dataset.val ?? 'window';
     const a = document.createElement('a');
     a.href = backupUrl(scope, 90);
     a.click();
@@ -709,30 +789,48 @@ function renderBackup(panel: HTMLElement) {
   // Drop zone
   const drop = panel.querySelector<HTMLElement>('#s-drop-zone');
   if (drop) {
-    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
-      e.preventDefault(); drop.classList.add('over');
-    }));
-    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
-      e.preventDefault(); drop.classList.remove('over');
-    }));
+    ['dragenter', 'dragover'].forEach((ev) =>
+      drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.add('over');
+      }),
+    );
+    ['dragleave', 'drop'].forEach((ev) =>
+      drop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        drop.classList.remove('over');
+      }),
+    );
   }
 
   // Restore
   panel.querySelector('#s-backup-restore')?.addEventListener('click', async () => {
     const input = panel.querySelector<HTMLInputElement>('#s-backup-file')!;
-    const file  = input.files?.[0];
+    const file = input.files?.[0];
     const errEl = panel.querySelector<HTMLElement>('#s-restore-err')!;
     errEl.hidden = true;
-    if (!file) { errEl.textContent = 'Select a backup file first.'; errEl.hidden = false; return; }
+    if (!file) {
+      errEl.textContent = 'Select a backup file first.';
+      errEl.hidden = false;
+      return;
+    }
     const ok = await confirmDialog({
       title: 'Restore from backup',
-      body:  `Restoring "${file.name}" wipes every monitor, channel, and execution and replaces them with the backup. This cannot be undone.`,
-      confirmLabel: 'Wipe and restore', danger: true,
+      body: `Restoring "${file.name}" wipes every monitor, channel, and execution and replaces them with the backup. This cannot be undone.`,
+      confirmLabel: 'Wipe and restore',
+      danger: true,
     });
     if (!ok) return;
     const { res, result } = await restoreBackup(file, true);
-    if (!res.ok) { errEl.textContent = result.error ?? `Restore failed (${res.status})`; errEl.hidden = false; return; }
-    const total = Object.values(result.counts ?? {}).reduce((a: number, b: unknown) => a + (b as number), 0);
+    if (!res.ok) {
+      errEl.textContent = result.error ?? `Restore failed (${res.status})`;
+      errEl.hidden = false;
+      return;
+    }
+    const total = Object.values(result.counts ?? {}).reduce(
+      (a: number, b: unknown) => a + (b as number),
+      0,
+    );
     alertDialog({ title: 'Restore complete', body: `${total} rows restored.` });
   });
 

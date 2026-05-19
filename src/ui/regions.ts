@@ -23,15 +23,15 @@ function nudgeBadge() {
 // World silhouette + region pins for the globe card.
 function globeSvg(regions: RegionLite[]): string {
   const PINS: Record<string, [number, number]> = {
-    'us-east-1':  [125, 70],
-    'us-east-2':  [130, 75],
-    'us-west-2':  [85,  60],
-    'us-west-1':  [80,  65],
-    'eu-west-1':  [225, 60],
+    'us-east-1': [125, 70],
+    'us-east-2': [130, 75],
+    'us-west-2': [85, 60],
+    'us-west-1': [80, 65],
+    'eu-west-1': [225, 60],
     'eu-central-1': [240, 58],
     'ap-south-1': [330, 80],
     'ap-southeast-1': [355, 85],
-    'sa-east-1':  [165, 115],
+    'sa-east-1': [165, 115],
   };
 
   const land = `
@@ -45,9 +45,10 @@ function globeSvg(regions: RegionLite[]): string {
     <path class="grid" d="M60,0 V180 M120,0 V180 M180,0 V180 M240,0 V180 M300,0 V180 M360,0 V180 M420,0 V180"/>
   `;
 
-  const pins = regions.map((r) => {
-    const [x, y] = PINS[r.slug] ?? [240, 90];
-    return `
+  const pins = regions
+    .map((r) => {
+      const [x, y] = PINS[r.slug] ?? [240, 90];
+      return `
       <circle class="pulse" cx="${x}" cy="${y}" r="9">
         <animate attributeName="r" values="4;9;4" dur="2.6s" repeatCount="indefinite"/>
         <animate attributeName="opacity" values="0.35;0;0.35" dur="2.6s" repeatCount="indefinite"/>
@@ -55,7 +56,8 @@ function globeSvg(regions: RegionLite[]): string {
       <circle class="pin${r.online ? '' : ' offline'}" cx="${x}" cy="${y}" r="3.5"/>
       <text x="${x + 6}" y="${y + 3}" font-family="var(--font-mono)" font-size="7" fill="var(--muted)">${esc(r.slug)}</text>
     `;
-  }).join('');
+    })
+    .join('');
 
   return `<svg class="globe-svg" viewBox="0 0 480 180" preserveAspectRatio="xMidYMid meet">${grid}${land}${pins}</svg>`;
 }
@@ -88,9 +90,11 @@ export async function renderRegions() {
           <span class="cap">Geographic distribution</span>
           <span class="small muted mono">${onlineCt}/${regions.length} online</span>
         </div>
-        ${regions.length === 0
-          ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:var(--fs-12)">No regions configured yet</div>`
-          : globeSvg(regions)}
+        ${
+          regions.length === 0
+            ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:var(--fs-12)">No regions configured yet</div>`
+            : globeSvg(regions)
+        }
       </div>
       <div class="summary-rail">
         <div class="cell">
@@ -112,7 +116,9 @@ export async function renderRegions() {
       </div>
     </div>`;
 
-  const regionCards = regions.map((r) => `
+  const regionCards = regions
+    .map(
+      (r) => `
     <article class="region-card${r.online ? '' : ' offline'}" data-region-id="${r.id}" data-slug="${esc(r.slug)}">
       <span class="accent-bar"></span>
       <div class="top">
@@ -137,7 +143,9 @@ export async function renderRegions() {
         </button>
       </div>
     </article>
-  `).join('');
+  `,
+    )
+    .join('');
 
   main.innerHTML = `
     <div class="page-head">
@@ -252,7 +260,9 @@ function wireRegionRowActions() {
       await navigator.clipboard.writeText(oneTimeKey.cleartextKey);
       const btn = document.getElementById('copy-key-btn') as HTMLButtonElement;
       btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 1500);
+      setTimeout(() => {
+        btn.textContent = 'Copy to clipboard';
+      }, 1500);
     } catch {
       // Clipboard may be blocked in non-secure context; key is still selectable.
     }
@@ -265,10 +275,11 @@ function wireRegionRowActions() {
 }
 
 function wireCreateBtn() {
-  const openCreate = () => openSlideover({
-    title: 'New region',
-    sub: 'oo agent · self-hosted',
-    body: `
+  const openCreate = () =>
+    openSlideover({
+      title: 'New region',
+      sub: 'oo agent · self-hosted',
+      body: `
       <div class="form-section">
         <div class="sec-head"><span class="ttl">Identity</span></div>
         <div class="field-grid cols-2">
@@ -296,36 +307,36 @@ docker run -d \\
   ghcr.io/oo-workers/agent:<span class="num">1.4</span></div>
       </div>
     `,
-    primaryLabel: 'Create region',
-    onPrimary: async (so) => {
-      const slugEl = so.querySelector<HTMLInputElement>('#so-slug')!;
-      const labelEl = so.querySelector<HTMLInputElement>('#so-label')!;
-      const errEl = so.querySelector<HTMLElement>('#so-region-err')!;
-      const slug = slugEl.value.trim();
-      const label = labelEl.value.trim();
-      if (!slug || !label) {
-        errEl.textContent = 'Slug and label are required.';
-        errEl.hidden = false;
-        throw new Error('validation');
-      }
-      errEl.hidden = true;
-      const { res, data } = await createRegion(slug, label);
-      if (!res.ok) {
-        errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
-        errEl.hidden = false;
-        throw new Error('api');
-      }
-      closeSlideover();
-      if ('cleartextKey' in data) {
-        oneTimeKey = {
-          slug: data.region.slug,
-          cleartextKey: data.cleartextKey,
-          action: 'created',
-        };
-      }
-      await renderRegions();
-    },
-  });
+      primaryLabel: 'Create region',
+      onPrimary: async (so) => {
+        const slugEl = so.querySelector<HTMLInputElement>('#so-slug')!;
+        const labelEl = so.querySelector<HTMLInputElement>('#so-label')!;
+        const errEl = so.querySelector<HTMLElement>('#so-region-err')!;
+        const slug = slugEl.value.trim();
+        const label = labelEl.value.trim();
+        if (!slug || !label) {
+          errEl.textContent = 'Slug and label are required.';
+          errEl.hidden = false;
+          throw new Error('validation');
+        }
+        errEl.hidden = true;
+        const { res, data } = await createRegion(slug, label);
+        if (!res.ok) {
+          errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
+          errEl.hidden = false;
+          throw new Error('api');
+        }
+        closeSlideover();
+        if ('cleartextKey' in data) {
+          oneTimeKey = {
+            slug: data.region.slug,
+            cleartextKey: data.cleartextKey,
+            action: 'created',
+          };
+        }
+        await renderRegions();
+      },
+    });
 
   document.getElementById('add-region-btn')?.addEventListener('click', openCreate);
   document.getElementById('add-region-card')?.addEventListener('click', openCreate);

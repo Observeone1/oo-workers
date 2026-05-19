@@ -242,8 +242,10 @@ function buildApp(connection: Redis) {
     const body = await c.req.json().catch(() => ({}));
     const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
     const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
-    if (!currentPassword || !newPassword) return c.json({ error: 'currentPassword and newPassword required' }, 400);
-    if (newPassword.length < 8) return c.json({ error: 'new password must be at least 8 characters' }, 400);
+    if (!currentPassword || !newPassword)
+      return c.json({ error: 'currentPassword and newPassword required' }, 400);
+    if (newPassword.length < 8)
+      return c.json({ error: 'new password must be at least 8 characters' }, 400);
     const result = await authService.changePassword(user.id, currentPassword, newPassword);
     if (!result.ok) return c.json({ error: result.error }, 400);
     return c.json({ ok: true });

@@ -80,14 +80,16 @@ async function renderList() {
           (async () => {
             try {
               const all = await getMonitors();
-              for (const m of all.url)  monitorNames.set(`url:${m.id}`,  m.name);
-              for (const m of all.api)  monitorNames.set(`api:${m.id}`,  m.name);
-              for (const m of all.qa)   monitorNames.set(`qa:${m.id}`,   m.name);
-              for (const m of all.tcp)  monitorNames.set(`tcp:${m.id}`,  m.name);
-              for (const m of all.udp)  monitorNames.set(`udp:${m.id}`,  m.name);
-              for (const m of (all as any).db  ?? []) monitorNames.set(`db:${m.id}`,  m.name);
+              for (const m of all.url) monitorNames.set(`url:${m.id}`, m.name);
+              for (const m of all.api) monitorNames.set(`api:${m.id}`, m.name);
+              for (const m of all.qa) monitorNames.set(`qa:${m.id}`, m.name);
+              for (const m of all.tcp) monitorNames.set(`tcp:${m.id}`, m.name);
+              for (const m of all.udp) monitorNames.set(`udp:${m.id}`, m.name);
+              for (const m of (all as any).db ?? []) monitorNames.set(`db:${m.id}`, m.name);
               for (const m of (all as any).tls ?? []) monitorNames.set(`tls:${m.id}`, m.name);
-            } catch { /* non-fatal */ }
+            } catch {
+              /* non-fatal */
+            }
           })(),
         ]);
         cachedDetail = detail;
@@ -100,7 +102,9 @@ async function renderList() {
 
   const monitorCount = detail?.monitors.length ?? 0;
 
-  const listItems = pages.map((p) => `
+  const listItems = pages
+    .map(
+      (p) => `
     <div class="sp-item${p.id === activePageId ? ' active' : ''}" data-id="${p.id}">
       <div class="ttl">
         ${esc(p.title)}
@@ -112,17 +116,21 @@ async function renderList() {
         <span><span class="dot up"></span> healthy</span>
       </div>
     </div>
-  `).join('');
+  `,
+    )
+    .join('');
 
   // Build preview monitor rows (using public-monitor card with uptime bars)
   let monitorRows = '';
   if (detail && detail.monitors.length > 0) {
     const sorted = [...detail.monitors].sort((a, b) => a.sortOrder - b.sortOrder);
-    monitorRows = sorted.map((m) => {
-      const key = `${m.monitorType}:${m.monitorId}`;
-      const name = monitorNames.get(key) ?? `${m.monitorType.toUpperCase()} #${m.monitorId}`;
-      return monitorPreviewCard(name, m.monitorType, m.monitorId);
-    }).join('');
+    monitorRows = sorted
+      .map((m) => {
+        const key = `${m.monitorType}:${m.monitorId}`;
+        const name = monitorNames.get(key) ?? `${m.monitorType.toUpperCase()} #${m.monitorId}`;
+        return monitorPreviewCard(name, m.monitorType, m.monitorId);
+      })
+      .join('');
   } else if (detail) {
     monitorRows = `<div style="color:var(--muted);font-size:var(--fs-12);text-align:center;padding:24px 0">
       No monitors linked yet — click <strong>Manage monitors</strong> below.
@@ -238,15 +246,20 @@ function wireCreateBtn() {
       ...allMonitors.tcp.map((m) => ({ type: 'tcp' as MonType, ...m })),
       ...allMonitors.udp.map((m) => ({ type: 'udp' as MonType, ...m })),
     ];
-    const pickerHtml = monitorOptions.length === 0
-      ? `<div style="color:var(--muted);font-size:var(--fs-12);padding:8px 0">No monitors yet — create some first.</div>`
-      : monitorOptions.map((m) => `
+    const pickerHtml =
+      monitorOptions.length === 0
+        ? `<div style="color:var(--muted);font-size:var(--fs-12);padding:8px 0">No monitors yet — create some first.</div>`
+        : monitorOptions
+            .map(
+              (m) => `
           <label class="pick">
             <input type="checkbox" name="so-mon" value="${m.type}:${m.id}" />
             <span class="dot up"></span>
             <span style="font-weight:500">${esc(m.name)}</span>
             <span class="pill mono" style="margin-left:auto">${m.type.toUpperCase()}</span>
-          </label>`).join('');
+          </label>`,
+            )
+            .join('');
 
     openSlideover({
       title: 'New status page',
@@ -279,11 +292,11 @@ function wireCreateBtn() {
       primaryLabel: 'Create page',
       onPrimary: async (so) => {
         const titleEl = so.querySelector<HTMLInputElement>('#so-sp-title')!;
-        const slugEl  = so.querySelector<HTMLInputElement>('#so-sp-slug')!;
-        const descEl  = so.querySelector<HTMLInputElement>('#so-sp-desc')!;
-        const errEl   = so.querySelector<HTMLElement>('#so-sp-err')!;
+        const slugEl = so.querySelector<HTMLInputElement>('#so-sp-slug')!;
+        const descEl = so.querySelector<HTMLInputElement>('#so-sp-desc')!;
+        const errEl = so.querySelector<HTMLElement>('#so-sp-err')!;
         const title = titleEl.value.trim();
-        const slug  = slugEl.value.trim();
+        const slug = slugEl.value.trim();
         const description = descEl.value.trim() || null;
         if (!title || !slug) {
           errEl.textContent = 'Title and slug are required.';
@@ -316,12 +329,16 @@ async function renderEditor(id: number) {
   const bound = new Set(detail.monitors.map((b) => `${b.monitorType}:${b.monitorId}`));
   const publicUrl = `/status/${detail.slug}`;
 
-  const sections: Array<{ type: MonType; label: string; items: Array<{ id: number; name: string }> }> = [
-    { type: 'url',  label: 'URL',     items: allMonitors.url },
-    { type: 'api',  label: 'API',     items: allMonitors.api },
-    { type: 'tcp',  label: 'TCP',     items: allMonitors.tcp },
-    { type: 'udp',  label: 'UDP',     items: allMonitors.udp },
-    { type: 'qa',   label: 'Browser', items: allMonitors.qa },
+  const sections: Array<{
+    type: MonType;
+    label: string;
+    items: Array<{ id: number; name: string }>;
+  }> = [
+    { type: 'url', label: 'URL', items: allMonitors.url },
+    { type: 'api', label: 'API', items: allMonitors.api },
+    { type: 'tcp', label: 'TCP', items: allMonitors.tcp },
+    { type: 'udp', label: 'UDP', items: allMonitors.udp },
+    { type: 'qa', label: 'Browser', items: allMonitors.qa },
   ];
 
   main.innerHTML = `
@@ -347,23 +364,33 @@ async function renderEditor(id: number) {
         <span class="right">Check which monitors to include — saved immediately</span>
       </div>
       <form id="status-page-edit-form" class="panel-body">
-        ${sections.map((s) => s.items.length === 0 ? '' : `
+        ${sections
+          .map((s) =>
+            s.items.length === 0
+              ? ''
+              : `
           <div style="margin-bottom:var(--s-4)">
             <div class="panel-head" style="margin:0 calc(-1 * var(--s-4));padding:6px var(--s-4);border-bottom:none;border-top:1px solid var(--border)">
               <span class="h">${esc(s.label)} <em>(${s.items.length})</em></span>
             </div>
             <div class="picker" style="margin-top:var(--s-3)">
-              ${s.items.map((m) => `
+              ${s.items
+                .map(
+                  (m) => `
                 <label class="pick">
                   <input type="checkbox" name="m" value="${s.type}:${m.id}" ${bound.has(`${s.type}:${m.id}`) ? 'checked' : ''} />
                   <span class="dot up"></span>
                   <span style="font-weight:500">${esc(m.name)}</span>
                   <span class="pill mono" style="margin-left:auto">${esc(s.label)}</span>
                 </label>
-              `).join('')}
+              `,
+                )
+                .join('')}
             </div>
           </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
         <div style="margin-top:var(--s-5);display:flex;gap:var(--s-2)">
           <button type="submit" class="btn primary">Save</button>
           <a href="#/status-pages" class="btn">← Back</a>
@@ -391,7 +418,10 @@ function wireEditorForm(detail: StatusPageDetail) {
       alertDialog({ title: 'Save failed', body: `Save failed: ${res.status}` });
       return;
     }
-    lastBanner = { kind: 'ok', text: `Saved — ${monitors.length} monitor${monitors.length !== 1 ? 's' : ''} on this page.` };
+    lastBanner = {
+      kind: 'ok',
+      text: `Saved — ${monitors.length} monitor${monitors.length !== 1 ? 's' : ''} on this page.`,
+    };
     cachedDetail = null; // bust cache so list view re-fetches
     cachedDetailId = null;
     await renderEditor(detail.id);
