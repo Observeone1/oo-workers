@@ -253,6 +253,12 @@ export const tlsMonitors = pgTable('tls_monitors', {
   timeoutMs: integer('timeout_ms').notNull().default(5000),
   intervalSeconds: integer('interval_seconds').notNull().default(60),
   enabled: boolean('enabled').notNull().default(true),
+  // 0018 — opt-in assertions, all default OFF (preserve self-signed
+  // expiry-only posture). Independent: chain trust, hostname match, and
+  // a regex the leaf CN or any DNS SAN must match.
+  verifyChain: boolean('verify_chain').notNull().default(false),
+  verifyHostname: boolean('verify_hostname').notNull().default(false),
+  expectCnRegex: varchar('expect_cn_regex', { length: 255 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

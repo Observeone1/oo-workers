@@ -5,8 +5,9 @@ server's leaf certificate, and **FAILs when it expires within `warnDays`
 days** (default **30**). Use it to catch the classic 3am outage: a cert
 nobody renewed.
 
-It answers _"will TLS still work next month?"_ — not _"is the chain
-trusted right now?"_. See **Limits** below.
+By default it answers _"will TLS still work next month?"_. It can
+**also** assert chain trust, hostname, and a CN/SAN regex — all opt-in,
+all off unless you turn them on (see **Optional assertions**).
 
 ## Fields
 
@@ -36,19 +37,36 @@ Alerts follow the same status-transition model as every other monitor
 type — you get paged once on the SUCCESS→FAILED flip, and once on
 recovery, not every interval.
 
-## Limits (deliberate)
+## Optional assertions (all off by default)
 
-`rejectUnauthorized` is **off**. A self-signed, internal-CA, or
-hostname-mismatched endpoint still gets its expiry monitored — the same
-self-signed-friendly posture as the database-TLS option. Chain validity,
-hostname match, and CN-regex assertions are a deliberate **future
-follow-up**, not checked here. This monitor is about _expiry_, the failure
-mode that actually causes silent outages.
+The handshake always uses `rejectUnauthorized:false` so a self-signed /
+internal-CA / hostname-mismatched endpoint still gets its **expiry**
+monitored (the self-signed-friendly posture, same as database-TLS).
+Beyond expiry you can opt into three **independent** checks — in the
+"Advanced TLS assertions" section of the add-monitor dialog, or via the
+`verifyChain` / `verifyHostname` / `expectCnRegex` fields on
+`POST /api/monitors/tls`:
+
+| Assertion               | FAILs when…                                                                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Verify chain**        | the cert does **not** chain to a system-trusted CA. A pure hostname mismatch does NOT trip this — that is the next knob; this is strictly the trust anchor. |
+| **Verify hostname**     | the cert is **not** valid for the SNI host (CN/SAN, via `tls.checkServerIdentity`).                                                                         |
+| **Expect CN/SAN regex** | neither the leaf CN **nor any DNS SAN** matches the regex.                                                                                                  |
+
+The regex is validated **when you save the monitor** (length-capped,
+catastrophic-backtracking shapes and invalid patterns are rejected with
+a 400) so a bad pattern can't silently fail every probe forever. With
+all three off, behaviour is byte-identical to expiry-only.
 
 ## Testing
 
 Guarded by `scripts/tls-cert-test.ts` (`bun run test:tls`), a stage in
-`scripts/run-integration.sh` (pre-push + CI). It openssl-generates a
-far-future and an inside-window self-signed cert, stands a throwaway
-`tls.createServer`, and asserts SUCCESS vs FAILED — anti-vacuous: a
-stuck-SUCCESS probe fails the in-window case.
+`scripts/run-integration.sh` (pre-push + CI). It openssl-generates
+self-signed certs (controllable CN/SAN) and stands a throwaway
+`tls.createServer`. Anti-vacuous matrix: expiry SUCCESS/FAILED;
+`verify_chain` **off→SUCCESS** (the no-regression guard) vs
+**on→FAIL** on the same self-signed cert; hostname match vs mismatch;
+CN-regex match, no-match, and **match via a DNS SAN** (SAN coverage).
+The one inherently-online positive — `verify_chain` on against a
+_publicly-trusted_ host → SUCCESS — can't be minted offline, so it is
+verified by a real-host check, not this pure gate (stated, not faked).

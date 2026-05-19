@@ -17,6 +17,9 @@ export const tlsMonitorProcessor = async (job: Job) => {
     timeoutMs,
     warnDays: monitor.warnDays ?? 30,
     servername: monitor.servername ?? null,
+    verifyChain: monitor.verifyChain ?? false,
+    verifyHostname: monitor.verifyHostname ?? false,
+    expectCnRegex: monitor.expectCnRegex ?? null,
   });
   const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
 

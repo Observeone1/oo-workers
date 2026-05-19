@@ -515,6 +515,36 @@ function buildApp(connection: Redis) {
     if (!Number.isInteger(warnDays) || warnDays < 0) {
       return c.json({ error: 'warnDays must be a non-negative integer' }, 400);
     }
+    // Validate expect_cn_regex AT SAVE — a bad/ReDoS pattern must not be
+    // saveable (else it fails every probe forever). Probe-time has a
+    // try/catch backstop, but this is the gate.
+    let expectCnRegex: string | null = null;
+    if (body.expectCnRegex != null && String(body.expectCnRegex).length > 0) {
+      const raw = String(body.expectCnRegex);
+      if (raw.length > 200) {
+        return c.json({ error: 'expectCnRegex too long (max 200 chars)' }, 400);
+      }
+      // The 200-char cap above is the PRIMARY ReDoS bound. This denylist
+      // is a bonus that rejects only the trivially-nested-quantifier
+      // footgun (a quantified group immediately re-quantified, e.g.
+      // (a+)+ (.*)* (a*)+). It does NOT claim to catch every ReDoS shape
+      // (alternation overlap etc. is not detected — that's the cap's job).
+      if (/\([^()]*[+*][^()]*\)[+*]/.test(raw)) {
+        return c.json(
+          { error: 'expectCnRegex has a trivially-nested quantifier (e.g. (a+)+) — rewrite it' },
+          400,
+        );
+      }
+      try {
+        new RegExp(raw);
+      } catch (e) {
+        return c.json(
+          { error: `expectCnRegex is not a valid regex: ${e instanceof Error ? e.message : e}` },
+          400,
+        );
+      }
+      expectCnRegex = raw;
+    }
     const [m] = await tlsMonitorRepo.create({
       name: body.name,
       host: body.host,
@@ -523,6 +553,9 @@ function buildApp(connection: Redis) {
       warnDays,
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
+      verifyChain: body.verifyChain === true,
+      verifyHostname: body.verifyHostname === true,
+      expectCnRegex,
     });
     return c.json(m, 201);
   });

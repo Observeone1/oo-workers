@@ -78,6 +78,9 @@ export const tlsMonitorRepo = {
     timeoutMs?: number;
     intervalSeconds?: number;
     enabled?: boolean;
+    verifyChain?: boolean;
+    verifyHostname?: boolean;
+    expectCnRegex?: string | null;
   }) {
     return db.insert(tlsMonitors).values(data).returning();
   },
@@ -117,6 +120,9 @@ export const tlsMonitorRepo = {
         warnDays: tlsMonitors.warnDays,
         timeoutMs: tlsMonitors.timeoutMs,
         intervalSeconds: tlsMonitors.intervalSeconds,
+        verifyChain: tlsMonitors.verifyChain,
+        verifyHostname: tlsMonitors.verifyHostname,
+        expectCnRegex: tlsMonitors.expectCnRegex,
         ageSeconds: sql<number | null>`EXTRACT(EPOCH FROM (NOW() - ${lastRun.maxStart}))::int`.as(
           'age_seconds',
         ),

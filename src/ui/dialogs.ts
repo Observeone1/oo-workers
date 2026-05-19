@@ -250,6 +250,7 @@ function initAddDialog() {
         return;
       }
       const servername = String(fd.get('tls_servername') ?? '').trim();
+      const expectCnRegex = String(fd.get('tls_expect_cn_regex') ?? '').trim();
       body = {
         name,
         host,
@@ -257,6 +258,9 @@ function initAddDialog() {
         servername: servername || null,
         warnDays,
         intervalSeconds: Number(fd.get('tls_interval_seconds')) || 60,
+        verifyChain: fd.get('tls_verify_chain') === 'on',
+        verifyHostname: fd.get('tls_verify_hostname') === 'on',
+        expectCnRegex: expectCnRegex || null,
       };
     } else {
       // udp

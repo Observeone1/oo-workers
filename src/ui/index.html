@@ -179,6 +179,30 @@
             >
             <input name="tls_servername" placeholder="(defaults to Host)" />
           </div>
+          <div style="flex-basis: 100%">
+            <details class="advanced-tls">
+              <summary>Advanced TLS assertions (optional)</summary>
+              <p class="meta">
+                All off by default — expiry is still monitored even on self-signed certs. Turn these
+                on to also fail when trust/identity is wrong.
+              </p>
+              <label class="checkbox-row">
+                <input type="checkbox" name="tls_verify_chain" />
+                Verify chain — fail unless the cert chains to a trusted CA
+              </label>
+              <label class="checkbox-row">
+                <input type="checkbox" name="tls_verify_hostname" />
+                Verify hostname — fail unless the cert is valid for the SNI host
+              </label>
+              <label
+                >Expect CN/SAN regex
+                <input
+                  name="tls_expect_cn_regex"
+                  placeholder="(optional, e.g. ^.*\.example\.com$)"
+                />
+              </label>
+            </details>
+          </div>
         </div>
 
         <div class="form-row" id="udp-row" hidden>

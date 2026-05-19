@@ -1,4 +1,9 @@
-import { connect as tlsConnect } from 'node:tls';
+import {
+  connect as tlsConnect,
+  checkServerIdentity,
+  type TLSSocket,
+  type PeerCertificate,
+} from 'node:tls';
 import { isIP } from 'node:net';
 
 export interface TlsProbeOptions {
@@ -9,6 +14,15 @@ export interface TlsProbeOptions {
   warnDays: number;
   /** SNI override for vhosts where it differs from host. */
   servername?: string | null;
+  // 0018 opt-in assertions — all default OFF (the connection still uses
+  // rejectUnauthorized:false so expiry is monitored even on a failing
+  // cert; these inspect the result rather than refusing the handshake).
+  /** FAIL unless the cert chains to a system-trusted CA. */
+  verifyChain?: boolean;
+  /** FAIL unless the cert is valid for the SNI host (CN/SAN match). */
+  verifyHostname?: boolean;
+  /** FAIL unless the leaf CN or any DNS SAN matches this regex. */
+  expectCnRegex?: string | null;
 }
 
 export interface TlsProbeResult {
@@ -26,8 +40,10 @@ export interface TlsProbeResult {
  *
  * `rejectUnauthorized:false` on purpose: a self-signed / internal-CA /
  * hostname-mismatched endpoint should still get its expiry monitored
- * (same self-signed posture as the db-tls work). Chain/hostname validity
- * and CN-regex are a deliberate future follow-up, not asserted here.
+ * (same self-signed posture as the db-tls work). Chain trust, hostname
+ * match, and a CN/SAN regex are now ASSERTABLE but strictly opt-in
+ * (0018) — with all three off the behaviour is byte-identical to before:
+ * connect, read the cert, check expiry only.
  *
  * SNI is the optional `servername`, else `host` — but never an IP:
  * `tls.connect({ servername:<ip> })` throws synchronously (the db-tls
@@ -92,6 +108,20 @@ export function tlsProbe(opts: TlsProbeOptions): Promise<TlsProbeResult> {
         });
         return;
       }
+      // Opt-in assertions (0018). All off → this is a no-op and the
+      // result is identical to the pre-0018 expiry-only behaviour.
+      const assertErr = evalTlsAssertions(opts, socket, cert, servername ?? host);
+      if (assertErr) {
+        finish({
+          ok: false,
+          latencyMs,
+          daysRemaining,
+          validTo,
+          certSummary,
+          errorMessage: `${assertErr} (${host}:${port})`,
+        });
+        return;
+      }
       finish({ ok: true, latencyMs, daysRemaining, validTo, certSummary });
     });
 
@@ -111,6 +141,63 @@ export function tlsProbe(opts: TlsProbeOptions): Promise<TlsProbeResult> {
       });
     });
   });
+}
+
+/** DNS:a.com, DNS:*.b.com, IP Address:1.2.3.4 → ["a.com", "*.b.com"] */
+function parseDnsSans(san: string | undefined): string[] {
+  if (!san) return [];
+  return san
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith('DNS:'))
+    .map((s) => s.slice(4));
+}
+
+/**
+ * Evaluate the opt-in 0018 assertions against the established session.
+ * Returns the first failure message, or null if all (enabled) checks
+ * pass. `verify_chain` is trust-anchor only: a pure hostname mismatch
+ * (ALTNAME) still counts as a trusted chain — hostname is the separate
+ * `verify_hostname` knob.
+ */
+function evalTlsAssertions(
+  opts: TlsProbeOptions,
+  socket: TLSSocket,
+  cert: PeerCertificate,
+  hostForId: string,
+): string | null {
+  if (opts.verifyChain) {
+    const ae = socket.authorizationError as unknown;
+    const aeCode = ae && typeof ae === 'object' ? (ae as NodeJS.ErrnoException).code : undefined;
+    const aeMsg = ae instanceof Error ? ae.message : ae ? String(ae) : 'unauthorized';
+    const chainTrusted = socket.authorized || aeCode === 'ERR_TLS_CERT_ALTNAME_INVALID';
+    if (!chainTrusted) return `Certificate chain not trusted: ${aeMsg}`;
+  }
+
+  if (opts.verifyHostname) {
+    const idErr = checkServerIdentity(hostForId, cert);
+    if (idErr) return `Certificate not valid for ${hostForId}: ${idErr.message}`;
+  }
+
+  if (opts.expectCnRegex) {
+    let re: RegExp;
+    try {
+      re = new RegExp(opts.expectCnRegex);
+    } catch (e) {
+      // Endpoint validates at save; this is only a backstop.
+      return `Invalid expect_cn_regex: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    const cn = cert.subject?.CN;
+    const sans = parseDnsSans(cert.subjectaltname);
+    const targets = [cn, ...sans].filter((s): s is string => typeof s === 'string' && s.length > 0);
+    if (!targets.some((t) => re.test(t))) {
+      return `No CN/SAN matches /${opts.expectCnRegex}/ (CN=${cn ?? '?'}; SAN=${
+        sans.join(',') || 'none'
+      })`;
+    }
+  }
+
+  return null;
 }
 
 function mapTlsError(err: NodeJS.ErrnoException, host: string, port: number): string {
