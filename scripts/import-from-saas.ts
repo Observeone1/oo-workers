@@ -91,7 +91,7 @@ async function loadSaasExport(from: string | null): Promise<unknown> {
 async function main() {
   const { from, url, key, dryRun, allowDuplicates } = parseArgs();
 
-  const { payload, skipped } = adaptSaaSExport(
+  const { payload, skipped, warnings } = adaptSaaSExport(
     (await loadSaasExport(from)) as Parameters<typeof adaptSaaSExport>[0],
   );
   const notTransferred = Object.entries(skipped).filter(([, n]) => n > 0);
@@ -105,6 +105,11 @@ async function main() {
         .map(([k, n]) => `${k}=${n}`)
         .join(', ')}`,
     );
+  }
+  if (warnings.length) {
+    console.log('\n⚠ ACTION NEEDED — these imported but will NOT fully work yet:');
+    for (const w of warnings) console.log(`  • ${w}`);
+    console.log('');
   }
 
   if (dryRun) {
@@ -178,10 +183,14 @@ async function main() {
     udp: number;
     channels: number;
     skipped?: string[];
+    warnings?: string[];
   };
   console.log(
     `imported: url=${result.url} api=${result.api} qa=${result.qa} channels=${result.channels}`,
   );
+  // Server-side advisories (path-independent — also shown in the UI
+  // import dialog). Distinct from the adapter `warnings` above.
+  for (const w of result.warnings ?? []) console.log(`  • ${w}`);
 
   // The pre-flight handles re-import collisions; anything here is a
   // per-item server-side creation error (bad field, validation, etc.).

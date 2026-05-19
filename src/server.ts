@@ -754,6 +754,10 @@ function buildApp(connection: Redis) {
       udp: 0,
       channels: 0,
       skipped: [] as string[],
+      // Advisories: imported, but won't fully work without operator
+      // follow-up. Path-independent (UI import dialog + CLI wrapper both
+      // surface this) — NOT counted as skipped, the rows ARE created.
+      warnings: [] as string[],
     };
 
     for (const u of (body.urlMonitors ?? []) as any[]) {
@@ -895,6 +899,19 @@ function buildApp(connection: Redis) {
           `channel ${ch?.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+    }
+    // Monitor→alert-channel routing is not part of the import payload:
+    // every monitor just created has zero channel bindings, so a
+    // migrated monitor alerts nobody until bound. True for ANY import
+    // path (UI dialog or CLI wrapper) — surfaced here so neither flies
+    // blind. (Removed once import carries/remaps bindings — roadmap 3.3.)
+    const monitorsCreated = created.url + created.api + created.qa + created.tcp + created.udp;
+    if (monitorsCreated > 0) {
+      created.warnings.push(
+        `${monitorsCreated} monitor(s) imported with no alert-channel bindings — ` +
+          `they will not alert anyone until you bind a channel to each ` +
+          `(Monitors → a monitor → Alert channels).`,
+      );
     }
     return c.json(created);
   });

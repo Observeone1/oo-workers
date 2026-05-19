@@ -425,10 +425,17 @@ function initImportDialog() {
       alertDialog({ title: 'Import failed', body: `Failed: ${JSON.stringify(result)}` });
       return;
     }
+    const warnings = result.warnings?.length
+      ? `\n\n⚠ ACTION NEEDED — imported but won’t fully work yet:\n${result.warnings
+          .map((w) => `• ${w}`)
+          .join('\n')}`
+      : '';
     const skipped = result.skipped?.length ? `\n\nSkipped:\n${result.skipped.join('\n')}` : '';
     alertDialog({
       title: 'Import complete',
-      body: `Created url=${result.url}, api=${result.api}, qa=${result.qa}${skipped}`,
+      body:
+        `Created url=${result.url}, api=${result.api}, qa=${result.qa}, ` +
+        `channels=${result.channels}${warnings}${skipped}`,
     });
     importDialog.close();
     renderList();

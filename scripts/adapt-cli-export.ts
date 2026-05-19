@@ -62,6 +62,11 @@ export interface ImportPayload {
 export interface AdaptResult {
   payload: ImportPayload;
   skipped: Record<string, number>;
+  // Human-readable advisories for things that imported but won't fully
+  // work without operator follow-up — NOT counted as skipped (the rows
+  // ARE created). Surfaced loudly by the CLI + wrapper so a migration
+  // doesn't silently half-work.
+  warnings: string[];
 }
 
 // SaaS schedules are cron; oo-workers monitors are interval-seconds.
@@ -84,6 +89,10 @@ interface SaaSSuite {
   cron_expression?: string;
   schedule_active?: boolean;
   tests?: Array<{ name?: unknown; script?: unknown }>;
+  // SaaS exports the secret *names* a suite uses, never the values
+  // (security — the SaaS API does not dump secret values anywhere). We
+  // can't migrate values; we DO warn so the operator recreates them.
+  secret_keys?: unknown;
 }
 
 // SaaS channel types: email|slack|discord|teams|telegram|sms|webhook.
@@ -142,6 +151,7 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
 
   // suites → qaProjects, but only suites with inline tests (see header).
   const qaProjects: ImportPayload['qaProjects'] = [];
+  const warnings: string[] = [];
   let suitesSkipped = 0;
   for (const s of src.suites ?? []) {
     const tests = (Array.isArray(s.tests) ? s.tests : [])
@@ -160,6 +170,21 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       enabled: s.schedule_active ?? true,
       tests,
     });
+    // The suite imported, but if its tests reference secrets those will
+    // be MISSING on the self-host (the SaaS export never carries secret
+    // values — only names). The test will fail at runtime until the
+    // operator recreates them. Warn with the names so they know which.
+    const secretKeys = (Array.isArray(s.secret_keys) ? s.secret_keys : []).filter(
+      (k): k is string => typeof k === 'string' && k.length > 0,
+    );
+    if (secretKeys.length > 0) {
+      warnings.push(
+        `QA suite "${s.suite_name}" imported but uses ${secretKeys.length} secret(s) ` +
+          `[${secretKeys.join(', ')}] that are NOT migrated — the SaaS export never ` +
+          `includes secret values. Its tests will fail until you recreate these ` +
+          `secrets on the self-host.`,
+      );
+    }
   }
 
   // alert_channels → channels. Secret-safe: only config.email /
@@ -190,6 +215,12 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
     }
   }
 
+  // NOTE: the monitor→alert-channel "routing not migrated" advisory is
+  // emitted SERVER-side by /api/import (path-independent — it must also
+  // reach the UI import dialog, which never runs this adapter). Keeping
+  // it in one place avoids divergent wording. This adapter's `warnings`
+  // carry only SaaS-export-derived advisories (suite secrets above).
+
   return {
     payload: { version: 1, urlMonitors, apiChecks, qaProjects, channels },
     skipped: {
@@ -203,6 +234,7 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       status_pages: src.status_pages?.length ?? 0,
       incidents: src.incidents?.length ?? 0,
     },
+    warnings,
   };
 }
 
@@ -212,7 +244,7 @@ if (import.meta.main) {
     console.error('usage: adapt-cli-export.ts <input.json> <output.json>');
     process.exit(1);
   }
-  const { payload, skipped } = adaptSaaSExport(JSON.parse(await Bun.file(inPath).text()));
+  const { payload, skipped, warnings } = adaptSaaSExport(JSON.parse(await Bun.file(inPath).text()));
   await Bun.write(outPath, JSON.stringify(payload, null, 2));
   console.log(`✓ wrote ${outPath}`);
   console.log(`  urlMonitors: ${payload.urlMonitors.length}`);
@@ -235,5 +267,10 @@ if (import.meta.main) {
       `  ⚠ ${skipped.alert_channels} alert channel(s) skipped ` +
         `(unsupported type — teams/telegram/sms — or missing/invalid endpoint).`,
     );
+  }
+  if (warnings.length > 0) {
+    console.log('');
+    console.log('  ⚠ ACTION NEEDED — imported, but won’t fully work until you act:');
+    for (const w of warnings) console.log(`    • ${w}`);
   }
 }
