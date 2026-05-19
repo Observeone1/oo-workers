@@ -149,7 +149,23 @@ function wireChannelRowActions() {
       btn.disabled = false;
       btn.textContent = original;
       if (res.ok && data.ok) {
-        lastBanner = { kind: 'ok', text: 'Test alert delivered — check the destination.' };
+        // Dev: when SMTP points at a local Mailpit the server reads it
+        // back and tells us the mail actually landed (not just "SMTP
+        // accepted it"). Absent in production / non-email → unchanged.
+        const mp = data.mailpit;
+        if (mp?.delivered) {
+          lastBanner = {
+            kind: 'ok',
+            text: `Test alert delivered ✓ landed in Mailpit — “${mp.subject}”`,
+          };
+        } else if (mp) {
+          lastBanner = {
+            kind: 'ok',
+            text: 'Test alert sent — Mailpit read-back timed out; check http://localhost:8025',
+          };
+        } else {
+          lastBanner = { kind: 'ok', text: 'Test alert delivered — check the destination.' };
+        }
       } else {
         lastBanner = {
           kind: 'err',
