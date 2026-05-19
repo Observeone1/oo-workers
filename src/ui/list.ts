@@ -46,6 +46,7 @@ export async function renderList() {
     tcp: data.tcp.length,
     udp: data.udp.length,
     db: data.db.length,
+    tls: data.tls.length,
   };
 
   const allForTab = data[activeTab];
@@ -60,7 +61,7 @@ export async function renderList() {
 
   main.innerHTML = `
     <div class="tabs">
-      ${(['url', 'api', 'qa', 'tcp', 'udp', 'db'] as const)
+      ${(['url', 'api', 'qa', 'tcp', 'udp', 'db', 'tls'] as const)
         .map(
           (t) =>
             `<div class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></div>`,

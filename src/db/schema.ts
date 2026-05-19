@@ -239,6 +239,49 @@ export const dbExecutions = pgTable(
 );
 
 // ============================================================
+// TLS certificate-expiry monitoring
+// ============================================================
+
+export const tlsMonitors = pgTable('tls_monitors', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  host: varchar('host', { length: 255 }).notNull(),
+  port: integer('port').notNull().default(443),
+  servername: varchar('servername', { length: 255 }),
+  warnDays: integer('warn_days').notNull().default(30),
+  timeoutMs: integer('timeout_ms').notNull().default(5000),
+  intervalSeconds: integer('interval_seconds').notNull().default(60),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tlsExecutions = pgTable(
+  'tls_executions',
+  {
+    id: serial('id').primaryKey(),
+    tlsMonitorId: integer('tls_monitor_id')
+      .notNull()
+      .references(() => tlsMonitors.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
+    status: varchar('status', { length: 20 }).notNull(),
+    latencyMs: integer('latency_ms'),
+    daysRemaining: integer('days_remaining'),
+    validTo: timestamp('valid_to', { withTimezone: true }),
+    certSummary: text('cert_summary'),
+    errorMessage: text('error_message'),
+    startTime: timestamp('start_time', { withTimezone: true }).notNull().defaultNow(),
+    endTime: timestamp('end_time', { withTimezone: true }),
+  },
+  (t) => [
+    index('idx_tls_executions_monitor_id').on(t.tlsMonitorId),
+    index('idx_tls_executions_start_time').on(t.startTime),
+    index('idx_tls_executions_region_id').on(t.regionId),
+  ],
+);
+
+// ============================================================
 // QA (Playwright) monitoring
 // ============================================================
 

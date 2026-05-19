@@ -3,7 +3,7 @@ import { db } from '../../config/db.ts';
 import { monitorRegions, regions } from '../schema.ts';
 
 export type RegionRow = typeof regions.$inferSelect;
-export type MonitorType = 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
+export type MonitorType = 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
 
 export const regionRepo = {
   create(data: { slug: string; label: string; apiKeyId: number }) {

@@ -24,6 +24,8 @@ import {
   regions,
   tcpExecutions,
   tcpMonitors,
+  tlsExecutions,
+  tlsMonitors,
   udpExecutions,
   udpMonitors,
   urlMonitorExecutions,
@@ -102,6 +104,17 @@ async function previousStatus(
       .limit(1);
     return rows[0]?.status ?? null;
   }
+  if (monitorType === 'tls') {
+    const rows = await db
+      .select({ status: tlsExecutions.status })
+      .from(tlsExecutions)
+      .where(
+        and(eq(tlsExecutions.tlsMonitorId, monitorId), ne(tlsExecutions.id, currentExecutionId)),
+      )
+      .orderBy(desc(tlsExecutions.startTime))
+      .limit(1);
+    return rows[0]?.status ?? null;
+  }
   // qa — exec rows are per-test; alert when *any* test in the project flips.
   // For "did this project's last run pass overall" semantics, prefer
   // qa_test_executions ordered by startedAt with project_id filter.
@@ -164,6 +177,14 @@ async function monitorMeta(
       .where(eq(dbMonitors.id, monitorId))
       .limit(1);
     return r ? { name: r.name, target: `${r.protocol} ${r.host}:${r.port}` } : null;
+  }
+  if (monitorType === 'tls') {
+    const [r] = await db
+      .select({ name: tlsMonitors.name, host: tlsMonitors.host, port: tlsMonitors.port })
+      .from(tlsMonitors)
+      .where(eq(tlsMonitors.id, monitorId))
+      .limit(1);
+    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
   }
   // qa
   const [r] = await db

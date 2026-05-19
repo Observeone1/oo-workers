@@ -15,6 +15,7 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
+import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
 import { randomBytes } from 'node:crypto';
 import {
@@ -58,7 +59,7 @@ import {
 } from './services/backup.ts';
 import { logger } from './utils/logger.ts';
 
-const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db'];
+const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
 
 const PUBLIC_DIR = resolve(import.meta.dir, '../public');
 
@@ -83,6 +84,7 @@ function buildApp(connection: Redis) {
   const tcpQ = new Queue('tcp-monitor', { connection });
   const udpQ = new Queue('udp-monitor', { connection });
   const dbQ = new Queue('db-monitor', { connection });
+  const tlsQ = new Queue('tls-monitor', { connection });
 
   // Dedicated connection for blocking pops in /api/agent/jobs. BRPOP holds
   // the connection for the duration of the wait, so it must not share with
@@ -288,15 +290,16 @@ function buildApp(connection: Redis) {
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const [urls, apis, qas, tcps, udps, dbs] = await Promise.all([
+    const [urls, apis, qas, tcps, udps, dbs, tlss] = await Promise.all([
       urlMonitorRepo.findAllWithLatest(),
       apiCheckRepo.findAllWithLatest(),
       qaProjectRepo.findAllWithLatest(),
       tcpMonitorRepo.findAllWithLatest(),
       udpMonitorRepo.findAllWithLatest(),
       dbMonitorRepo.findAllWithLatest(),
+      tlsMonitorRepo.findAllWithLatest(),
     ]);
-    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps, db: dbs });
+    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps, db: dbs, tls: tlss });
   });
 
   // ---------- API: detail ----------
@@ -356,6 +359,15 @@ function buildApp(connection: Redis) {
       const runs = await dbMonitorRepo.findExecutionsByMonitorId(id);
       return c.json({
         monitor: { ...m, type: 'db' },
+        runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
+      });
+    }
+    if (type === 'tls') {
+      const [m] = await tlsMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const runs = await tlsMonitorRepo.findExecutionsByMonitorId(id);
+      return c.json({
+        monitor: { ...m, type: 'tls' },
         runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
       });
     }
@@ -487,6 +499,28 @@ function buildApp(connection: Redis) {
     return c.json(m, 201);
   });
 
+  app.post('/api/monitors/tls', async (c) => {
+    const body = await c.req.json();
+    const port = body.port == null ? 443 : Number(body.port);
+    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return c.json({ error: 'name + host (+ optional port 1-65535) required' }, 400);
+    }
+    const warnDays = body.warnDays == null ? 30 : Number(body.warnDays);
+    if (!Number.isInteger(warnDays) || warnDays < 0) {
+      return c.json({ error: 'warnDays must be a non-negative integer' }, 400);
+    }
+    const [m] = await tlsMonitorRepo.create({
+      name: body.name,
+      host: body.host,
+      port,
+      servername: body.servername || null,
+      warnDays,
+      intervalSeconds: body.intervalSeconds ?? 60,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(m, 201);
+  });
+
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
@@ -524,6 +558,7 @@ function buildApp(connection: Redis) {
     else if (type === 'tcp') await tcpMonitorRepo.deleteById(id);
     else if (type === 'udp') await udpMonitorRepo.deleteById(id);
     else if (type === 'db') await dbMonitorRepo.deleteById(id);
+    else if (type === 'tls') await tlsMonitorRepo.deleteById(id);
     else return c.json({ error: 'bad type' }, 400);
     // monitor_alert_channels and status_page_monitors have no real FK
     // (different monitor types live in different tables) — clean them up
@@ -585,6 +620,7 @@ function buildApp(connection: Redis) {
     else if (type === 'tcp') await tcpMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'udp') await udpMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'db') await dbMonitorRepo.updateEnabled(id, body.enabled);
+    else if (type === 'tls') await tlsMonitorRepo.updateEnabled(id, body.enabled);
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -675,6 +711,23 @@ function buildApp(connection: Redis) {
           tls: m.tls,
           host: m.host,
           port: m.port,
+          timeoutMs: m.timeoutMs,
+        },
+      });
+      return c.json({ executionId: exec.id });
+    }
+    if (type === 'tls') {
+      const [m] = await tlsMonitorRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      const [exec] = await tlsMonitorRepo.createExecution(id, 'PENDING');
+      await tlsQ.add('check', {
+        executionId: exec.id,
+        monitor: {
+          id: m.id,
+          host: m.host,
+          port: m.port,
+          servername: m.servername,
+          warnDays: m.warnDays,
           timeoutMs: m.timeoutMs,
         },
       });
@@ -1054,7 +1107,7 @@ function buildApp(connection: Redis) {
       return c.json({ error: 'monitors must be an array of {type, id}' }, 400);
     }
     const bindings: Array<{
-      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
+      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
       monitorId: number;
     }> = [];
     for (const m of body.monitors as Array<{ type?: unknown; id?: unknown }>) {

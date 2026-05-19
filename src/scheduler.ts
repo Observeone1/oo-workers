@@ -38,6 +38,7 @@ import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
+import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -126,6 +127,7 @@ export function startScheduler(connection: Redis) {
         tickTcpMonitors(getQueue, connection),
         tickUdpMonitors(getQueue, connection),
         tickDbMonitors(getQueue, connection),
+        tickTlsMonitors(getQueue, connection),
       ]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -341,6 +343,47 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
       );
       logger.info(
         `scheduled db-monitor #${m.id} → exec #${exec.id}${
+          target.regionSlug ? ` [${target.regionSlug}]` : ''
+        }`,
+      );
+    }
+  }
+}
+
+async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
+  const due = await tlsMonitorRepo.findDue();
+
+  for (const m of due) {
+    if (m.ageSeconds !== null && m.ageSeconds < m.intervalSeconds) continue;
+
+    const targets = await fanOutTargets('tls', m.id);
+    const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
+
+    for (const target of targets) {
+      const [exec] = await tlsMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
+      await dispatch(
+        'tls-monitor',
+        target,
+        {
+          jobId: `tls:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          type: 'tls',
+          executionId: exec.id,
+          regionId: target.regionId,
+          monitor: {
+            id: m.id,
+            host: m.host,
+            port: m.port,
+            servername: m.servername,
+            warnDays: m.warnDays,
+            timeoutMs: m.timeoutMs,
+          },
+        },
+        200,
+        getQueue,
+        connection,
+      );
+      logger.info(
+        `scheduled tls-monitor #${m.id} → exec #${exec.id}${
           target.regionSlug ? ` [${target.regionSlug}]` : ''
         }`,
       );

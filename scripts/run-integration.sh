@@ -32,3 +32,7 @@ bun scripts/import-from-saas-test.ts
 # TCP banner/probe-read — probes the integration Redis (PING→PONG); pure
 # (no DB/HTTP), anti-vacuous (mismatch must FAIL).
 bun scripts/tcp-banner-test.ts
+# TLS cert-expiry — openssl-generated certs against a throwaway local
+# tls.createServer; pure (no DB/HTTP/egress), anti-vacuous (in-window
+# cert must FAIL).
+bun scripts/tls-cert-test.ts

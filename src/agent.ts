@@ -20,6 +20,7 @@ import { DEFAULTS } from './constants.ts';
 import { tcpProbe } from './services/tcp-probe.ts';
 import { parseHexPayload, udpProbe } from './services/udp-probe.ts';
 import { dbProbe, type DbProtocol } from './services/db-probe.ts';
+import { tlsProbe } from './services/tls-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
@@ -36,7 +37,7 @@ export interface AgentConfig {
 
 interface JobPayload {
   jobId: string;
-  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
+  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
   executionId: number;
   regionId: number;
   monitor?: {
@@ -50,6 +51,8 @@ interface JobPayload {
     expectBanner?: string | null;
     protocol?: string;
     tls?: boolean;
+    servername?: string | null;
+    warnDays?: number;
   };
   apiCheck?: {
     id: number;
@@ -277,6 +280,28 @@ async function probeDb(job: JobPayload): Promise<AgentResultBody> {
   };
 }
 
+async function probeTls(job: JobPayload): Promise<AgentResultBody> {
+  const m = job.monitor!;
+  const timeoutMs = m.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS;
+  const result = await tlsProbe({
+    host: m.host!,
+    port: m.port!,
+    timeoutMs,
+    warnDays: m.warnDays ?? 30,
+    servername: m.servername ?? null,
+  });
+  return {
+    type: 'tls',
+    executionId: job.executionId,
+    status: result.ok ? 'SUCCESS' : 'FAILED',
+    latencyMs: result.latencyMs,
+    daysRemaining: result.daysRemaining ?? null,
+    validTo: result.validTo ? result.validTo.toISOString() : null,
+    certSummary: result.certSummary ?? null,
+    errorMessage: result.errorMessage ?? null,
+  };
+}
+
 async function runProbe(job: JobPayload): Promise<AgentResultBody> {
   switch (job.type) {
     case 'url':
@@ -289,6 +314,8 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
       return probeUdp(job);
     case 'db':
       return probeDb(job);
+    case 'tls':
+      return probeTls(job);
     case 'qa':
       return {
         type: 'qa',

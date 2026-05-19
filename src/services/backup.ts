@@ -79,6 +79,7 @@ const TABLES: TableSpec[] = [
   { table: schema.tcpMonitors, serial: true },
   { table: schema.udpMonitors, serial: true },
   { table: schema.dbMonitors, serial: true },
+  { table: schema.tlsMonitors, serial: true },
   { table: schema.qaProjects, serial: true },
   { table: schema.urlMonitorAssertions, serial: true },
   { table: schema.apiAssertions, serial: true },
@@ -93,6 +94,7 @@ const TABLES: TableSpec[] = [
   { table: schema.tcpExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.udpExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.dbExecutions, serial: true, timeCol: 'startTime' },
+  { table: schema.tlsExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.qaTestExecutions, serial: true, timeCol: 'startedAt' },
 ];
 
@@ -235,6 +237,7 @@ async function targetIsEmpty(): Promise<boolean> {
     schema.tcpMonitors,
     schema.udpMonitors,
     schema.dbMonitors,
+    schema.tlsMonitors,
     schema.qaProjects,
     schema.apiKeys,
   ];

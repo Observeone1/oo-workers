@@ -137,11 +137,12 @@ function initAddDialog() {
     $('#api-fields').hidden = t !== 'api';
     $('#qa-fields').hidden = t !== 'qa';
     $('#udp-fields').hidden = t !== 'udp';
-    // The shared URL row is for url/api/qa; TCP/UDP/DB swap in their own rows.
-    $('#url-row').hidden = t === 'tcp' || t === 'udp' || t === 'db';
+    // The shared URL row is for url/api/qa; TCP/UDP/DB/TLS swap in their own rows.
+    $('#url-row').hidden = t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls';
     $('#tcp-row').hidden = t !== 'tcp';
     $('#udp-row').hidden = t !== 'udp';
     $('#db-row').hidden = t !== 'db';
+    $('#tls-row').hidden = t !== 'tls';
     syncRegionsRow();
   };
   typeSelect.addEventListener('change', syncFields);
@@ -232,6 +233,30 @@ function initAddDialog() {
         port,
         tls: fd.get('db_tls') === 'on',
         intervalSeconds: Number(fd.get('db_interval_seconds')) || 60,
+      };
+    } else if (type === 'tls') {
+      const host = String(fd.get('tls_host') ?? '').trim();
+      const port = Number(fd.get('tls_port') || 443);
+      if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+        alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
+        return;
+      }
+      const warnDays = Number(fd.get('tls_warn_days') || 30);
+      if (!Number.isInteger(warnDays) || warnDays < 0) {
+        alertDialog({
+          title: 'Validation error',
+          body: 'Warn days must be a non-negative integer',
+        });
+        return;
+      }
+      const servername = String(fd.get('tls_servername') ?? '').trim();
+      body = {
+        name,
+        host,
+        port,
+        servername: servername || null,
+        warnDays,
+        intervalSeconds: Number(fd.get('tls_interval_seconds')) || 60,
       };
     } else {
       // udp
