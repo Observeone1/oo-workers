@@ -46,6 +46,12 @@ export interface MonitorDetail {
   error?: string;
 }
 
+export interface AvailabilityDay {
+  date: string; // YYYY-MM-DD
+  total: number;
+  passed: number;
+}
+
 export interface ImportResult {
   url: number;
   api: number;

@@ -1,44 +1,117 @@
-/* ObserveOne brand tokens.
-   Uses light-dark() so the same custom property resolves to a different
-   color based on the resolved color-scheme of the document. The theme
-   switcher flips color-scheme on <html> to force light or dark.
-   Default at startup is `light dark` (follows prefers-color-scheme)
-   until the user explicitly toggles. */
+/* oo-workers — redesigned design tokens.
+   Vanilla CSS, light-dark() for theme switching, color-scheme on <html>
+   forces a mode. All status colors (up/down/warn) are theme-independent
+   so they read identically across light/dark. */
+
 :root {
   color-scheme: light dark;
   accent-color: #10b981;
-  scrollbar-color: light-dark(#cbd5e1, #2a3f37) transparent;
+  scrollbar-color: light-dark(#d4d4d0, #1f2a25) transparent;
 
-  /* surfaces */
-  --bg: light-dark(#f8fafc, #070c0a);
-  --panel: light-dark(#ffffff, #0e1713);
-  --panel-2: light-dark(#f1f5f9, #17211c);
-  --border: light-dark(#e2e8f0, #203029);
-  --border-strong: light-dark(#cbd5e1, #2a3f37);
+  /* ---------- typography ---------- */
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:
+    'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
 
-  /* text */
-  --text: light-dark(#0f172a, #f1f5f9);
-  --muted: light-dark(#64748b, #94a3b8);
-  --muted-2: light-dark(#94a3b8, #64748b);
-  --link: light-dark(#059669, #34d399);
+  --fs-11: 11px; /* caps labels, micro-meta */
+  --fs-12: 12px; /* meta, table sub, pill */
+  --fs-13: 13px; /* default UI, table cells */
+  --fs-14: 14px; /* body */
+  --fs-16: 16px; /* page H2 */
+  --fs-18: 18px; /* dialog H2, login */
+  --fs-22: 22px; /* page H1 / hero stats */
+  --fs-28: 28px; /* big stat numerals */
 
-  /* brand + status (single value — green/red work on both themes) */
+  --lh-tight: 1.2;
+  --lh: 1.5;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* ---------- spacing scale ---------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ---------- radius ---------- */
+  --r-sm: 4px;
+  --r: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+
+  /* ---------- surfaces ---------- */
+  /* Light: warm-neutral whites, no blue. Dark: near-black w/ a whisper of green. */
+  --bg: light-dark(#fafaf9, #07090a);
+  --panel: light-dark(#ffffff, #0c100e);
+  --panel-2: light-dark(#f4f4f1, #11161a);
+  --panel-inset: light-dark(#f8f8f5, #0a0d0f);
+  --border: light-dark(#e7e7e2, #1a221f);
+  --border-strong: light-dark(#d4d4cf, #28332e);
+  --hover: light-dark(#f4f4f1, #11171a);
+
+  /* ---------- text ---------- */
+  --text: light-dark(#0a0a0a, #ededed);
+  --text-2: light-dark(#2a2a28, #d4d4d0);
+  --muted: light-dark(#6c6c66, #8a8a83);
+  --muted-2: light-dark(#94948e, #5d6660);
+  --link: light-dark(#047857, #34d399);
+
+  /* ---------- brand + status (single value, theme-independent) ---------- */
   --accent: #10b981;
   --accent-hover: #059669;
   --accent-glow: #34d399;
+  --on-accent: light-dark(#ffffff, #03130d);
+
   --up: #10b981;
   --down: #ef4444;
-  --error: #f59e0b;
-  --unknown: light-dark(#94a3b8, #64748b);
+  --warn: #f59e0b;
+  --info: #38bdf8;
+  --unknown: light-dark(#94948e, #5d6660);
 
-  /* primary-button label needs different contrast per theme */
-  --on-accent: light-dark(#ffffff, #062019);
+  /* status text variants (more readable on tinted bg) */
+  --up-text: light-dark(#047857, #6ee7b7);
+  --down-text: light-dark(#b91c1c, #fca5a5);
+  --warn-text: light-dark(#b45309, #fcd34d);
+
+  /* ---------- shadows ---------- */
+  --shadow-sm: light-dark(0 1px 1px rgba(15, 15, 12, 0.04), 0 1px 1px rgba(0, 0, 0, 0.4));
+  --shadow: light-dark(
+    0 1px 2px rgba(15, 15, 12, 0.05),
+    0 4px 12px rgba(15, 15, 12, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 4px 14px rgba(0, 0, 0, 0.4)
+  );
+  --shadow-lg: light-dark(
+    0 10px 30px rgba(15, 15, 12, 0.1),
+    0 4px 8px rgba(15, 15, 12, 0.04),
+    0 14px 40px rgba(0, 0, 0, 0.6),
+    0 4px 10px rgba(0, 0, 0, 0.5)
+  );
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  --ring-down: 0 0 0 3px color-mix(in srgb, var(--down) 26%, transparent);
+
+  /* ---------- density (set by tweaks panel) ---------- */
+  --row-h: 38px; /* tight by default */
+  --pad-y: 9px;
+  --pad-x: 14px;
 
   /* docs syntax highlighting */
-  --kw: light-dark(#059669, #34d399);
+  --kw: light-dark(#047857, #34d399);
   --str: light-dark(#b45309, #f59e0b);
   --num: light-dark(#1d4ed8, #93c5fd);
-  --com: light-dark(#94a3b8, #64748b);
+  --com: light-dark(#94948e, #5d6660);
+}
 
-  --radius: 0.5rem;
+:root[data-density='comfortable'] {
+  --row-h: 48px;
+  --pad-y: 13px;
+  --pad-x: 16px;
 }

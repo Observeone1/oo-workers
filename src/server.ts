@@ -60,6 +60,7 @@ import {
   type DataScope,
 } from './services/backup.ts';
 import { logger } from './utils/logger.ts';
+import { getFleetAvailability } from './db/repositories/availability.repo.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
 
@@ -218,6 +219,38 @@ function buildApp(connection: Redis) {
     return c.json({ error: 'invalid or expired session' }, 401);
   });
 
+  // PATCH /api/auth/profile — update name/email for the logged-in user
+  app.patch('/api/auth/profile', async (c) => {
+    const cleartext = extractKey(c);
+    if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
+    const user = await authService.validateSession(cleartext);
+    if (!user) return c.json({ error: 'not authenticated' }, 401);
+    const body = await c.req.json().catch(() => ({}));
+    const name = typeof body.name === 'string' ? body.name.trim() : undefined;
+    const email = typeof body.email === 'string' ? body.email.trim() : undefined;
+    if (!name && !email) return c.json({ error: 'nothing to update' }, 400);
+    const updated = await authService.updateProfile(user.id, { name, email });
+    return c.json({ name: updated.name, email: updated.email, role: updated.role });
+  });
+
+  // POST /api/auth/password — change password for the logged-in user
+  app.post('/api/auth/password', async (c) => {
+    const cleartext = extractKey(c);
+    if (!cleartext) return c.json({ error: 'not authenticated' }, 401);
+    const user = await authService.validateSession(cleartext);
+    if (!user) return c.json({ error: 'not authenticated' }, 401);
+    const body = await c.req.json().catch(() => ({}));
+    const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+    if (!currentPassword || !newPassword)
+      return c.json({ error: 'currentPassword and newPassword required' }, 400);
+    if (newPassword.length < 8)
+      return c.json({ error: 'new password must be at least 8 characters' }, 400);
+    const result = await authService.changePassword(user.id, currentPassword, newPassword);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    return c.json({ ok: true });
+  });
+
   // ---------- API: API key management ----------
   // List is read-scoped; create/revoke are write-scoped. Cleartext is
   // returned exactly once, on create — mirrors scripts/create-api-key.ts.
@@ -306,6 +339,13 @@ function buildApp(connection: Redis) {
       tlsMonitorRepo.findAllWithLatest(),
     ]);
     return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps, db: dbs, tls: tlss });
+  });
+
+  // ---------- API: fleet availability ----------
+  app.get('/api/availability', async (c) => {
+    const days = Math.min(90, Math.max(1, Number(c.req.query('days') ?? 30)));
+    const buckets = await getFleetAvailability(days);
+    return c.json(buckets);
   });
 
   // ---------- API: detail ----------

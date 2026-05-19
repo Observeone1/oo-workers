@@ -77,4 +77,25 @@ export const authService = {
     const count = await userRepo.count();
     return count === 0;
   },
+
+  async updateProfile(userId: number, data: { name?: string; email?: string }): Promise<AuthUser> {
+    const [user] = await userRepo.updateUser(userId, data);
+    return { id: user.id, email: user.email, name: user.name, role: user.role };
+  },
+
+  async changePassword(
+    userId: number,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const user = await userRepo.findById(userId);
+    if (!user) return { ok: false, error: 'current password is incorrect' };
+
+    const valid = await Bun.password.verify(currentPassword, user.passwordHash);
+    if (!valid) return { ok: false, error: 'current password is incorrect' };
+
+    const passwordHash = await Bun.password.hash(newPassword, { algorithm: 'argon2id' });
+    await userRepo.updateUser(userId, { passwordHash });
+    return { ok: true };
+  },
 };

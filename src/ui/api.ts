@@ -1,4 +1,10 @@
-import type { MonType, MonitorsByType, MonitorDetail, ImportResult } from './types';
+import type {
+  MonType,
+  MonitorsByType,
+  MonitorDetail,
+  ImportResult,
+  AvailabilityDay,
+} from './types';
 
 // All requests carry `credentials: 'include'` so the oo_session cookie
 // flows on same-origin fetches — required for the auth gate.
@@ -6,6 +12,9 @@ const COMMON: RequestInit = { credentials: 'include' };
 
 export const getMonitors = async (): Promise<MonitorsByType> =>
   (await fetch('/api/monitors', COMMON)).json();
+
+export const getAvailability = async (days = 30): Promise<AvailabilityDay[]> =>
+  (await fetch(`/api/availability?days=${days}`, COMMON)).json();
 
 export const getDetail = async (type: MonType, id: number): Promise<MonitorDetail> =>
   (await fetch(`/api/monitors/${type}/${id}`, COMMON)).json();
@@ -321,3 +330,34 @@ export const updateIncidentTitle = (id: number, title: string) =>
 
 export const deleteIncident = (id: number) =>
   fetch(`/api/incidents/${id}`, { ...COMMON, method: 'DELETE' });
+
+// ---------- profile / password ----------
+
+export const updateProfile = async (
+  name: string,
+  email: string,
+): Promise<{
+  res: Response;
+  data: { name: string; email: string; role: string } | { error: string };
+}> => {
+  const res = await fetch('/api/auth/profile', {
+    ...COMMON,
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name, email }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ res: Response; data: { ok: boolean } | { error: string } }> => {
+  const res = await fetch('/api/auth/password', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  return { res, data: await res.json() };
+};
