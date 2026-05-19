@@ -51,7 +51,25 @@ const SAAS = {
     // Not mappable: no inline scripts (export run without --include-scripts).
     { suite_name: 'no-scripts', target_url: 'https://x.io', schedule_active: false },
   ],
-  alert_channels: [{ a: 1 }],
+  alert_channels: [
+    // Mappable.
+    { name: 'ops-email', type: 'email', config: { email: 'ops@x.io' } },
+    { name: 'slack-alerts', type: 'slack', config: { webhook_url: 'https://hooks.slack.com/aaa' } },
+    // Unsupported types — skipped; their SECRETS must never leak.
+    {
+      name: 'tg',
+      type: 'telegram',
+      config: { bot_token: 'SECRET_BOT_TOKEN_LEAK', chat_id: '999' },
+    },
+    {
+      name: 'pager',
+      type: 'sms',
+      config: { account_sid: 'SECRET_SID_LEAK', auth_token: 'SECRET_AUTH_LEAK' },
+    },
+    // Right type, broken endpoint — skipped, not half-created.
+    { name: 'bad-mail', type: 'email', config: { email: 'no-at-sign' } },
+    { name: 'bad-hook', type: 'slack', config: { webhook_url: 'ftp://nope' } },
+  ],
   status_pages: [],
   incidents: [{ a: 1 }],
 };
@@ -118,7 +136,8 @@ check(
   'skipped counts surfaced',
   skipped.heartbeats === 1 &&
     skipped.suites === 1 &&
-    skipped.alert_channels === 1 &&
+    // 4 not brought across: telegram, sms, bad email, bad webhook url.
+    skipped.alert_channels === 4 &&
     skipped.incidents === 1,
   JSON.stringify(skipped),
 );
@@ -162,6 +181,58 @@ check(
   'scriptless suite is skipped (no silent empty QA project)',
   scriptless.payload.qaProjects.length === 0 && scriptless.skipped.suites === 1,
   JSON.stringify(scriptless),
+);
+
+// 7. alert_channels→channels (3.2): only supported types with a valid
+//    endpoint map; config is narrowed to {to}|{url}.
+check('exactly the 2 valid channels map', payload.channels.length === 2);
+const byName = Object.fromEntries(payload.channels.map((c) => [c.name, c]));
+check(
+  'email channel → {type:email, config:{to}}',
+  byName['ops-email']?.type === 'email' &&
+    JSON.stringify(byName['ops-email']?.config) === JSON.stringify({ to: 'ops@x.io' }),
+  JSON.stringify(byName['ops-email']),
+);
+check(
+  'slack channel → {type:slack, config:{url}} from webhook_url',
+  byName['slack-alerts']?.type === 'slack' &&
+    JSON.stringify(byName['slack-alerts']?.config) ===
+      JSON.stringify({ url: 'https://hooks.slack.com/aaa' }),
+  JSON.stringify(byName['slack-alerts']),
+);
+
+// 7b. SECRETS MUST NOT LEAK — the skipped telegram/sms channels carry
+//     bot_token/account_sid; none may appear anywhere in the payload.
+const flatAll = JSON.stringify(payload);
+check(
+  'no skipped-channel secret leaks into the payload',
+  !flatAll.includes('SECRET_BOT_TOKEN_LEAK') &&
+    !flatAll.includes('SECRET_SID_LEAK') &&
+    !flatAll.includes('SECRET_AUTH_LEAK') &&
+    !flatAll.includes('bot_token') &&
+    !flatAll.includes('account_sid'),
+  flatAll,
+);
+
+// 7c. Channel negative controls — gate must bite.
+check('empty input → no channels, no throw', adaptSaaSExport({}).payload.channels.length === 0);
+const unknownType = adaptSaaSExport({
+  alert_channels: [{ name: 'pd', type: 'pagerduty', config: { webhook_url: 'https://x' } }],
+});
+check(
+  'unknown channel type (pagerduty) skipped, no crash',
+  unknownType.payload.channels.length === 0 && unknownType.skipped.alert_channels === 1,
+  JSON.stringify(unknownType),
+);
+const noName = adaptSaaSExport({
+  alert_channels: [{ type: 'slack', config: { webhook_url: 'https://hooks.slack.com/z' } }],
+});
+check(
+  'channel with no name is skipped, never named undefined',
+  noName.payload.channels.length === 0 &&
+    noName.skipped.alert_channels === 1 &&
+    !JSON.stringify(noName.payload).includes('undefined'),
+  JSON.stringify(noName),
 );
 
 console.log(
