@@ -94,7 +94,7 @@ async function main() {
   const notTransferred = Object.entries(skipped).filter(([, n]) => n > 0);
 
   console.log(
-    `adapted: urlMonitors=${payload.urlMonitors.length} apiChecks=${payload.apiChecks.length}`,
+    `adapted: urlMonitors=${payload.urlMonitors.length} apiChecks=${payload.apiChecks.length} qaProjects=${payload.qaProjects.length}`,
   );
   if (notTransferred.length) {
     console.log(
