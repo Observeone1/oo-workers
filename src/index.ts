@@ -29,6 +29,10 @@ async function runAgentRole(): Promise<void> {
   const agentKey = process.env.OO_AGENT_KEY;
   const regionSlug = process.env.OO_REGION_SLUG;
   const pollWaitSec = Number(process.env.OO_AGENT_POLL_WAIT_SEC ?? '30');
+  // Opt-in, scoped to the agent→master link only (see AgentConfig).
+  const tlsInsecure = ['1', 'true', 'yes'].includes(
+    (process.env.OO_AGENT_TLS_INSECURE ?? '').trim().toLowerCase(),
+  );
 
   if (!masterUrl || !agentKey || !regionSlug) {
     logger.error(
@@ -42,6 +46,7 @@ async function runAgentRole(): Promise<void> {
     agentKey,
     regionSlug,
     pollWaitSec: Number.isFinite(pollWaitSec) && pollWaitSec >= 1 ? pollWaitSec : 30,
+    tlsInsecure,
   });
 }
 

@@ -33,6 +33,23 @@ export interface AgentConfig {
   regionSlug: string;
   /** Long-poll wait in seconds (master clamps to [1,60]). Default 30. */
   pollWaitSec: number;
+  /**
+   * Skip TLS verification for the agent→master connection ONLY (the two
+   * fetches in this file). Probe targets are unaffected — their TLS is
+   * still validated. For self-signed / internal-CA masters. NOT low risk
+   * (an attacker on the agent↔master path can suppress FAILED results,
+   * inject false SUCCESS, or steal the agent key) — see docs.
+   */
+  tlsInsecure: boolean;
+}
+
+// Bun's fetch accepts a per-request `tls` option; the DOM fetch lib
+// typings don't. Scoped cast — applied to the master fetches only.
+function masterFetchInit(cfg: AgentConfig, init: RequestInit): RequestInit {
+  if (!cfg.tlsInsecure) return init;
+  return { ...init, tls: { rejectUnauthorized: false } } as RequestInit & {
+    tls: { rejectUnauthorized: boolean };
+  };
 }
 
 interface JobPayload {
@@ -65,21 +82,27 @@ interface JobPayload {
   assertions?: unknown[];
 }
 
-async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
-  const res = await fetch(`${cfg.masterUrl}/api/agent/jobs?wait=${cfg.pollWaitSec}`, {
-    headers: {
-      Authorization: `Bearer ${cfg.agentKey}`,
-      // Force a fresh TCP connection per poll. Bun reuses sockets via its
-      // connection pool by default; an idle keep-alive connection can be
-      // closed by the master between polls and the next reuse fails with
-      // "socket connection was closed unexpectedly". Long-poll is naturally
-      // low-frequency so we don't need the pool's throughput win.
-      Connection: 'close',
-    },
-    // Slightly longer than server-side wait so the agent doesn't time out
-    // before master returns 204.
-    signal: AbortSignal.timeout((cfg.pollWaitSec + 5) * 1000),
-  });
+// Exported for scripts/agent-tls-test.ts — the OO_AGENT_TLS_INSECURE
+// gate. This is the single agent→master read; if its TLS handling is
+// right, postResult (same masterFetchInit) is right by construction.
+export async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
+  const res = await fetch(
+    `${cfg.masterUrl}/api/agent/jobs?wait=${cfg.pollWaitSec}`,
+    masterFetchInit(cfg, {
+      headers: {
+        Authorization: `Bearer ${cfg.agentKey}`,
+        // Force a fresh TCP connection per poll. Bun reuses sockets via its
+        // connection pool by default; an idle keep-alive connection can be
+        // closed by the master between polls and the next reuse fails with
+        // "socket connection was closed unexpectedly". Long-poll is naturally
+        // low-frequency so we don't need the pool's throughput win.
+        Connection: 'close',
+      },
+      // Slightly longer than server-side wait so the agent doesn't time out
+      // before master returns 204.
+      signal: AbortSignal.timeout((cfg.pollWaitSec + 5) * 1000),
+    }),
+  );
   if (res.status === 204) return null;
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -89,16 +112,19 @@ async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
 }
 
 async function postResult(cfg: AgentConfig, body: AgentResultBody): Promise<void> {
-  const res = await fetch(`${cfg.masterUrl}/api/agent/results`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${cfg.agentKey}`,
-      'content-type': 'application/json',
-      Connection: 'close',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
+  const res = await fetch(
+    `${cfg.masterUrl}/api/agent/results`,
+    masterFetchInit(cfg, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.agentKey}`,
+        'content-type': 'application/json',
+        Connection: 'close',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    }),
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`master returned ${res.status} on /api/agent/results: ${text}`);
@@ -335,6 +361,22 @@ export async function runAgent(cfg: AgentConfig): Promise<void> {
   logger.info(
     `🛰  agent starting: master=${cfg.masterUrl} region=${cfg.regionSlug} wait=${cfg.pollWaitSec}s`,
   );
+  if (cfg.tlsInsecure) {
+    logger.warn(
+      '\n⚠ SECURITY: OO_AGENT_TLS_INSECURE is ON — TLS verification is\n' +
+        '  DISABLED for the agent→master connection. An attacker on the\n' +
+        '  agent↔master network path can read/modify this traffic: suppress\n' +
+        '  FAILED results, inject false SUCCESS, or steal the agent key on\n' +
+        '  the first poll. This is NOT "low risk" — it only narrows the\n' +
+        '  surface vs a global TLS bypass (probe targets stay validated).\n' +
+        '  Use a real cert (Let’s Encrypt) or a Tailscale/Wireguard tunnel\n' +
+        '  instead wherever possible. Unset OO_AGENT_TLS_INSECURE to fix.',
+    );
+  }
+  // Drift defence: re-warn ~hourly so a "just testing" flag set months
+  // ago doesn't stay silently on. Startup already warned → first repeat
+  // is ~1h in.
+  let lastInsecureWarn = Date.now();
   let backoffMs = 1000;
 
   // Cleanly handle shutdown — let the in-flight probe (if any) finish before exiting.
@@ -348,6 +390,14 @@ export async function runAgent(cfg: AgentConfig): Promise<void> {
 
   while (running) {
     try {
+      if (cfg.tlsInsecure && Date.now() - lastInsecureWarn > 3_600_000) {
+        logger.warn(
+          '⚠ SECURITY: OO_AGENT_TLS_INSECURE is still ON — agent→master ' +
+            'TLS verification remains disabled. Unset it once you have a ' +
+            'real cert / tunnel.',
+        );
+        lastInsecureWarn = Date.now();
+      }
       const job = await pollJob(cfg);
       backoffMs = 1000;
       if (!job) continue;
