@@ -36,6 +36,10 @@ bun scripts/tcp-banner-test.ts
 # tls.createServer; pure (no DB/HTTP/egress), anti-vacuous (in-window
 # cert must FAIL).
 bun scripts/tls-cert-test.ts
+# OO_AGENT_TLS_INSECURE gate — real agent pollJob vs a self-signed
+# HTTPS master; pure, anti-vacuous by construction (off→reject MUST
+# throw, on→204 MUST succeed).
+bun scripts/agent-tls-test.ts
 # QA-project alerting — webhook channel bound to a throwaway QA project,
 # local catch-all server, full transition table; anti-vacuous (noop
 # rows must NOT alert, transition rows must). Mutates the integration

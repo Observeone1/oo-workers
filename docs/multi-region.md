@@ -37,7 +37,22 @@ Run probes from more than one location by attaching regional **agents** to your 
 - **Public HTTPS** — front master with a TLS reverse proxy. Caddy auto-LE works well; see `Security & deployment` in the main README.
 - **Tailscale / Wireguard** — put master and agents on the same private network. Use the master's Tailscale IP or MagicDNS name as `OO_MASTER_URL`.
 
-Self-signed certs aren't supported by the agent today (Bun's fetch validates by default). Use a real cert via Let's Encrypt or a private CA you've installed system-wide.
+**Self-signed / internal-CA master.** By default the agent validates the
+master's TLS cert (Bun's `fetch`), so a self-signed master is rejected.
+Two ways through:
+
+- **Recommended:** a real cert (Let's Encrypt via a Caddy reverse proxy),
+  a private CA you've installed system-wide on the agent box, or skip
+  TLS entirely by putting master + agents on a Tailscale/Wireguard
+  tunnel (`OO_MASTER_URL=http://…` over the private net).
+- **Escape hatch:** set `OO_AGENT_TLS_INSECURE=1` on the agent. This
+  disables certificate verification **for the agent→master connection
+  only** — probe targets the agent checks are still validated. It is
+  **not low risk**: anyone on the agent↔master network path can then
+  read or tamper with that traffic — suppress `FAILED` results, inject
+  false `SUCCESS`, or steal the agent key on the first poll. The agent
+  logs a loud warning at startup and hourly while it's on. Use it for a
+  homelab you control end-to-end, not over the public internet.
 
 ### Step 1 — On master, create the region
 
@@ -167,7 +182,8 @@ Reads `OO_MASTER_URL` / `OO_AGENT_KEY` / `OO_REGION_SLUG` from the agent's env (
 
 ## Known gaps
 
-- **Self-signed TLS isn't supported** by the agent's fetch.
+- **Self-signed TLS** now has an escape hatch — `OO_AGENT_TLS_INSECURE=1`, scoped to the agent→master link with loud warnings (see **Prerequisite**). A trusted cert / tunnel is still strongly preferred.
+- **No automated agent-version-skew warning yet** — if a master upgrade adds a required job-payload field, an un-pulled agent could mis-handle it. Mitigation today is the post-upgrade `pull` (see Troubleshooting). A master-side "region N versions behind" indicator is a tracked follow-up.
 - **No header badge** showing online region count — open the Regions page to see status. On the polish backlog.
 - **Browser (QA) monitors don't run on agents** — see "What works on agents" above.
 - **No per-region latency series** on the monitor detail page yet — all runs are listed flat. On the polish backlog.
