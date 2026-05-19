@@ -149,7 +149,14 @@ export const deleteChannel = (id: number) =>
 
 export const testChannel = async (
   id: number,
-): Promise<{ res: Response; data: { ok: boolean; error?: string } }> => {
+): Promise<{
+  res: Response;
+  data: {
+    ok: boolean;
+    error?: string;
+    mailpit?: { delivered: boolean; subject?: string; to?: string };
+  };
+}> => {
   const res = await fetch(`/api/channels/${id}/test`, { ...COMMON, method: 'POST' });
   return { res, data: await res.json().catch(() => ({ ok: false })) };
 };

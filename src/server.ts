@@ -40,6 +40,7 @@ import {
   type ChannelType,
 } from './db/repositories/alert-channel.repo.ts';
 import { sendToChannel } from './services/alert-dispatch.ts';
+import { isLocalMailpit, findRecentTestMessage } from './services/mailpit.ts';
 import { statusPageMonitorRepo, statusPageRepo } from './db/repositories/status-page.repo.ts';
 import { summarizeStatusPage } from './services/status-page-aggregator.ts';
 import { renderStatusPageHtml } from './services/status-page-html.ts';
@@ -1039,6 +1040,14 @@ function buildApp(connection: Redis) {
       regionSlug: null,
     });
     if (!ok) return c.json({ ok: false, error: 'channel delivery failed; check worker logs' }, 502);
+    // Dev-only: when SMTP points at a local Mailpit, confirm the test
+    // email actually landed (not just "SMTP accepted"). Production has no
+    // OO_MAILPIT_API → isLocalMailpit() false → identical {ok:true}.
+    if (channel.type === 'email' && isLocalMailpit()) {
+      const to = (channel.config as { to?: string } | null)?.to ?? null;
+      const mailpit = await findRecentTestMessage({ to, subjectIncludes: 'Test alert:' });
+      return c.json({ ok: true, mailpit });
+    }
     return c.json({ ok: true });
   });
 
