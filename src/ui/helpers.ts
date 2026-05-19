@@ -22,12 +22,16 @@ export const fmtAge = (iso?: string | null) => {
 // Map an execution status string to the CSS class used by .dot styles.
 // Unknown values fall back to the gray "unknown" dot.
 const STATUS_CLASS: Record<string, string> = {
-  SUCCESS: 'SUCCESS',
-  FAILED: 'FAILED',
+  // API status values → new CSS dot classes
+  SUCCESS: 'up',
+  FAILED: 'down',
   PENDING: 'pending',
-  passed: 'passed',
-  failed: 'failed',
-  error: 'error',
+  passed: 'up',
+  failed: 'down',
+  error: 'down',
   running: 'running',
+  up: 'up',
+  down: 'down',
+  warn: 'warn',
 };
-export const statusClass = (s: string | undefined | null) => STATUS_CLASS[s ?? ''] ?? 'unknown';
+export const statusClass = (s: string | undefined | null) => STATUS_CLASS[s ?? ''] ?? '';

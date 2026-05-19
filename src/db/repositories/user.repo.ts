@@ -36,4 +36,11 @@ export const userRepo = {
   count(): Promise<number> {
     return db.$count(users).then((r) => r as number);
   },
+
+  updateUser(
+    id: number,
+    data: { name?: string; email?: string; passwordHash?: string },
+  ): Promise<UserRow[]> {
+    return db.update(users).set(data).where(eq(users.id, id)).returning();
+  },
 };

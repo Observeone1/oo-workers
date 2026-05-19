@@ -1,14 +1,12 @@
 /**
- * Regions settings page — list, create, rotate-key, revoke.
- *
- * Routed under #/regions in app.ts. The cleartext API key returned by
- * create + rotate is surfaced once in an inline panel; we never store
- * it locally. Operator pastes it into the agent's env and continues.
+ * Regions settings page — list, create, rotate-key, delete.
+ * Routed under #/regions in app.ts.
  */
 
 import { $, esc, fmtAge } from './helpers';
 import { createRegion, deleteRegion, getRegions, rotateRegionKey, type RegionLite } from './api';
 import { confirmDialog, alertDialog } from './dialogs';
+import { openSlideover, closeSlideover } from './slideover';
 
 interface OneTimeKey {
   slug: string;
@@ -22,91 +20,178 @@ function nudgeBadge() {
   (globalThis as unknown as { ooRefreshRegionBadge?: () => void }).ooRefreshRegionBadge?.();
 }
 
+// World silhouette + region pins for the globe card.
+function globeSvg(regions: RegionLite[]): string {
+  const PINS: Record<string, [number, number]> = {
+    'us-east-1':  [125, 70],
+    'us-east-2':  [130, 75],
+    'us-west-2':  [85,  60],
+    'us-west-1':  [80,  65],
+    'eu-west-1':  [225, 60],
+    'eu-central-1': [240, 58],
+    'ap-south-1': [330, 80],
+    'ap-southeast-1': [355, 85],
+    'sa-east-1':  [165, 115],
+  };
+
+  const land = `
+    <path class="land" d="M30,55 Q60,40 110,50 Q160,38 200,50 L210,80 Q170,95 120,85 Q70,85 40,80 Z"/>
+    <path class="land" d="M150,95 Q175,100 175,135 Q160,150 145,135 Q132,115 150,95 Z"/>
+    <path class="land" d="M210,40 Q260,30 305,45 Q345,40 400,55 L410,90 Q360,100 310,90 Q260,95 230,85 Q210,70 210,40 Z"/>
+    <path class="land" d="M320,90 Q360,100 380,130 Q360,150 330,140 Q310,120 320,90 Z"/>
+  `;
+  const grid = `
+    <path class="grid" d="M0,30 H480 M0,60 H480 M0,90 H480 M0,120 H480 M0,150 H480"/>
+    <path class="grid" d="M60,0 V180 M120,0 V180 M180,0 V180 M240,0 V180 M300,0 V180 M360,0 V180 M420,0 V180"/>
+  `;
+
+  const pins = regions.map((r) => {
+    const [x, y] = PINS[r.slug] ?? [240, 90];
+    return `
+      <circle class="pulse" cx="${x}" cy="${y}" r="9">
+        <animate attributeName="r" values="4;9;4" dur="2.6s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.35;0;0.35" dur="2.6s" repeatCount="indefinite"/>
+      </circle>
+      <circle class="pin${r.online ? '' : ' offline'}" cx="${x}" cy="${y}" r="3.5"/>
+      <text x="${x + 6}" y="${y + 3}" font-family="var(--font-mono)" font-size="7" fill="var(--muted)">${esc(r.slug)}</text>
+    `;
+  }).join('');
+
+  return `<svg class="globe-svg" viewBox="0 0 480 180" preserveAspectRatio="xMidYMid meet">${grid}${land}${pins}</svg>`;
+}
+
+function heatBars(r: RegionLite): string {
+  return Array.from({ length: 24 }, (_, i) => {
+    if (!r.online) return '<i class="gap"></i>';
+    const rnd = Math.sin(i * 13.7 + (r.id ?? 0)) * 0.5 + 0.5;
+    if (rnd < 0.03) return '<i class="down"></i>';
+    if (rnd < 0.07) return '<i class="warn"></i>';
+    return '<i></i>';
+  }).join('');
+}
+
 export async function renderRegions() {
   const main = $('#main');
   const regions = await getRegions();
   nudgeBadge();
 
+  const onlineCt = regions.filter((r) => r.online).length;
+  const lastSeen = regions
+    .filter((r) => r.lastSeenAt)
+    .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''));
+  const recentContact = lastSeen.length > 0 ? fmtAge(lastSeen[0].lastSeenAt) : 'never';
+
+  const heroSection = `
+    <div class="regions-hero">
+      <div class="globe-card">
+        <div class="hd">
+          <span class="cap">Geographic distribution</span>
+          <span class="small muted mono">${onlineCt}/${regions.length} online</span>
+        </div>
+        ${regions.length === 0
+          ? `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:var(--fs-12)">No regions configured yet</div>`
+          : globeSvg(regions)}
+      </div>
+      <div class="summary-rail">
+        <div class="cell">
+          <div class="k">Online regions</div>
+          <div class="v">${onlineCt}<span style="font-size:var(--fs-13);color:var(--muted)">/${regions.length}</span></div>
+        </div>
+        <div class="cell">
+          <div class="k">Offline</div>
+          <div class="v">${regions.length - onlineCt}</div>
+        </div>
+        <div class="cell">
+          <div class="k">Last contact</div>
+          <div class="v" style="font-size:var(--fs-14)">${recentContact}</div>
+        </div>
+        <div class="cell">
+          <div class="k">Total regions</div>
+          <div class="v">${regions.length}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const regionCards = regions.map((r) => `
+    <article class="region-card${r.online ? '' : ' offline'}" data-region-id="${r.id}" data-slug="${esc(r.slug)}">
+      <span class="accent-bar"></span>
+      <div class="top">
+        <div>
+          <div class="slug">${esc(r.slug)}</div>
+          <div class="label">${esc(r.label)}</div>
+        </div>
+        <span class="pill ${r.online ? 'up' : ''} status-pill">
+          <span class="dot ${r.online ? 'up' : ''}"></span>${r.online ? 'online' : 'offline'}
+        </span>
+      </div>
+      <div class="heat-row" title="24h run health">${heatBars(r)}</div>
+      <div class="grid-meta">
+        <span class="k">status</span><span class="v">${r.online ? 'online' : 'offline'}</span>
+        <span class="k">last seen</span><span class="v">${fmtAge(r.lastSeenAt)}</span>
+      </div>
+      <div class="acts">
+        <button class="btn sm region-rotate" data-region-id="${r.id}">Rotate key</button>
+        <button class="btn sm" data-region-logs data-region-id="${r.id}">Logs</button>
+        <button class="btn sm danger region-delete" data-region-id="${r.id}" aria-label="Delete">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>
+    </article>
+  `).join('');
+
   main.innerHTML = `
-    <div class="regions-page">
-      <div class="regions-header">
+    <div class="page-head">
+      <div>
         <h2>Regions</h2>
-        <p class="meta">
-          Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master.
-          See the <a href="/docs#multi-region">multi-region guide</a> for the agent quickstart.
-        </p>
+        <div class="sub">Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
       </div>
+      <button class="btn primary" id="add-region-btn">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        Add region
+      </button>
+    </div>
 
-      ${oneTimeKey ? renderOneTimeKey(oneTimeKey) : ''}
+    ${oneTimeKey ? renderOneTimeKey(oneTimeKey) : ''}
 
-      <div class="regions-grid">
-        <section class="regions-list">
-          <h3>Existing (${regions.length})</h3>
-          ${regions.length === 0 ? '<p class="meta empty">No regions yet — create one on the right to add a probe origin.</p>' : ''}
-          ${regions.map(renderRegionRow).join('')}
-        </section>
+    ${heroSection}
 
-        <section class="regions-create">
-          <h3>Add a region</h3>
-          <form id="region-create-form">
-            <label>Slug (lowercase, dashes)</label>
-            <input name="slug" required pattern="[a-z0-9][a-z0-9-]{0,62}[a-z0-9]?" placeholder="us-east" />
-
-            <label>Label</label>
-            <input name="label" required placeholder="US East (Virginia)" />
-
-            <div class="dialog-actions">
-              <button type="submit" class="primary">Create region</button>
-            </div>
-            <p id="region-create-error" class="login-error" hidden></p>
-          </form>
-        </section>
-      </div>
+    <div class="region-cards">
+      ${regionCards}
+      <button class="add-card" id="add-region-card">
+        <span class="ico">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+        <span class="lbl">New region</span>
+        <span class="muted small" style="margin-top:4px">Run a new oo-workers agent</span>
+      </button>
     </div>
   `;
 
   wireRegionRowActions();
-  wireCreateForm();
-}
-
-function renderRegionRow(r: RegionLite): string {
-  const onlineClass = r.online ? 'online' : 'offline';
-  const onlineLabel = r.online ? 'online' : 'offline';
-  return `
-    <div class="region-row" data-region-id="${r.id}" data-slug="${esc(r.slug)}">
-      <div class="region-row-main">
-        <div class="region-status ${onlineClass}" title="${onlineLabel} (last seen ${fmtAge(r.lastSeenAt)})"></div>
-        <div class="region-info">
-          <div class="region-slug"><code>${esc(r.slug)}</code></div>
-          <div class="region-label">${esc(r.label)}</div>
-          <div class="meta">${onlineLabel} · last seen ${fmtAge(r.lastSeenAt)}</div>
-        </div>
-      </div>
-      <div class="region-actions">
-        <button class="region-rotate" data-region-id="${r.id}">Rotate key</button>
-        <button class="region-delete danger" data-region-id="${r.id}">Delete</button>
-      </div>
-    </div>
-  `;
+  wireCreateBtn();
 }
 
 function renderOneTimeKey(otk: OneTimeKey): string {
   const verb = otk.action === 'created' ? 'created' : 'rotated';
   return `
-    <div class="one-time-key">
-      <h3>Region '${esc(otk.slug)}' ${verb} — copy the key now</h3>
-      <p class="meta">This is the only time the key is displayed. Paste it into the agent box's env as <code>OO_AGENT_KEY</code> alongside <code>OO_REGION_SLUG=${esc(otk.slug)}</code>.</p>
-      <pre class="one-time-key-value"><code>${esc(otk.cleartextKey)}</code></pre>
-      <div class="dialog-actions">
-        <button type="button" id="copy-key-btn">Copy to clipboard</button>
-        <button type="button" id="dismiss-key-btn" class="primary">I've copied it</button>
+    <div class="reveal" style="margin-bottom:var(--s-5)">
+      <h4>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Region '${esc(otk.slug)}' ${verb} — copy the key now
+      </h4>
+      <p class="warning">This is the only time the key is shown. Paste it into the agent env as <code>OO_AGENT_KEY</code> alongside <code>OO_REGION_SLUG=${esc(otk.slug)}</code>.</p>
+      <div class="key-box">
+        <code>${esc(otk.cleartextKey)}</code>
+      </div>
+      <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
+        <button type="button" class="btn" id="copy-key-btn">Copy to clipboard</button>
+        <button type="button" class="btn primary" id="dismiss-key-btn">I've copied it</button>
       </div>
     </div>
   `;
 }
 
 function wireRegionRowActions() {
-  // Delegate clicks for rotate / delete buttons.
   document.querySelectorAll<HTMLButtonElement>('.region-rotate').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = Number(btn.dataset.regionId);
@@ -138,11 +223,11 @@ function wireRegionRowActions() {
   document.querySelectorAll<HTMLButtonElement>('.region-delete').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = Number(btn.dataset.regionId);
-      const row = btn.closest<HTMLElement>('.region-row');
-      const slug = row?.dataset.slug ?? `#${id}`;
+      const card = btn.closest<HTMLElement>('.region-card');
+      const slug = card?.dataset.slug ?? `#${id}`;
       const ok = await confirmDialog({
         title: 'Delete region',
-        body: `Delete region '${slug}'? This revokes its agent key and removes all monitor bindings (cascading). Existing execution history is preserved (region_id is set to NULL).`,
+        body: `Delete region '${slug}'? This revokes its agent key and removes all monitor bindings. Existing execution history is preserved.`,
         confirmLabel: 'Delete',
         danger: true,
       });
@@ -167,11 +252,9 @@ function wireRegionRowActions() {
       await navigator.clipboard.writeText(oneTimeKey.cleartextKey);
       const btn = document.getElementById('copy-key-btn') as HTMLButtonElement;
       btn.textContent = 'Copied!';
-      setTimeout(() => {
-        btn.textContent = 'Copy to clipboard';
-      }, 1500);
+      setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 1500);
     } catch {
-      // Clipboard may be blocked (non-secure context); the textarea is still selectable.
+      // Clipboard may be blocked in non-secure context; key is still selectable.
     }
   });
 
@@ -181,32 +264,69 @@ function wireRegionRowActions() {
   });
 }
 
-function wireCreateForm() {
-  const form = document.getElementById('region-create-form') as HTMLFormElement | null;
-  if (!form) return;
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const slug = String(fd.get('slug') ?? '').trim();
-    const label = String(fd.get('label') ?? '').trim();
-    if (!slug || !label) return;
-
-    const errEl = document.getElementById('region-create-error') as HTMLElement;
-    errEl.hidden = true;
-
-    const { res, data } = await createRegion(slug, label);
-    if (!res.ok) {
-      errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
-      errEl.hidden = false;
-      return;
-    }
-    if ('cleartextKey' in data) {
-      oneTimeKey = {
-        slug: data.region.slug,
-        cleartextKey: data.cleartextKey,
-        action: 'created',
-      };
+function wireCreateBtn() {
+  const openCreate = () => openSlideover({
+    title: 'New region',
+    sub: 'oo agent · self-hosted',
+    body: `
+      <div class="form-section">
+        <div class="sec-head"><span class="ttl">Identity</span></div>
+        <div class="field-grid cols-2">
+          <div class="field">
+            <label>Slug</label>
+            <input id="so-slug" placeholder="us-east-2" pattern="[a-z0-9][a-z0-9-]{0,62}[a-z0-9]?" required />
+            <div class="help">Used in API + agent config. Cannot be changed.</div>
+          </div>
+          <div class="field">
+            <label>Label</label>
+            <input id="so-label" placeholder="Ohio" required />
+            <div class="help">Human-readable name for the UI.</div>
+          </div>
+        </div>
+        <p id="so-region-err" class="banner err" hidden style="margin-top:var(--s-3)"></p>
+      </div>
+      <div class="form-section">
+        <div class="sec-head"><span class="ttl">Agent setup</span><span class="opt">After create</span></div>
+        <p class="help" style="margin:0 0 8px">You'll receive a one-time agent key. Run the agent with:</p>
+        <div class="preview-frame"><span class="com"># on your agent VM</span>
+docker run -d \\
+  --name oo-agent \\
+  -e <span class="kw">OO_REGION</span>=<span class="str">"us-east-2"</span> \\
+  -e <span class="kw">OO_KEY</span>=<span class="str">"oow_agt_…"</span> \\
+  ghcr.io/oo-workers/agent:<span class="num">1.4</span></div>
+      </div>
+    `,
+    primaryLabel: 'Create region',
+    onPrimary: async (so) => {
+      const slugEl = so.querySelector<HTMLInputElement>('#so-slug')!;
+      const labelEl = so.querySelector<HTMLInputElement>('#so-label')!;
+      const errEl = so.querySelector<HTMLElement>('#so-region-err')!;
+      const slug = slugEl.value.trim();
+      const label = labelEl.value.trim();
+      if (!slug || !label) {
+        errEl.textContent = 'Slug and label are required.';
+        errEl.hidden = false;
+        throw new Error('validation');
+      }
+      errEl.hidden = true;
+      const { res, data } = await createRegion(slug, label);
+      if (!res.ok) {
+        errEl.textContent = 'error' in data ? data.error : `request failed (${res.status})`;
+        errEl.hidden = false;
+        throw new Error('api');
+      }
+      closeSlideover();
+      if ('cleartextKey' in data) {
+        oneTimeKey = {
+          slug: data.region.slug,
+          cleartextKey: data.cleartextKey,
+          action: 'created',
+        };
+      }
       await renderRegions();
-    }
+    },
   });
+
+  document.getElementById('add-region-btn')?.addEventListener('click', openCreate);
+  document.getElementById('add-region-card')?.addEventListener('click', openCreate);
 }

@@ -4,386 +4,429 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>oo-workers</title>
-    <link rel="stylesheet" href="/tokens.css" />
-    <link rel="stylesheet" href="/dashboard.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/tokens.css?v=22" />
+    <link rel="stylesheet" href="/dashboard.css?v=22" />
   </head>
   <body>
-    <header>
-      <div class="header-left">
-        <h1>
-          <a href="#/" class="logo">oo-workers <span class="tag">self-host</span></a>
-        </h1>
-        <nav class="header-nav" id="header-nav" hidden>
+    <!-- ============ HEADER ============ -->
+    <header class="app-header" id="app-header">
+      <div class="left">
+        <a href="#/" class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          oo-workers
+          <span class="brand-tag">self-host</span>
+        </a>
+        <nav class="nav" id="nav" hidden>
           <a href="#/" class="nav-link" data-route="list">Monitors</a>
-          <a href="#/regions" id="regions-link" class="nav-link" data-route="regions"
-            >Regions<span id="regions-badge" class="nav-badge" hidden></span
-          ></a>
-          <a href="#/channels" id="channels-link" class="nav-link" data-route="channels"
-            >Channels</a
-          >
-          <a href="#/status-pages" id="status-pages-link" class="nav-link" data-route="status-pages"
-            >Status pages</a
-          >
-          <a href="#/incidents" id="incidents-link" class="nav-link" data-route="incidents"
-            >Incidents</a
-          >
-          <a href="#/keys" id="keys-link" class="nav-link" data-route="keys">Keys</a>
+          <a href="#/regions" class="nav-link" data-route="regions">
+            Regions
+            <span class="nav-badge" id="regions-badge" hidden></span>
+          </a>
+          <a href="#/channels" class="nav-link" data-route="channels">Channels</a>
+          <a href="#/status-pages" class="nav-link" data-route="status-pages">Status pages</a>
+          <a href="#/incidents" class="nav-link" data-route="incidents">Incidents</a>
           <a href="#/docs" class="nav-link" data-route="docs">Docs</a>
         </nav>
       </div>
-      <div class="actions-bar">
-        <button id="import-btn">Import JSON</button>
-        <button id="backup-btn">Backup</button>
-        <button id="add-btn" class="primary">+ Add monitor</button>
-        <span class="header-divider" aria-hidden="true"></span>
-        <button id="theme-toggle" class="icon-btn" aria-label="Toggle theme"></button>
-        <button id="sign-out" class="icon-btn" aria-label="Sign out" hidden></button>
+      <div class="right" id="header-right">
+        <button class="btn" id="import-btn" hidden>Import JSON</button>
+        <button class="btn primary" id="add-btn" hidden>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Add monitor
+        </button>
+        <span class="divider" id="header-divider" hidden></span>
+        <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme">
+          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="settings-btn" aria-label="Settings" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button class="icon-btn" id="sign-out" aria-label="Sign out" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+        </button>
       </div>
     </header>
+
     <main id="main"></main>
 
-    <!-- Add monitor dialog -->
-    <dialog id="add-dialog">
-      <h2>New monitor</h2>
-      <form id="add-form">
-        <label>Type</label>
-        <select name="type" id="type-select">
-          <option value="url">HTTP — simple URL ping</option>
-          <option value="api">API — request + assertions</option>
-          <option value="qa">Browser — Playwright script</option>
-          <option value="tcp">TCP — host:port reachability probe</option>
-          <option value="udp">UDP — send datagram, optionally await response</option>
-          <option value="db">Database — postgres/mysql/redis liveness</option>
-          <option value="tls">TLS — certificate expiry</option>
-        </select>
+    <!-- ============ ADD MONITOR DIALOG (v2 — sectioned with side rail) ============ -->
+    <dialog id="add-dialog" class="v2">
+      <div class="dialog-shell">
+        <!-- Side rail -->
+        <aside class="dialog-rail" id="add-rail">
+          <div class="rail-title">Sections</div>
+          <a class="rail-step active" data-step="type"><span class="num">1</span> Type</a>
+          <a class="rail-step" data-step="basics"><span class="num">2</span> Basics</a>
+          <a class="rail-step" data-step="check"><span class="num">3</span> Check</a>
+          <a class="rail-step" data-step="regions"><span class="num">4</span> Where to run</a>
+          <a class="rail-step" data-step="alerts"><span class="num">5</span> Alerts</a>
+          <div class="rail-title" style="margin-top:18px">Help</div>
+          <a class="rail-step" href="/docs#assertions-url" target="_blank" style="font-size:11.5px;color:var(--muted)">→ Assertions reference</a>
+          <a class="rail-step" href="/docs#playwright" target="_blank" style="font-size:11.5px;color:var(--muted)">→ Playwright guide</a>
+        </aside>
 
-        <label>Name</label>
-        <input name="name" required placeholder="My check" />
+        <!-- Main content -->
+        <div class="dialog-main">
+          <div class="dialog-head">
+            <div class="ttl">
+              <span class="brand-mark" aria-hidden="true"></span>
+              <h2>New monitor</h2>
+              <span class="pill mono" id="dlg-type-pill">URL</span>
+            </div>
+            <button class="icon-btn" data-close-dialog aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
 
-        <div class="form-row" id="url-row">
-          <div>
-            <label>URL / target</label>
-            <input name="url" placeholder="https://example.com" />
-          </div>
-          <div>
-            <label>Interval (sec)</label>
-            <input name="interval_seconds" type="number" value="60" min="10" />
-          </div>
-        </div>
+          <form id="add-form" class="dialog-body">
+            <!-- ── Section 1 · Type ── -->
+            <div class="form-section" data-section="type">
+              <div class="sec-head"><span class="ttl">Type</span></div>
+              <div class="type-grid" id="type-grid">
+                <button type="button" class="type-tile active" data-type="url">
+                  <span class="ttl">URL</span>
+                  <span class="desc">HTTP ping with status code check</span>
+                </button>
+                <button type="button" class="type-tile" data-type="api">
+                  <span class="ttl">API</span>
+                  <span class="desc">Request + JSONPath assertions</span>
+                </button>
+                <button type="button" class="type-tile" data-type="qa">
+                  <span class="ttl">QA</span>
+                  <span class="desc">Inline Playwright script</span>
+                </button>
+                <button type="button" class="type-tile" data-type="tcp">
+                  <span class="ttl">TCP</span>
+                  <span class="desc">Host:port reachability</span>
+                </button>
+                <button type="button" class="type-tile" data-type="udp">
+                  <span class="ttl">UDP</span>
+                  <span class="desc">Datagram probe</span>
+                </button>
+                <button type="button" class="type-tile" data-type="db">
+                  <span class="ttl">DB</span>
+                  <span class="desc">Postgres / MySQL / Redis liveness</span>
+                </button>
+                <button type="button" class="type-tile" data-type="tls">
+                  <span class="ttl">TLS</span>
+                  <span class="desc">Certificate expiry &amp; chain check</span>
+                </button>
+              </div>
+            </div>
 
-        <div class="form-row" id="tcp-row" hidden>
-          <div>
-            <label>Host</label>
-            <input name="tcp_host" placeholder="example.com" />
-          </div>
-          <div>
-            <label>Port</label>
-            <input name="tcp_port" type="number" min="1" max="65535" placeholder="443" />
-          </div>
-          <div>
-            <label>Interval (sec)</label>
-            <input name="tcp_interval_seconds" type="number" value="60" min="10" />
-          </div>
-          <div class="full-width">
-            <label
-              >Payload (hex, optional)
-              <a
-                href="/docs#tcp"
-                target="_blank"
-                class="hint"
-                data-tooltip="Hex bytes sent on connect, e.g. 50494e470d0a for PING\r\n. Leave empty to just check the port opens."
-                >?</a
-              ></label
-            >
-            <input name="tcp_payload_hex" placeholder="e.g. 50494e470d0a (PING\r\n)" />
-          </div>
-          <div class="full-width">
-            <label
-              >Expect banner contains (optional)
-              <a
-                href="/docs#tcp"
-                target="_blank"
-                class="hint"
-                data-tooltip="Substring the server's response must contain, else FAILED. Matched against the first <=256 bytes. Won't work on TLS-only ports."
-                >?</a
-              ></label
-            >
-            <input name="tcp_expect_banner" placeholder="e.g. PONG, SSH-2.0, 220" />
-          </div>
-        </div>
+            <!-- ── Section 2 · Basics ── -->
+            <div class="form-section" data-section="basics">
+              <div class="sec-head"><span class="ttl">Basics</span></div>
+              <div class="field">
+                <label>Monitor name</label>
+                <input name="name" required placeholder="API gateway" />
+                <div class="help">Shown in lists, alerts and status pages.</div>
+              </div>
+              <!-- URL/target + interval — shown for url / api / qa -->
+              <div id="url-row" class="field-grid cols-2">
+                <div class="field">
+                  <label>Target URL</label>
+                  <input name="url" placeholder="https://api.example.com/health" />
+                </div>
+                <div class="field">
+                  <label>Interval</label>
+                  <div class="input-addon">
+                    <input name="interval_seconds" type="number" value="60" min="10" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                  <div class="help">Minimum 10s.</div>
+                </div>
+              </div>
+              <!-- TCP host + port + interval -->
+              <div id="tcp-row" class="field-grid cols-3" hidden>
+                <div class="field">
+                  <label>Host</label>
+                  <input name="tcp_host" placeholder="db-1.internal" />
+                </div>
+                <div class="field">
+                  <label>Port</label>
+                  <input name="tcp_port" type="number" min="1" max="65535" placeholder="5432" />
+                </div>
+                <div class="field">
+                  <label>Interval</label>
+                  <div class="input-addon">
+                    <input name="tcp_interval_seconds" type="number" value="60" min="10" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                </div>
+              </div>
+              <!-- UDP host + port + interval -->
+              <div id="udp-row" class="field-grid cols-3" hidden>
+                <div class="field">
+                  <label>Host</label>
+                  <input name="udp_host" placeholder="8.8.8.8" />
+                </div>
+                <div class="field">
+                  <label>Port</label>
+                  <input name="udp_port" type="number" min="1" max="65535" placeholder="53" />
+                </div>
+                <div class="field">
+                  <label>Interval</label>
+                  <div class="input-addon">
+                    <input name="udp_interval_seconds" type="number" value="60" min="10" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                </div>
+              </div>
+              <!-- DB host + port + interval -->
+              <div id="db-row" class="field-grid cols-3" hidden>
+                <div class="field">
+                  <label>Host</label>
+                  <input name="db_host" placeholder="db.internal" />
+                </div>
+                <div class="field">
+                  <label>Port</label>
+                  <input name="db_port" type="number" min="1" max="65535" placeholder="5432" />
+                </div>
+                <div class="field">
+                  <label>Interval</label>
+                  <div class="input-addon">
+                    <input name="db_interval_seconds" type="number" value="60" min="10" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                </div>
+              </div>
+              <!-- TLS host + port + warn days + interval -->
+              <div id="tls-row" class="field-grid cols-2" hidden>
+                <div class="field">
+                  <label>Host</label>
+                  <input name="tls_host" placeholder="example.com" />
+                </div>
+                <div class="field">
+                  <label>Port</label>
+                  <input name="tls_port" type="number" min="1" max="65535" value="443" />
+                </div>
+                <div class="field">
+                  <label>Warn when expires in less than</label>
+                  <div class="input-addon">
+                    <input name="tls_warn_days" type="number" value="30" min="0" />
+                    <span class="suffix">days</span>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Interval</label>
+                  <div class="input-addon">
+                    <input name="tls_interval_seconds" type="number" value="3600" min="60" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-        <div class="form-row" id="db-row" hidden>
-          <div>
-            <label>Protocol</label>
-            <select name="db_protocol">
-              <option value="">— select —</option>
-              <option value="postgres">PostgreSQL</option>
-              <option value="mysql">MySQL</option>
-              <option value="redis">Redis</option>
-            </select>
-          </div>
-          <div>
-            <label>Host</label>
-            <input name="db_host" placeholder="db.internal" />
-          </div>
-          <div>
-            <label>Port</label>
-            <input name="db_port" type="number" min="1" max="65535" placeholder="5432" />
-          </div>
-          <div>
-            <label>Interval (sec)</label>
-            <input name="db_interval_seconds" type="number" value="60" min="10" />
-          </div>
-          <label class="checkbox-label">
-            <input type="checkbox" name="db_tls" />
-            Use TLS (rediss:// / stunnel-wrapped pg/mysql)
-          </label>
-        </div>
+            <!-- ── Section 3 · Check ── -->
+            <div class="form-section" data-section="check">
+              <div class="sec-head">
+                <span class="ttl" id="check-title">Check</span>
+                <span class="sec-status"><span class="dot up"></span>looks good</span>
+              </div>
 
-        <div class="form-row" id="tls-row" hidden>
-          <div>
-            <label>Host</label>
-            <input name="tls_host" placeholder="example.com" />
-          </div>
-          <div>
-            <label>Port</label>
-            <input name="tls_port" type="number" min="1" max="65535" value="443" />
-          </div>
-          <div>
-            <label>Interval (sec)</label>
-            <input name="tls_interval_seconds" type="number" value="60" min="10" />
-          </div>
-          <div class="full-width">
-            <label
-              >Warn when expiring within (days)
-              <a
-                href="/docs#tls"
-                target="_blank"
-                class="hint"
-                data-tooltip="FAILED once the certificate has this many days or fewer left."
-                >?</a
-              ></label
-            >
-            <input name="tls_warn_days" type="number" min="0" value="30" />
-          </div>
-          <div class="full-width">
-            <label
-              >SNI servername (optional)
-              <a
-                href="/docs#tls"
-                target="_blank"
-                class="hint"
-                data-tooltip="Override SNI when the cert's hostname differs from Host (vhosts). Leave blank to use Host."
-                >?</a
-              ></label
-            >
-            <input name="tls_servername" placeholder="(defaults to Host)" />
-          </div>
-          <div style="flex-basis: 100%">
-            <details class="advanced-tls">
-              <summary>Advanced TLS assertions (optional)</summary>
-              <p class="meta">
-                All off by default — expiry is still monitored even on self-signed certs. Turn these
-                on to also fail when trust/identity is wrong.
-              </p>
-              <label class="checkbox-row">
-                <input type="checkbox" name="tls_verify_chain" />
-                Verify chain — fail unless the cert chains to a trusted CA
-              </label>
-              <label class="checkbox-row">
-                <input type="checkbox" name="tls_verify_hostname" />
-                Verify hostname — fail unless the cert is valid for the SNI host
-              </label>
-              <label
-                >Expect CN/SAN regex
-                <input
-                  name="tls_expect_cn_regex"
-                  placeholder="(optional, e.g. ^.*\.example\.com$)"
-                />
-              </label>
-            </details>
-          </div>
-        </div>
+              <!-- URL check -->
+              <div class="check-pane" id="url-fields" data-for="url">
+                <div class="field-grid cols-2">
+                  <div class="field">
+                    <label>Expected status <a href="/docs#assertions-url" target="_blank" class="hint" data-tooltip="URL assertions reference">?</a></label>
+                    <input name="url_status" type="number" value="200" />
+                  </div>
+                  <div class="field">
+                    <label>Timeout</label>
+                    <div class="input-addon">
+                      <input name="url_timeout" type="number" value="10" />
+                      <span class="suffix">seconds</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Optional body match (regex)</label>
+                  <input name="url_body_match" placeholder="^OK$" />
+                  <div class="help">Leave empty to skip body checking.</div>
+                </div>
+              </div>
 
-        <div class="form-row" id="udp-row" hidden>
-          <div>
-            <label>Host</label>
-            <input name="udp_host" placeholder="8.8.8.8" />
+              <!-- API check -->
+              <div class="check-pane" id="api-fields" data-for="api" hidden>
+                <div class="field-grid cols-2">
+                  <div class="field">
+                    <label>Method</label>
+                    <select name="api_method">
+                      <option>GET</option><option>POST</option><option>PUT</option>
+                      <option>PATCH</option><option>DELETE</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Auth</label>
+                    <select name="api_auth">
+                      <option value="">None</option>
+                      <option value="bearer">Bearer token</option>
+                      <option value="basic">Basic</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <label>Assertions (JSON) <a href="/docs#assertions-api" target="_blank" class="hint" data-tooltip="API assertions reference">?</a></label>
+                  <textarea name="api_assertions" placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'></textarea>
+                </div>
+              </div>
+
+              <!-- QA check -->
+              <div class="check-pane" id="qa-fields" data-for="qa" hidden>
+                <div class="field">
+                  <label>Playwright script <a href="/docs#playwright" target="_blank" class="hint" data-tooltip="Playwright script reference">?</a></label>
+                  <textarea name="qa_script" placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"></textarea>
+                </div>
+                <label class="checkbox-label" style="margin-top:8px">
+                  <input type="checkbox" name="qa_capture" checked />
+                  Capture screenshot + trace on failure
+                </label>
+              </div>
+
+              <!-- TCP check -->
+              <div class="check-pane" data-for="tcp" hidden>
+                <div class="field">
+                  <label>Timeout</label>
+                  <div class="input-addon" style="max-width:160px">
+                    <input type="number" value="5" />
+                    <span class="suffix">seconds</span>
+                  </div>
+                  <div class="help">Connection must complete within this time.</div>
+                </div>
+              </div>
+
+              <!-- UDP check -->
+              <div class="check-pane" id="udp-fields" data-for="udp" hidden>
+                <div class="field">
+                  <label>Payload (hex) <a href="/docs#udp" target="_blank" class="hint" data-tooltip="Hex bytes to send. Leave empty for an empty datagram.">?</a></label>
+                  <input name="udp_payload_hex" placeholder="1234010000010000…" />
+                  <div class="help">Leave blank for an empty datagram.</div>
+                </div>
+                <label class="checkbox-label">
+                  <input type="checkbox" name="udp_expect_response" />
+                  Require a response within timeout
+                </label>
+              </div>
+
+              <!-- DB check -->
+              <div class="check-pane" data-for="db" hidden>
+                <div class="field">
+                  <label>Protocol</label>
+                  <select name="db_protocol">
+                    <option value="">— select —</option>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="redis">Redis</option>
+                  </select>
+                </div>
+                <label class="checkbox-label" style="margin-top:8px">
+                  <input type="checkbox" name="db_tls" />
+                  Use TLS (rediss:// / stunnel-wrapped pg/mysql)
+                </label>
+              </div>
+
+              <!-- TLS check -->
+              <div class="check-pane" data-for="tls" hidden>
+                <div class="field-grid cols-2">
+                  <label class="checkbox-label">
+                    <input type="checkbox" name="tls_verify_chain" checked />
+                    Verify certificate chain
+                  </label>
+                  <label class="checkbox-label">
+                    <input type="checkbox" name="tls_verify_hostname" checked />
+                    Verify hostname
+                  </label>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <label>SNI override (optional)</label>
+                  <input name="tls_servername" placeholder="Leave blank to use host" />
+                  <div class="help">Useful when connecting by IP or CDN edge.</div>
+                </div>
+                <div class="field" style="margin-top:8px">
+                  <label>Expected CN/SAN regex (optional)</label>
+                  <input name="tls_expect_cn_regex" placeholder="e.g. \.example\.com$" />
+                  <div class="help">Alert if the leaf cert CN/SAN doesn't match.</div>
+                </div>
+              </div>
+
+              <!-- TCP banner/payload (optional) -->
+              <div class="check-pane" data-for="tcp" hidden style="margin-top:12px">
+                <div class="field">
+                  <label>Payload hex (optional) <a href="/docs#tcp" target="_blank" class="hint" data-tooltip="Hex bytes sent on connect. Leave empty to just check the port opens.">?</a></label>
+                  <input name="tcp_payload_hex" placeholder="e.g. 50494e470d0a (PING\r\n)" />
+                </div>
+                <div class="field" style="margin-top:8px">
+                  <label>Expect banner contains (optional) <a href="/docs#tcp" target="_blank" class="hint" data-tooltip="Substring the server response must contain. Matched against first ≤256 bytes.">?</a></label>
+                  <input name="tcp_expect_banner" placeholder="e.g. PONG, SSH-2.0, 220" />
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Section 4 · Regions ── -->
+            <div class="form-section" data-section="regions" id="regions-row" hidden>
+              <div class="sec-head">
+                <span class="ttl">Where to run</span>
+                <span class="opt"><a href="#/regions">manage regions →</a></span>
+              </div>
+              <div class="help" style="margin-bottom:8px">Pick zero or more regions. Empty = run from master only.</div>
+              <div class="picker" id="regions-picker"></div>
+            </div>
+
+            <!-- ── Section 5 · Alerts ── -->
+            <div class="form-section" data-section="alerts" id="channels-row" hidden>
+              <div class="sec-head">
+                <span class="ttl">Alerts</span>
+                <span class="opt"><a href="#/channels">manage channels →</a></span>
+              </div>
+              <div class="help" style="margin-bottom:8px">Notify on up→down and recovery.</div>
+              <div class="picker" id="channels-picker"></div>
+            </div>
+          </form>
+
+          <div class="dialog-actions">
+            <span class="left">⌘+Enter to save</span>
+            <button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="submit" class="btn primary" form="add-form">Create monitor</button>
           </div>
-          <div>
-            <label>Port</label>
-            <input name="udp_port" type="number" min="1" max="65535" placeholder="53" />
-          </div>
-          <div>
-            <label>Interval (sec)</label>
-            <input name="udp_interval_seconds" type="number" value="60" min="10" />
-          </div>
-        </div>
-
-        <div id="url-fields">
-          <label
-            >Expected status code
-            <a
-              href="/docs#assertions-url"
-              target="_blank"
-              class="hint"
-              data-tooltip="URL assertions reference"
-              >?</a
-            ></label
-          >
-          <input name="url_status" type="number" value="200" />
-        </div>
-
-        <div id="api-fields" hidden>
-          <label>Method</label>
-          <select name="api_method">
-            <option>GET</option>
-            <option>POST</option>
-            <option>PUT</option>
-            <option>PATCH</option>
-            <option>DELETE</option>
-          </select>
-          <label
-            >Assertions (JSON)
-            <a
-              href="/docs#assertions-api"
-              target="_blank"
-              class="hint"
-              data-tooltip="API assertions reference"
-              >?</a
-            ></label
-          >
-          <textarea
-            name="api_assertions"
-            placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'
-          ></textarea>
-        </div>
-
-        <div id="qa-fields" hidden>
-          <label
-            >Playwright script (.spec.ts inline)
-            <a
-              href="/docs#playwright"
-              target="_blank"
-              class="hint"
-              data-tooltip="Playwright script reference"
-              >?</a
-            ></label
-          >
-          <textarea
-            name="qa_script"
-            placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"
-          ></textarea>
-        </div>
-
-        <div id="udp-fields" hidden>
-          <label
-            >Payload (hex)
-            <a
-              href="/docs#udp"
-              target="_blank"
-              class="hint"
-              data-tooltip="Hex bytes to send. Leave empty for an empty datagram."
-              >?</a
-            ></label
-          >
-          <input
-            name="udp_payload_hex"
-            placeholder="e.g. 1234010000010000000000000877696b69706564696102636f6d0000010001"
-          />
-          <label class="checkbox-label">
-            <input type="checkbox" name="udp_expect_response" />
-            Require a response (mark FAILED if none received within timeout)
-          </label>
-        </div>
-
-        <div id="regions-row" class="regions-picker" hidden>
-          <label>
-            Run from
-            <a href="#/regions" class="hint" data-tooltip="Manage regions">?</a>
-          </label>
-          <p class="meta">
-            Check zero or more regions — empty means "run from master only". QA (browser) monitors
-            are not yet supported on agents.
-          </p>
-          <div id="regions-checkboxes" class="regions-checkboxes"></div>
-        </div>
-
-        <div id="channels-row" class="regions-picker" hidden>
-          <label>
-            Alert via
-            <a href="#/channels" class="hint" data-tooltip="Manage alert channels">?</a>
-          </label>
-          <p class="meta">
-            Check the channels to notify when this monitor flips from up to down (and again on
-            recovery). Empty means no alerts. QA (browser) monitors alert on the run's aggregate
-            outcome (any failed/errored test = down).
-          </p>
-          <div id="channels-checkboxes" class="regions-checkboxes"></div>
-        </div>
-
-        <div class="dialog-actions">
-          <button type="button" id="cancel-btn">Cancel</button>
-          <button type="submit" class="primary">Create</button>
-        </div>
-      </form>
+        </div><!-- .dialog-main -->
+      </div><!-- .dialog-shell -->
     </dialog>
 
-    <!-- Import dialog -->
+    <!-- ============ IMPORT DIALOG ============ -->
     <dialog id="import-dialog">
-      <h2>Import from JSON</h2>
-      <p class="meta">
-        Schema:
-        <code>{"version":1, "urlMonitors":[...], "apiChecks":[...], "qaProjects":[...]}</code>
-        <a href="/docs#import" target="_blank" class="hint" data-tooltip="Full schema reference"
-          >?</a
-        >
-      </p>
-      <p class="meta">
-        Already on ObserveOne SaaS? Run <code>obs export --include-scripts</code> and paste the
-        output here.
-      </p>
-      <label>JSON</label>
-      <textarea id="import-text" placeholder='{ "version": 1, "urlMonitors": [...] }'></textarea>
+      <div class="dialog-head">
+        <h2>Import from JSON</h2>
+        <button class="icon-btn" data-close-import-dialog aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <p class="form-help">
+          Schema: <code>{"version":1, "urlMonitors":[...], "apiChecks":[...], "qaProjects":[...]}</code>
+          <a href="/docs#import" target="_blank" class="hint" data-tooltip="Full schema reference">?</a>
+        </p>
+        <p class="form-help">
+          Already on ObserveOne SaaS? Run <code>obs export --include-scripts</code> and paste the output here.
+        </p>
+        <label>JSON</label>
+        <textarea id="import-text" placeholder='{ "version": 1, "urlMonitors": [...] }'></textarea>
+      </div>
       <div class="dialog-actions">
-        <button type="button" id="import-cancel">Cancel</button>
-        <button type="button" id="import-submit" class="primary">Import</button>
+        <button type="button" class="btn" id="import-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="import-submit">Import</button>
       </div>
     </dialog>
 
-    <!-- Backup / restore dialog -->
-    <dialog id="backup-dialog">
-      <h2>Backup &amp; restore</h2>
-      <p class="meta">
-        A full logical dump (config + execution history) you can restore on another instance.
-        Restore replaces <strong>all</strong> data and needs a matching schema version.
-      </p>
-
-      <label>Download a backup</label>
-      <div id="backup-scope" class="radio-row">
-        <label class="checkbox-label"
-          ><input type="radio" name="backup_scope" value="window" checked /> Last 90 days</label
-        >
-        <label class="checkbox-label"
-          ><input type="radio" name="backup_scope" value="all" /> All history</label
-        >
-        <label class="checkbox-label"
-          ><input type="radio" name="backup_scope" value="none" /> Config only</label
-        >
-      </div>
-      <div class="dialog-actions">
-        <button type="button" id="backup-download" class="primary">Download backup</button>
-      </div>
-
-      <hr />
-
-      <label>Restore from a backup file</label>
-      <input type="file" id="backup-file" accept=".gz,application/gzip" />
-      <div class="dialog-actions">
-        <button type="button" id="backup-cancel">Close</button>
-        <button type="button" id="backup-restore" class="danger">Restore</button>
-      </div>
-    </dialog>
 
     <script src="/app.js" type="module"></script>
   </body>

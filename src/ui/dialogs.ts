@@ -1,12 +1,10 @@
 import type { MonType } from './types';
 import { $, esc } from './helpers';
 import {
-  backupUrl,
   createMonitor,
   getChannels,
   getRegions,
   importJson,
-  restoreBackup,
   setMonitorChannels,
   setMonitorRegions,
   type ChannelLite,
@@ -123,40 +121,118 @@ let cachedChannels: ChannelLite[] = [];
 export function initDialogs() {
   initAddDialog();
   initImportDialog();
-  initBackupDialog();
 }
+
+// Track active type from the tile grid
+let activeAddType: MonType = 'url';
 
 function initAddDialog() {
   const addDialog = $<HTMLDialogElement>('#add-dialog');
-  const typeSelect = $<HTMLSelectElement>('#type-select');
   const addForm = $<HTMLFormElement>('#add-form');
 
-  const syncFields = () => {
-    const t = typeSelect.value;
+  const CHECK_TITLE: Record<MonType, string> = {
+    url: 'Check', api: 'Assertions', qa: 'Script', tcp: 'Check', udp: 'Check',
+    db: 'Check', tls: 'Certificate',
+  };
+
+  const syncFields = (t: MonType = 'url') => {
+    // Show/hide type-specific check panes
     $('#url-fields').hidden = t !== 'url';
     $('#api-fields').hidden = t !== 'api';
     $('#qa-fields').hidden = t !== 'qa';
     $('#udp-fields').hidden = t !== 'udp';
+    // Hide check panes via data-for; hide basics rows by type
+    addDialog.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
+      el.hidden = el.dataset.for !== t;
+    });
     // The shared URL row is for url/api/qa; TCP/UDP/DB/TLS swap in their own rows.
     $('#url-row').hidden = t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls';
     $('#tcp-row').hidden = t !== 'tcp';
     $('#udp-row').hidden = t !== 'udp';
     $('#db-row').hidden = t !== 'db';
-    $('#tls-row').hidden = t !== 'tls';
+    const tlsRow = document.getElementById('tls-row');
+    if (tlsRow) tlsRow.hidden = t !== 'tls';
+    // Update type pill and check section title
+    const pill = document.getElementById('dlg-type-pill');
+    if (pill) pill.textContent = t.toUpperCase();
+    const checkTitle = document.getElementById('check-title');
+    if (checkTitle) checkTitle.textContent = CHECK_TITLE[t] ?? 'Check';
+    // Update rail active step
+    syncRailToSection('type');
     syncRegionsRow();
   };
-  typeSelect.addEventListener('change', syncFields);
+
+  function syncRailToSection(step: string) {
+    addDialog.querySelectorAll<HTMLElement>('#add-rail .rail-step[data-step]').forEach((r) => {
+      r.classList.toggle('active', r.dataset.step === step);
+    });
+  }
+
+  // Wire rail scroll-spy
+  addDialog.querySelector('.dialog-body')?.addEventListener('scroll', function (this: HTMLElement) {
+    const top = this.scrollTop;
+    const sections = addDialog.querySelectorAll<HTMLElement>('.form-section[data-section]');
+    let cur = sections[0]?.dataset.section ?? 'type';
+    for (const s of sections) {
+      if (s.offsetTop - this.offsetTop - 20 <= top) cur = s.dataset.section ?? cur;
+    }
+    syncRailToSection(cur);
+  });
+
+  // Wire rail click → scroll
+  addDialog.querySelectorAll<HTMLElement>('#add-rail .rail-step[data-step]').forEach((r) => {
+    r.addEventListener('click', () => {
+      const sec = addDialog.querySelector<HTMLElement>(
+        `.form-section[data-section="${r.dataset.step}"]`,
+      );
+      const body = addDialog.querySelector<HTMLElement>('.dialog-body');
+      if (sec && body) body.scrollTo({ top: sec.offsetTop - body.offsetTop, behavior: 'smooth' });
+      syncRailToSection(r.dataset.step ?? 'type');
+    });
+  });
+
+  // Wire up the type-tile buttons
+  const typeGrid = document.getElementById('type-grid');
+  typeGrid?.querySelectorAll<HTMLButtonElement>('.type-tile').forEach((tile) => {
+    tile.addEventListener('click', () => {
+      typeGrid.querySelectorAll('.type-tile').forEach((t) => t.classList.remove('active'));
+      tile.classList.add('active');
+      activeAddType = (tile.dataset.type ?? 'url') as MonType;
+      syncFields(activeAddType);
+    });
+  });
+
+  // Wire close buttons with data-close-dialog
+  addDialog.querySelectorAll('[data-close-dialog]').forEach((btn) => {
+    btn.addEventListener('click', () => addDialog.close());
+  });
+
+  // ⌘/Ctrl+Enter submits the form
+  addDialog.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      addForm.requestSubmit();
+    }
+  });
+
   $('#add-btn').addEventListener('click', async () => {
-    syncFields();
+    activeAddType = 'url';
+    // Reset tile selection
+    const typeGrid2 = document.getElementById('type-grid');
+    typeGrid2?.querySelectorAll('.type-tile').forEach((t) => t.classList.remove('active'));
+    typeGrid2?.querySelector('[data-type="url"]')?.classList.add('active');
+    syncFields(activeAddType);
+    // Scroll body back to top
+    const body = addDialog.querySelector<HTMLElement>('.dialog-body');
+    if (body) body.scrollTop = 0;
     await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);
     addDialog.showModal();
   });
-  $('#cancel-btn').addEventListener('click', () => addDialog.close());
 
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(addForm);
-    const type = fd.get('type') as MonType;
+    const type = activeAddType;
     const name = fd.get('name') as string;
     const url = fd.get('url') as string;
     const intervalSeconds = Number(fd.get('interval_seconds'));
@@ -328,7 +404,8 @@ function initAddDialog() {
 }
 
 async function refreshRegionsPicker() {
-  const container = document.getElementById('regions-checkboxes') as HTMLElement;
+  const row = document.getElementById('regions-row') as HTMLElement;
+  const container = document.getElementById('regions-picker') as HTMLElement;
   try {
     cachedRegions = await getRegions();
   } catch {
@@ -342,13 +419,11 @@ async function refreshRegionsPicker() {
   container.innerHTML = cachedRegions
     .map(
       (r) => `
-      <label class="region-pick">
+      <label class="pick">
         <input type="checkbox" name="region_id" value="${r.id}" />
-        <span class="region-pick-status ${r.online ? 'online' : 'offline'}" title="${
-          r.online ? 'online' : 'offline'
-        }"></span>
+        <span class="dot ${r.online ? 'up' : ''}"></span>
         <code>${esc(r.slug)}</code>
-        <span class="region-pick-label">${esc(r.label)}</span>
+        <span class="desc">${esc(r.label)}</span>
       </label>
     `,
     )
@@ -367,7 +442,7 @@ function syncRegionsRow() {
 
 function collectSelectedRegionIds(): number[] {
   const checked = document.querySelectorAll<HTMLInputElement>(
-    '#regions-checkboxes input[name="region_id"]:checked',
+    '#regions-picker input[name="region_id"]:checked',
   );
   return Array.from(checked)
     .map((el) => Number(el.value))
@@ -376,7 +451,7 @@ function collectSelectedRegionIds(): number[] {
 
 async function refreshChannelsPicker() {
   const row = document.getElementById('channels-row') as HTMLElement;
-  const container = document.getElementById('channels-checkboxes') as HTMLElement;
+  const container = document.getElementById('channels-picker') as HTMLElement;
   try {
     cachedChannels = await getChannels();
   } catch {
@@ -391,10 +466,10 @@ async function refreshChannelsPicker() {
   container.innerHTML = cachedChannels
     .map(
       (c) => `
-      <label class="channel-pick">
+      <label class="pick">
         <input type="checkbox" name="channel_id" value="${c.id}" />
-        <span class="channel-pick-type type-${c.type}">${esc(c.type)}</span>
-        <span class="channel-pick-name">${esc(c.name)}</span>
+        <span class="pill type-${c.type}">${esc(c.type)}</span>
+        <span class="desc">${esc(c.name)}</span>
       </label>
     `,
     )
@@ -403,7 +478,7 @@ async function refreshChannelsPicker() {
 
 function collectSelectedChannelIds(): number[] {
   const checked = document.querySelectorAll<HTMLInputElement>(
-    '#channels-checkboxes input[name="channel_id"]:checked',
+    '#channels-picker input[name="channel_id"]:checked',
   );
   return Array.from(checked)
     .map((el) => Number(el.value))
@@ -415,6 +490,10 @@ function initImportDialog() {
 
   $('#import-btn').addEventListener('click', () => importDialog.showModal());
   $('#import-cancel').addEventListener('click', () => importDialog.close());
+  // New design also has a close button in the dialog-head
+  importDialog.querySelectorAll('[data-close-import-dialog]').forEach((btn) => {
+    btn.addEventListener('click', () => importDialog.close());
+  });
   $('#import-submit').addEventListener('click', async () => {
     const text = $<HTMLTextAreaElement>('#import-text').value.trim();
     let payload: unknown;
@@ -446,47 +525,3 @@ function initImportDialog() {
   });
 }
 
-function initBackupDialog() {
-  const dlg = $<HTMLDialogElement>('#backup-dialog');
-
-  $('#backup-btn').addEventListener('click', () => dlg.showModal());
-  $('#backup-cancel').addEventListener('click', () => dlg.close());
-
-  $('#backup-download').addEventListener('click', () => {
-    const scope =
-      document.querySelector<HTMLInputElement>('input[name="backup_scope"]:checked')?.value ??
-      'window';
-    // Plain authed navigation — the browser streams the gzip to disk and
-    // names it from the server's Content-Disposition. No `download` attr:
-    // an empty one would override the header with a junk filename.
-    const a = document.createElement('a');
-    a.href = backupUrl(scope, 90);
-    a.click();
-  });
-
-  $('#backup-restore').addEventListener('click', async () => {
-    const input = $<HTMLInputElement>('#backup-file');
-    const file = input.files?.[0];
-    if (!file) {
-      alertDialog({ title: 'Restore', body: 'Choose a .oodump.gz file first.' });
-      return;
-    }
-    const ok = await confirmDialog({
-      title: 'Replace all data?',
-      body: `Restoring "${file.name}" wipes every monitor, channel, and execution in this instance and replaces them with the backup. This cannot be undone.`,
-      confirmLabel: 'Wipe and restore',
-      danger: true,
-    });
-    if (!ok) return;
-
-    const { res, result } = await restoreBackup(file, true);
-    if (!res.ok) {
-      alertDialog({ title: 'Restore failed', body: result.error ?? 'Unknown error' });
-      return;
-    }
-    const total = Object.values(result.counts ?? {}).reduce((a, b) => a + b, 0);
-    alertDialog({ title: 'Restore complete', body: `${total} rows restored.` });
-    dlg.close();
-    renderList();
-  });
-}

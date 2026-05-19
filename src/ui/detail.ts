@@ -120,40 +120,44 @@ function renderWithFilter(
 
   const showChips = buckets.length > 1;
   const chips = showChips
-    ? `<div class="region-chips">${buckets
+    ? `<div class="chip-row">${buckets
         .map((b) => {
           const active = b === filter ? 'active' : '';
           const count = applyFilter(allRuns, b).length;
           const color = colorForFilter(b, regionOrder);
           const dot =
-            b === 'all' ? '' : `<span class="region-chip-dot" style="background:${color}"></span>`;
-          return `<button class="region-chip ${active}" data-filter="${b}">${dot}${esc(regionLabel(b, regions))}<span class="region-chip-count">${count}</span></button>`;
+            b === 'all' ? '' : `<span class="dot" style="background:${color}"></span>`;
+          return `<button class="region-chip ${active}" data-filter="${b}">${dot}${esc(regionLabel(b, regions))}<span class="ct">${count}</span></button>`;
         })
         .join('')}</div>`
     : '';
 
   main.innerHTML = `
     <a class="back-link" href="#/">← back</a>
-    <div style="display:flex;align-items:center;justify-content:space-between">
+    <div class="page-head">
       <div>
-        <h1 style="margin:0;font-size:20px">${esc(m.name)}</h1>
-        <div class="url" style="margin-top:4px">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.intervalSeconds}s</div>
+        <h2 style="font-size:var(--fs-22)">${esc(m.name)}</h2>
+        <div class="sub">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.intervalSeconds}s</div>
       </div>
-      <div class="actions-bar">
-        <button id="detail-run" class="primary">Run now</button>
+      <div style="display:flex;gap:6px">
+        <button id="detail-run" class="btn primary">Run now</button>
       </div>
     </div>
     ${chips}
-    <div class="detail-meta">
+    <div class="detail-grid">
       <div class="meta-card"><div class="label">Runs (last 100)</div><div class="value">${runs.length}</div></div>
       <div class="meta-card"><div class="label">Success rate</div><div class="value">${successRate}</div></div>
       <div class="meta-card"><div class="label">Last latency</div><div class="value">${lastLatency != null ? `${lastLatency}ms` : '—'}</div></div>
-      <div class="meta-card"><div class="label">Status</div><div class="value">${m.enabled ? `${iconActive} active` : `${iconPaused} paused`}</div></div>
+      <div class="meta-card"><div class="label">Status</div><div class="value flex">${m.enabled ? `${iconActive} active` : `${iconPaused} paused`}</div></div>
     </div>
-    <div class="meta-card" style="margin-bottom:16px">
-      <div class="label">Latency (last 30 runs — ${esc(regionLabel(filter, regions))})</div>
+    <div class="sparkline-wrap">
+      <div class="head">
+        <span class="cell-meta">Latency — last 30 runs</span>
+        <span class="cell-meta">${esc(regionLabel(filter, regions))}</span>
+      </div>
       ${sparkline}
     </div>
+    <div class="tbl-wrap">
     <table>
       <thead><tr><th></th><th>When</th>${showChips ? '<th>Region</th>' : ''}<th>Status</th><th>Latency</th><th>Detail</th>${type === 'qa' ? '<th>Artifacts</th>' : ''}</tr></thead>
       <tbody>
@@ -162,22 +166,23 @@ function renderWithFilter(
             const cls = statusClass(r.status);
             const latency = r.responseTimeMs ?? r.durationMs;
             const regionCell = showChips
-              ? `<td class="meta">${r.regionId == null ? 'master' : esc(regions.get(r.regionId)?.slug ?? `#${r.regionId}`)}</td>`
+              ? `<td class="cell-meta">${r.regionId == null ? 'master' : esc(regions.get(r.regionId)?.slug ?? `#${r.regionId}`)}</td>`
               : '';
             const artifactsCell = type === 'qa' ? renderArtifactsCell(r) : '';
             return `<tr>
             <td><span class="dot ${cls}"></span></td>
-            <td class="meta">${fmtAge(r.startTime)}</td>
+            <td class="cell-meta">${fmtAge(r.startTime)}</td>
             ${regionCell}
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
-            <td class="meta">${latency != null ? `${latency}ms` : '—'}</td>
-            <td class="meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>
+            <td class="cell-meta">${latency != null ? `${latency}ms` : '—'}</td>
+            <td class="cell-meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>
             ${artifactsCell}
           </tr>`;
           })
           .join('')}
       </tbody>
     </table>
+    </div>
   `;
   $('#detail-run').addEventListener('click', async () => {
     await runMonitor(type, id);

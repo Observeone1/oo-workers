@@ -19,7 +19,7 @@ import { renderRegions } from './regions';
 import { renderChannels } from './channels';
 import { renderStatusPages } from './status-pages';
 import { renderIncidents } from './incidents';
-import { renderKeys } from './keys';
+import { renderSettings } from './settings';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
 import { getRegions } from './api';
@@ -27,6 +27,7 @@ import { initTheme } from './theme';
 import { renderLogin } from './login';
 import { renderSetup } from './setup';
 import { iconSignOut } from './icons';
+import { closeSlideover } from './slideover';
 
 interface AuthState {
   name: string;
@@ -70,14 +71,15 @@ async function refreshRegionBadge() {
 };
 
 function setActiveNav(
-  route: 'list' | 'regions' | 'channels' | 'status-pages' | 'incidents' | 'keys' | 'docs' | null,
+  route: 'list' | 'regions' | 'channels' | 'status-pages' | 'incidents' | 'docs' | null,
 ) {
-  document.querySelectorAll<HTMLAnchorElement>('.header-nav .nav-link').forEach((a) => {
+  document.querySelectorAll<HTMLAnchorElement>('.nav .nav-link').forEach((a) => {
     a.classList.toggle('active', route !== null && a.dataset.route === route);
   });
 }
 
 function route() {
+  closeSlideover();
   const h = location.hash;
   if (h === '#/regions' || h.startsWith('#/regions/')) {
     setActiveNav('regions');
@@ -99,9 +101,9 @@ function route() {
     renderIncidents();
     return;
   }
-  if (h === '#/keys' || h.startsWith('#/keys/')) {
-    setActiveNav('keys');
-    renderKeys();
+  if (h === '#/settings') {
+    setActiveNav(null);
+    renderSettings();
     return;
   }
   if (h === '#/docs' || h.startsWith('#/docs/')) {
@@ -132,6 +134,7 @@ function wireSignOut(state: AuthState) {
   });
 }
 
+
 async function boot() {
   initTheme();
 
@@ -151,12 +154,35 @@ async function boot() {
 
   const { ok, state } = await checkAuth();
   if (!ok || !state) {
+    // Hide action buttons on login screen; keep header visible for brand
+    const addBtn = document.getElementById('add-btn');
+    const importBtn = document.getElementById('import-btn');
+    const divider = document.getElementById('header-divider');
+    if (addBtn) addBtn.hidden = true;
+    if (importBtn) importBtn.hidden = true;
+    if (divider) divider.hidden = true;
     renderLogin();
     return;
   }
   wireSignOut(state);
-  const nav = document.getElementById('header-nav');
+
+  const settingsBtn = document.getElementById('settings-btn');
+  if (settingsBtn) {
+    settingsBtn.hidden = false;
+    settingsBtn.addEventListener('click', () => {
+      location.hash = '#/settings';
+    });
+  }
+
+  // Show nav and action buttons now that the user is authenticated
+  const nav = document.getElementById('nav');
   if (nav) nav.hidden = false;
+  const addBtn = document.getElementById('add-btn');
+  const importBtn = document.getElementById('import-btn');
+  const divider = document.getElementById('header-divider');
+  if (addBtn) addBtn.hidden = false;
+  if (importBtn) importBtn.hidden = false;
+  if (divider) divider.hidden = false;
   initDialogs();
   route();
   void refreshRegionBadge();
@@ -176,7 +202,8 @@ async function boot() {
       location.hash.startsWith('#/regions') ||
       location.hash.startsWith('#/channels') ||
       location.hash.startsWith('#/status-pages') ||
-      location.hash.startsWith('#/keys') ||
+      location.hash.startsWith('#/incidents') ||
+      location.hash.startsWith('#/settings') ||
       location.hash.startsWith('#/docs')
     )
       return;
