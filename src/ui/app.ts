@@ -71,7 +71,15 @@ async function refreshRegionBadge() {
 };
 
 function setActiveNav(
-  route: 'list' | 'regions' | 'channels' | 'status-pages' | 'incidents' | 'docs' | null,
+  route:
+    | 'list'
+    | 'regions'
+    | 'channels'
+    | 'status-pages'
+    | 'incidents'
+    | 'docs'
+    | 'settings'
+    | null,
 ) {
   document.querySelectorAll<HTMLAnchorElement>('.nav .nav-link').forEach((a) => {
     a.classList.toggle('active', route !== null && a.dataset.route === route);
@@ -102,7 +110,7 @@ function route() {
     return;
   }
   if (h === '#/settings') {
-    setActiveNav(null);
+    setActiveNav('settings');
     renderSettings();
     return;
   }

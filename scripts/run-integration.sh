@@ -49,3 +49,9 @@ bun scripts/qa-alerting-test.ts
 # onto the public unauthenticated status page; pure, anti-vacuous (XSS
 # corpus must be neutralised AND the safe subset must still work).
 bun scripts/incident-render-test.ts
+# Self-service account endpoints (profile / password change, v2 UI).
+# Boots the real Hono app, drives the routes over HTTP; anti-vacuous
+# (wrong-current-password negative control must reject AND leave the
+# password unchanged). Mutates the integration DB with a throwaway
+# user + finally cleanup.
+bun scripts/auth-profile-test.ts
