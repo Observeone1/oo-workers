@@ -36,3 +36,8 @@ bun scripts/tcp-banner-test.ts
 # tls.createServer; pure (no DB/HTTP/egress), anti-vacuous (in-window
 # cert must FAIL).
 bun scripts/tls-cert-test.ts
+# QA-project alerting — webhook channel bound to a throwaway QA project,
+# local catch-all server, full transition table; anti-vacuous (noop
+# rows must NOT alert, transition rows must). Mutates the integration
+# DB with unique names + finally cleanup.
+bun scripts/qa-alerting-test.ts

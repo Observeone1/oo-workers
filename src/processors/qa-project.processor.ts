@@ -7,6 +7,7 @@ import { isStorageConfigured, putObject, qaRunArtifactKey } from '../services/ob
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
+import { maybeAlertOnQaRunTransition } from '../services/transition-detector.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
 // Avoids process.cwd() so the worker still works if started from a different dir.
@@ -234,10 +235,11 @@ export const createQaProjectProcessor = (redis: Redis) => {
 
       await qaProjectRepo.touchLastRunAt(projectId);
 
-      // TODO Phase 5.x — QA alerts have per-project-run semantics (a batch of
-      // test executions vs the previous batch's aggregate outcome) that don't
-      // fit the single-row transition detector used by url/api/tcp/udp.
-      // Skipped in the v0.8.0 MVP.
+      // QA alerting: per-project-run aggregate (all tests passed = up,
+      // any failed/errored = down) vs the previous run's aggregate.
+      // Best-effort — never blocks run completion.
+      const aggregateOutcome = errors > 0 || failed > 0 ? 'FAILED' : 'SUCCESS';
+      await maybeAlertOnQaRunTransition(projectId, new Date(startTime), aggregateOutcome);
 
       const completionData = {
         type: 'run_completed',
