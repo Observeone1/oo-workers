@@ -1,6 +1,6 @@
 {
   "name": "oo-workers",
-  "version": "1.13.2",
+  "version": "1.14.0",
   "description": "Self-hosted distributed monitoring workers — HTTP, API, and Playwright browser checks. The OSS engine behind ObserveOne.",
   "private": true,
   "type": "module",
@@ -26,6 +26,7 @@
     "test:ui:e2e:qa-alerting": "playwright test --config=playwright.ui.config.ts tests/ui/qa-alerting.e2e.spec.ts",
     "test:ui:e2e:incidents": "playwright test --config=playwright.ui.config.ts tests/ui/incidents.e2e.spec.ts",
     "test:ui:e2e:import": "playwright test --config=playwright.ui.config.ts tests/ui/import-from-saas.e2e.spec.ts",
+    "test:ui:e2e:tls": "playwright test --config=playwright.ui.config.ts tests/ui/tls-assertions.e2e.spec.ts",
     "prepare": "husky"
   },
   "lint-staged": {

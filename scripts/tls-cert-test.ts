@@ -54,29 +54,38 @@ if (!haveOpenssl()) {
 
 const dir = mkdtempSync(join(tmpdir(), 'oo-tls-test-'));
 
-/** openssl-generate a self-signed cert valid `days` from now. */
-function genCert(tag: string, days: number): TlsOptions {
+/**
+ * openssl-generate a self-signed cert valid `days` from now. `cn`
+ * defaults to `oo-tls-<tag>`; `sans` adds DNS subjectAltName entries
+ * (needed to exercise verify_hostname and the CN-or-SAN regex).
+ */
+function genCert(
+  tag: string,
+  days: number,
+  certOpts: { cn?: string; sans?: string[] } = {},
+): TlsOptions {
   const key = join(dir, `${tag}.key`);
   const crt = join(dir, `${tag}.crt`);
-  execFileSync(
-    'openssl',
-    [
-      'req',
-      '-x509',
-      '-newkey',
-      'rsa:2048',
-      '-keyout',
-      key,
-      '-out',
-      crt,
-      '-days',
-      String(days),
-      '-nodes',
-      '-subj',
-      `/CN=oo-tls-${tag}`,
-    ],
-    { stdio: 'ignore' },
-  );
+  const cn = certOpts.cn ?? `oo-tls-${tag}`;
+  const args = [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-keyout',
+    key,
+    '-out',
+    crt,
+    '-days',
+    String(days),
+    '-nodes',
+    '-subj',
+    `/CN=${cn}`,
+  ];
+  if (certOpts.sans && certOpts.sans.length > 0) {
+    args.push('-addext', `subjectAltName=${certOpts.sans.map((s) => `DNS:${s}`).join(',')}`);
+  }
+  execFileSync('openssl', args, { stdio: 'ignore' });
   return { key: readFileSync(key), cert: readFileSync(crt) };
 }
 
@@ -158,6 +167,131 @@ try {
     'closed port FAILS cleanly (no hang)',
     dead.ok === false && !!dead.errorMessage && dead.daysRemaining === undefined,
     JSON.stringify({ ok: dead.ok, err: dead.errorMessage }),
+  );
+
+  // ---- 0018 opt-in assertions (anti-vacuous matrix) ----
+  // The same self-signed far-future cert drives 5 & 6: off→PASS proves
+  // the legacy posture is byte-identical; on→FAIL proves the new check
+  // bites. (verify_chain ON + a *publicly-trusted* cert → PASS is an
+  // inherently online property — it cannot be minted offline, so it is
+  // asserted by the MANUAL e2e against a real host, NOT this pure gate.
+  // Stated, not pretended.)
+  const farSelf = genCert('vc', 825);
+
+  const vcOffSrv = await serve(farSelf);
+  const vcOff = await tlsProbe({
+    host: '127.0.0.1',
+    port: vcOffSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    verifyChain: false,
+    verifyHostname: false,
+  });
+  vcOffSrv.close();
+  check(
+    'verify_chain OFF + self-signed → SUCCESS (NO-REGRESSION — the critical one)',
+    vcOff.ok === true,
+    JSON.stringify({ ok: vcOff.ok, err: vcOff.errorMessage }),
+  );
+
+  const vcOnSrv = await serve(farSelf);
+  const vcOn = await tlsProbe({
+    host: '127.0.0.1',
+    port: vcOnSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    verifyChain: true,
+  });
+  vcOnSrv.close();
+  check(
+    'verify_chain ON + self-signed → FAIL (the new check bites)',
+    vcOn.ok === false && /chain not trusted/i.test(vcOn.errorMessage ?? ''),
+    JSON.stringify({ ok: vcOn.ok, err: vcOn.errorMessage }),
+  );
+
+  // verify_hostname — isolate by leaving verify_chain OFF; cert SAN
+  // controls the match. SNI (servername) is the identity asserted.
+  const hostCert = genCert('vh', 825, { cn: 'oo-cn', sans: ['match.oo.test'] });
+
+  const vhOkSrv = await serve(hostCert);
+  const vhOk = await tlsProbe({
+    host: '127.0.0.1',
+    port: vhOkSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    servername: 'match.oo.test',
+    verifyHostname: true,
+  });
+  vhOkSrv.close();
+  check(
+    'verify_hostname ON + SNI matches cert SAN → SUCCESS',
+    vhOk.ok === true,
+    JSON.stringify({ ok: vhOk.ok, err: vhOk.errorMessage }),
+  );
+
+  const vhBadSrv = await serve(hostCert);
+  const vhBad = await tlsProbe({
+    host: '127.0.0.1',
+    port: vhBadSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    servername: 'other.oo.test',
+    verifyHostname: true,
+  });
+  vhBadSrv.close();
+  check(
+    'verify_hostname ON + SNI does NOT match → FAIL',
+    vhBad.ok === false && /not valid for other\.oo\.test/i.test(vhBad.errorMessage ?? ''),
+    JSON.stringify({ ok: vhBad.ok, err: vhBad.errorMessage }),
+  );
+
+  // expect_cn_regex — match on CN, reject on no-match, AND match via a
+  // DNS SAN when the CN itself doesn't (proves SAN coverage).
+  const cnCert = genCert('cn', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] });
+
+  const cnOkSrv = await serve(cnCert);
+  const cnOk = await tlsProbe({
+    host: '127.0.0.1',
+    port: cnOkSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    expectCnRegex: '^svc\\.prod\\.oo$',
+  });
+  cnOkSrv.close();
+  check(
+    'expect_cn_regex matching CN → SUCCESS',
+    cnOk.ok === true,
+    JSON.stringify({ ok: cnOk.ok, err: cnOk.errorMessage }),
+  );
+
+  const cnBadSrv = await serve(cnCert);
+  const cnBad = await tlsProbe({
+    host: '127.0.0.1',
+    port: cnBadSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    expectCnRegex: '^nope\\.',
+  });
+  cnBadSrv.close();
+  check(
+    'expect_cn_regex no match → FAIL',
+    cnBad.ok === false && /No CN\/SAN matches/i.test(cnBad.errorMessage ?? ''),
+    JSON.stringify({ ok: cnBad.ok, err: cnBad.errorMessage }),
+  );
+
+  const cnSanSrv = await serve(cnCert);
+  const cnSan = await tlsProbe({
+    host: '127.0.0.1',
+    port: cnSanSrv.port,
+    timeoutMs: 4000,
+    warnDays: 30,
+    expectCnRegex: '^api\\.prod\\.oo$', // matches the SAN, not the CN
+  });
+  cnSanSrv.close();
+  check(
+    'expect_cn_regex matches a DNS SAN (not the CN) → SUCCESS (SAN coverage)',
+    cnSan.ok === true,
+    JSON.stringify({ ok: cnSan.ok, err: cnSan.errorMessage }),
   );
 } finally {
   rmSync(dir, { recursive: true, force: true });
