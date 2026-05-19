@@ -37,7 +37,7 @@ export interface AgentConfig {
 
 interface JobPayload {
   jobId: string;
-  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
+  type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
   executionId: number;
   regionId: number;
   monitor?: {

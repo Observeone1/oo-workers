@@ -1107,7 +1107,7 @@ function buildApp(connection: Redis) {
       return c.json({ error: 'monitors must be an array of {type, id}' }, 400);
     }
     const bindings: Array<{
-      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db';
+      monitorType: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
       monitorId: number;
     }> = [];
     for (const m of body.monitors as Array<{ type?: unknown; id?: unknown }>) {

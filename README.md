@@ -38,6 +38,7 @@ Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashb
 | **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Optionally send a payload and assert on the response banner (SSH/SMTP/Redis/IMAP). See [docs/tcp-checks.md](docs/tcp-checks.md).           |
 | **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services.                                                          |
 | **Database**    | Postgres / MySQL / Redis liveness — connects and confirms the server speaks the protocol (no credentials stored; "is it up?", not authenticated queries). See [docs/db-checks.md](docs/db-checks.md). |
+| **TLS cert**    | TLS handshake to `host:port`, FAIL when the certificate expires within `warnDays` (default 30). Self-signed-friendly (expiry only, not chain trust). See [docs/tls-checks.md](docs/tls-checks.md).    |
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues whatever's due. Workers process jobs concurrently (tunable via env).
 
@@ -128,7 +129,7 @@ An authenticated caller can ask the worker to probe any host:port it can reach, 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), and [TCP banner checks](docs/tcp-checks.md).
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), and [TLS certificate checks](docs/tls-checks.md).
 
 ## Configuration
 
