@@ -12,7 +12,7 @@
  * normalizeOutcome() folds both vocabularies into 'up' | 'down'.
  */
 
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, lte, ne } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
   apiChecks,
@@ -250,6 +250,94 @@ export async function maybeAlertOnTransition(
   } catch (err) {
     logger.error(
       `transition-detector: ${monitorType}#${monitorId}: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+}
+
+/**
+ * QA-project alerting. Unlike url/api/tcp/udp/db (one probe = one exec
+ * row), a QA project run writes N qa_test_executions rows (one per
+ * test), so "did it flip?" is a per-*run* aggregate question that does
+ * not fit maybeAlertOnTransition's single-row exclude.
+ *
+ * `aggregateOutcome` is this run's verdict (all tests passed = SUCCESS;
+ * any failed/errored = FAILED). The previous run is found by anchoring
+ * on the most recent exec row started before this run, then bucketing
+ * every row within ±30s of that anchor — a QA run fires its tests
+ * concurrently so they share a wall-clock bucket within a few seconds,
+ * and QA intervals (minutes) are far wider than 30s so the bucket can't
+ * bleed into the run before it. If the previous run's aggregate differs
+ * from this one's, dispatch outage/recovery.
+ *
+ * Best-effort and isolated — never throws back into the processor, so a
+ * busted alert path can't break run completion.
+ */
+export async function maybeAlertOnQaRunTransition(
+  projectId: number,
+  runStartTime: Date,
+  aggregateOutcome: 'SUCCESS' | 'FAILED',
+): Promise<void> {
+  try {
+    const curOutcome = normalizeOutcome(aggregateOutcome);
+    if (curOutcome === 'other') return;
+
+    // Anchor: the most recent test-exec row from before this run.
+    const [anchor] = await db
+      .select({ startedAt: qaTestExecutions.startedAt })
+      .from(qaTestExecutions)
+      .where(
+        and(
+          eq(qaTestExecutions.projectId, projectId),
+          lt(qaTestExecutions.startedAt, runStartTime),
+        ),
+      )
+      .orderBy(desc(qaTestExecutions.startedAt))
+      .limit(1);
+    if (!anchor) return; // first run — nothing to compare against
+
+    // The previous run's batch: every row within ±30s of the anchor.
+    // The `lt(runStartTime)` guard is load-bearing, not redundant: if an
+    // operator sets a QA interval ≤ ~30s the current run's own rows fall
+    // inside [anchor-30s, anchor+30s] and would poison the "previous"
+    // bucket, making prevOutcome === curOutcome and silently suppressing
+    // every transition. Excluding rows at/after this run's start keeps
+    // the heuristic correct for any configurable interval.
+    const lo = new Date(anchor.startedAt.getTime() - 30_000);
+    const hi = new Date(anchor.startedAt.getTime() + 30_000);
+    const prevRows = await db
+      .select({ status: qaTestExecutions.status })
+      .from(qaTestExecutions)
+      .where(
+        and(
+          eq(qaTestExecutions.projectId, projectId),
+          lt(qaTestExecutions.startedAt, runStartTime),
+          gte(qaTestExecutions.startedAt, lo),
+          lte(qaTestExecutions.startedAt, hi),
+        ),
+      );
+    if (prevRows.length === 0) return;
+
+    const prevOutcome: 'up' | 'down' = prevRows.some((r) => normalizeOutcome(r.status) === 'down')
+      ? 'down'
+      : 'up';
+    if (prevOutcome === curOutcome) return; // no transition
+
+    const event: 'outage' | 'recovery' = curOutcome === 'down' ? 'outage' : 'recovery';
+    const meta = await monitorMeta('qa', projectId);
+    if (!meta) return;
+    await dispatchAlert({
+      monitor: { type: 'qa', id: projectId, name: meta.name, target: meta.target },
+      event,
+      status: aggregateOutcome,
+      statusCode: null,
+      errorMessage: null,
+      durationMs: null,
+      startTime: runStartTime.toISOString(),
+      regionSlug: null,
+    });
+  } catch (err) {
+    logger.error(
+      `transition-detector: qa-run#${projectId}: ${err instanceof Error ? err.message : err}`,
     );
   }
 }
