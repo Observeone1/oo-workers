@@ -240,11 +240,11 @@ function wireCreateBtn() {
   const openCreate = async () => {
     const allMonitors = await getMonitors();
     const monitorOptions = [
-      ...allMonitors.url.map((m) => ({ type: 'url' as MonType, ...m })),
-      ...allMonitors.api.map((m) => ({ type: 'api' as MonType, ...m })),
-      ...allMonitors.qa.map((m) => ({ type: 'qa' as MonType, ...m })),
-      ...allMonitors.tcp.map((m) => ({ type: 'tcp' as MonType, ...m })),
-      ...allMonitors.udp.map((m) => ({ type: 'udp' as MonType, ...m })),
+      ...allMonitors.url.map((m) => ({ ...m, type: 'url' as MonType })),
+      ...allMonitors.api.map((m) => ({ ...m, type: 'api' as MonType })),
+      ...allMonitors.qa.map((m) => ({ ...m, type: 'qa' as MonType })),
+      ...allMonitors.tcp.map((m) => ({ ...m, type: 'tcp' as MonType })),
+      ...allMonitors.udp.map((m) => ({ ...m, type: 'udp' as MonType })),
     ];
     const pickerHtml =
       monitorOptions.length === 0
