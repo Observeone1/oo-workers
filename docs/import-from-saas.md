@@ -37,16 +37,29 @@ export with `--include-scripts` to bring them across. SaaS-only suite
 settings with no self-host equivalent (`max_tests`, `is_public`,
 `allow_form_submit`, `secret_keys`) are not carried.
 
+**Alert channels** of type `email`, `slack`, `discord`, and `webhook`.
+Only the endpoint is carried — `config.email` → the recipient,
+`config.webhook_url` → the webhook URL. SaaS channel types with no
+self-host equivalent (`teams`, `telegram`, `sms`) are reported as
+skipped, never half-created; a channel whose endpoint is missing or
+invalid is skipped too. Their SaaS-side secrets (Telegram `bot_token`,
+Twilio `account_sid`/`auth_token`) are **never** read or written.
+
+> ⚠ **`obs.json` contains live secrets.** A SaaS export embeds working
+> webhook URLs (Discord/Slack tokens are in the URL) and recipient
+> addresses. Treat the file as a credential — don't commit it, delete it
+> after import.
+
 ## What doesn't (yet)
 
-SaaS alert channels, status pages, heartbeats, and incidents are **not**
-transferred — the script reports their counts as skipped so nothing is
-silently lost. Bringing channels and status pages across is the next piece
-of work; heartbeats need a self-host heartbeat monitor type first;
-incidents are runtime state (the SaaS itself doesn't re-create them on
-apply). For now, recreate those on the self-host, or use
-[backup & restore](backup-restore.md) for instance→instance moves (a
-different job — that's a full DB snapshot, not a SaaS migration).
+SaaS status pages, heartbeats, and incidents are **not** transferred —
+the script reports their counts as skipped so nothing is silently lost.
+Status pages are the next piece of work; heartbeats need a self-host
+heartbeat monitor type first; incidents are runtime state (the SaaS
+itself doesn't re-create them on apply). For now, recreate those on the
+self-host, or use [backup & restore](backup-restore.md) for
+instance→instance moves (a different job — that's a full DB snapshot,
+not a SaaS migration).
 
 ## Re-running
 

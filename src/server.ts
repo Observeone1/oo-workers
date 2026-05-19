@@ -746,7 +746,15 @@ function buildApp(connection: Redis) {
   app.post('/api/import', async (c) => {
     const body = await c.req.json();
     if (body.version !== 1) return c.json({ error: 'unsupported import version' }, 400);
-    const created = { url: 0, api: 0, qa: 0, tcp: 0, udp: 0, skipped: [] as string[] };
+    const created = {
+      url: 0,
+      api: 0,
+      qa: 0,
+      tcp: 0,
+      udp: 0,
+      channels: 0,
+      skipped: [] as string[],
+    };
 
     for (const u of (body.urlMonitors ?? []) as any[]) {
       try {
@@ -853,6 +861,39 @@ function buildApp(connection: Redis) {
         created.qa++;
       } catch (err) {
         created.skipped.push(`qa ${q.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    // Alert channels. The adapter already type-narrows + shapes config,
+    // but anything POSTing here directly (hand-crafted payload) must
+    // pass the same invariants the POST /api/channels endpoint enforces
+    // — mirror them rather than trust the caller.
+    for (const ch of (body.channels ?? []) as any[]) {
+      try {
+        const name = typeof ch.name === 'string' ? ch.name.trim() : '';
+        const type = ch.type as ChannelType;
+        const cfg = (ch.config ?? {}) as Record<string, unknown>;
+        if (!name) throw new Error('name is required');
+        if (!VALID_CHANNEL_TYPES.includes(type)) {
+          throw new Error(`type must be one of ${VALID_CHANNEL_TYPES.join(', ')}`);
+        }
+        if (type === 'email') {
+          const to = typeof cfg.to === 'string' ? cfg.to.trim() : '';
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+            throw new Error('email channel needs a valid config.to address');
+          }
+          await alertChannelRepo.create({ name, type, config: { to } });
+        } else {
+          const url = typeof cfg.url === 'string' ? cfg.url.trim() : '';
+          if (!/^https?:\/\//i.test(url)) {
+            throw new Error('channel needs an http(s) config.url');
+          }
+          await alertChannelRepo.create({ name, type, config: { url } });
+        }
+        created.channels++;
+      } catch (err) {
+        created.skipped.push(
+          `channel ${ch?.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     return c.json(created);

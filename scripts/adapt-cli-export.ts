@@ -5,16 +5,24 @@
 // Importable: `import { adaptSaaSExport } from './adapt-cli-export.ts'`.
 // Also a CLI:  `bun scripts/adapt-cli-export.ts <input.json> <output.json>`
 //
-// Mapped: monitors→urlMonitors, api_checks→apiChecks, and (3.1)
-// suites→qaProjects — but ONLY suites that carry inline `tests[]`
-// (i.e. the export was run with `obs export --include-scripts`). A
-// suite with no scripts would import as a QA project that monitors
-// nothing; rather than create that silent footgun it is reported in
-// `skipped.suites` so the operator knows to re-export with scripts.
-// SaaS suite fields with no oo-workers equivalent (max_tests,
-// is_public, allow_form_submit, secret_keys) are intentionally not
-// carried. Still skipped (no self-host target yet): heartbeats,
-// alert_channels, status_pages, incidents.
+// Mapped: monitors→urlMonitors, api_checks→apiChecks, (3.1)
+// suites→qaProjects (only suites with inline `tests[]` — i.e. exported
+// with `obs export --include-scripts`; scriptless ones would monitor
+// nothing so they're counted in `skipped.suites`, not fabricated empty;
+// SaaS suite-only fields max_tests/is_public/allow_form_submit/
+// secret_keys have no self-host target and are dropped), and (3.2)
+// alert_channels→channels.
+//
+// Channel mapping is type-narrowed and secret-safe BY CONSTRUCTION: the
+// SaaS channel `config` carries secrets (Discord/Slack webhook URLs,
+// Telegram `bot_token`/`chat_id`, Twilio `account_sid`/`auth_token`).
+// We never copy the SaaS config object — only the single field oo-workers
+// needs is read out: email→{to:config.email}, webhook/discord/slack→
+// {url:config.webhook_url}. SaaS-only channel types with no oo-workers
+// equivalent (teams, telegram, sms) and channels with a missing/invalid
+// endpoint are counted in `skipped.alert_channels`, never half-created.
+// Still skipped (no self-host target yet): heartbeats, status_pages,
+// incidents.
 
 export interface ImportPayload {
   version: 1;
@@ -43,6 +51,11 @@ export interface ImportPayload {
     intervalSeconds: number;
     enabled: boolean;
     tests: Array<{ name: string; script: string }>;
+  }>;
+  channels: Array<{
+    name: string;
+    type: 'webhook' | 'discord' | 'slack' | 'email';
+    config: Record<string, unknown>;
   }>;
 }
 
@@ -73,12 +86,28 @@ interface SaaSSuite {
   tests?: Array<{ name?: unknown; script?: unknown }>;
 }
 
+// SaaS channel types: email|slack|discord|teams|telegram|sms|webhook.
+// oo-workers supports only these four; the rest have no faithful target.
+const SUPPORTED_CHANNEL_TYPES = ['webhook', 'discord', 'slack', 'email'] as const;
+type SupportedChannelType = (typeof SUPPORTED_CHANNEL_TYPES)[number];
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const HTTP_RE = /^https?:\/\//i;
+
+// Only the two non-secret fields oo-workers consumes are typed; the rest
+// of the SaaS config (bot_token, account_sid, …) is intentionally never
+// referenced so it cannot leak into the import payload.
+interface SaaSChannel {
+  name?: string;
+  type?: string;
+  config?: { email?: unknown; webhook_url?: unknown };
+}
+
 interface SaaSExport {
   monitors?: Array<Record<string, unknown>>;
   api_checks?: Array<Record<string, unknown>>;
   heartbeats?: unknown[];
   suites?: SaaSSuite[];
-  alert_channels?: unknown[];
+  alert_channels?: SaaSChannel[];
   status_pages?: unknown[];
   incidents?: unknown[];
 }
@@ -133,14 +162,44 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
     });
   }
 
+  // alert_channels → channels. Secret-safe: only config.email /
+  // config.webhook_url are ever read (see header). Unsupported types
+  // (teams/telegram/sms) and missing/invalid endpoints are skipped.
+  const channels: ImportPayload['channels'] = [];
+  let channelsSkipped = 0;
+  for (const ch of src.alert_channels ?? []) {
+    const type = ch.type;
+    if (!ch.name || !type || !(SUPPORTED_CHANNEL_TYPES as readonly string[]).includes(type)) {
+      channelsSkipped++;
+      continue;
+    }
+    if (type === 'email') {
+      const to = typeof ch.config?.email === 'string' ? ch.config.email.trim() : '';
+      if (!EMAIL_RE.test(to)) {
+        channelsSkipped++;
+        continue;
+      }
+      channels.push({ name: ch.name, type: 'email', config: { to } });
+    } else {
+      const u = typeof ch.config?.webhook_url === 'string' ? ch.config.webhook_url.trim() : '';
+      if (!HTTP_RE.test(u)) {
+        channelsSkipped++;
+        continue;
+      }
+      channels.push({ name: ch.name, type: type as SupportedChannelType, config: { url: u } });
+    }
+  }
+
   return {
-    payload: { version: 1, urlMonitors, apiChecks, qaProjects },
+    payload: { version: 1, urlMonitors, apiChecks, qaProjects, channels },
     skipped: {
       heartbeats: src.heartbeats?.length ?? 0,
       // suites NOT brought across (no inline scripts / malformed) — a
       // re-export with `obs export --include-scripts` recovers them.
       suites: suitesSkipped,
-      alert_channels: src.alert_channels?.length ?? 0,
+      // channels NOT brought across: unsupported type (teams/telegram/
+      // sms) or missing/invalid endpoint.
+      alert_channels: channelsSkipped,
       status_pages: src.status_pages?.length ?? 0,
       incidents: src.incidents?.length ?? 0,
     },
@@ -159,6 +218,7 @@ if (import.meta.main) {
   console.log(`  urlMonitors: ${payload.urlMonitors.length}`);
   console.log(`  apiChecks:   ${payload.apiChecks.length}`);
   console.log(`  qaProjects:  ${payload.qaProjects.length}`);
+  console.log(`  channels:    ${payload.channels.length}`);
   console.log(
     `  skipped:     ${Object.entries(skipped)
       .map(([k, v]) => `${k}=${v}`)
@@ -168,6 +228,12 @@ if (import.meta.main) {
     console.log(
       `  ⚠ ${skipped.suites} QA suite(s) skipped (no inline scripts). ` +
         `Re-run the SaaS export with \`obs export --include-scripts\` to bring them across.`,
+    );
+  }
+  if (skipped.alert_channels > 0) {
+    console.log(
+      `  ⚠ ${skipped.alert_channels} alert channel(s) skipped ` +
+        `(unsupported type — teams/telegram/sms — or missing/invalid endpoint).`,
     );
   }
 }

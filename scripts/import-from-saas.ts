@@ -15,14 +15,17 @@
  * Auth: --key <oo_…> or OO_IMPORT_KEY env (an API key with write scope —
  * mint one with scripts/create-api-key.ts). Not needed for --dry-run.
  *
- * Carries HTTP monitors + API checks across. SaaS QA suites, alert
- * channels, status pages, heartbeats and incidents are reported as
- * skipped, not transferred — full parity is a separate follow-up.
+ * Carries across: HTTP monitors, API checks, QA suites (with inline
+ * scripts), and alert channels of a supported type. Whatever can't be
+ * brought across — status pages, heartbeats, incidents (no self-host
+ * import yet), plus scriptless suites and unsupported/invalid channels
+ * — is reported with a count, never silently dropped.
  *
  * Re-running is NOT idempotent and NOT an upsert. There is no unique
- * constraint on monitor names, so /api/import happily creates duplicates
- * on a second run (it does not skip or reconcile). This script does a
- * pre-flight name-collision check against the target and refuses to post
+ * constraint on names, so /api/import happily creates duplicates on a
+ * second run (it does not skip or reconcile) — for channels a duplicate
+ * means double-alerting on every outage. This script does a pre-flight
+ * name-collision check (monitors AND channels) and refuses to post
  * colliding names unless --allow-duplicates is passed.
  */
 
@@ -94,11 +97,11 @@ async function main() {
   const notTransferred = Object.entries(skipped).filter(([, n]) => n > 0);
 
   console.log(
-    `adapted: urlMonitors=${payload.urlMonitors.length} apiChecks=${payload.apiChecks.length} qaProjects=${payload.qaProjects.length}`,
+    `adapted: urlMonitors=${payload.urlMonitors.length} apiChecks=${payload.apiChecks.length} qaProjects=${payload.qaProjects.length} channels=${payload.channels.length}`,
   );
   if (notTransferred.length) {
     console.log(
-      `not transferred (no self-host import yet): ${notTransferred
+      `not brought across (unsupported, invalid, or no self-host import yet): ${notTransferred
         .map(([k, n]) => `${k}=${n}`)
         .join(', ')}`,
     );
@@ -116,18 +119,28 @@ async function main() {
 
   // Pre-flight: /api/import has no unique-name constraint, so re-running
   // duplicates rather than skipping. Refuse colliding names up front.
-  const listRes = await fetch(`${url}/api/monitors`, {
-    headers: { authorization: `Bearer ${key}` },
-  });
+  const [listRes, chRes] = await Promise.all([
+    fetch(`${url}/api/monitors`, { headers: { authorization: `Bearer ${key}` } }),
+    fetch(`${url}/api/channels`, { headers: { authorization: `Bearer ${key}` } }),
+  ]);
   if (listRes.ok) {
     const existing = (await listRes.json()) as Record<string, Array<{ name: string }>>;
+    // /api/channels deliberately omits the secret URL, so the only
+    // collision key available is the channel name — but a duplicate
+    // channel means double-alerting on every outage forever, so this
+    // guard matters more than the monitor one.
+    const existingChannels = chRes.ok ? ((await chRes.json()) as Array<{ name: string }>) : [];
     const have = new Set([
       ...(existing.url ?? []).map((m) => `url:${m.name}`),
       ...(existing.api ?? []).map((m) => `api:${m.name}`),
+      ...existingChannels.map((ch) => `channel:${ch.name}`),
     ]);
     const collisions = [
       ...payload.urlMonitors.filter((m) => have.has(`url:${m.name}`)).map((m) => `url ${m.name}`),
       ...payload.apiChecks.filter((m) => have.has(`api:${m.name}`)).map((m) => `api ${m.name}`),
+      ...payload.channels
+        .filter((ch) => have.has(`channel:${ch.name}`))
+        .map((ch) => `channel ${ch.name}`),
     ];
     if (collisions.length && !allowDuplicates) {
       console.error(
@@ -163,9 +176,12 @@ async function main() {
     qa: number;
     tcp: number;
     udp: number;
+    channels: number;
     skipped?: string[];
   };
-  console.log(`imported: url=${result.url} api=${result.api}`);
+  console.log(
+    `imported: url=${result.url} api=${result.api} qa=${result.qa} channels=${result.channels}`,
+  );
 
   // The pre-flight handles re-import collisions; anything here is a
   // per-item server-side creation error (bad field, validation, etc.).
