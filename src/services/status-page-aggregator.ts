@@ -212,9 +212,23 @@ async function summarizeMonitor(type: MonitorType, id: number): Promise<MonitorS
   };
 }
 
+interface PublicIncidentUpdate {
+  severity: string;
+  body: string; // RAW markdown — rendered safely at HTML render time
+  createdAt: string;
+}
+export interface PublicIncident {
+  id: number;
+  title: string;
+  severity: string;
+  resolvedAt: string | null;
+  updates: PublicIncidentUpdate[];
+}
+
 export interface StatusPageSummary {
   page: { slug: string; title: string; description: string | null };
   monitors: MonitorSummary[];
+  incidents: PublicIncident[]; // active + resolved-within-24h, render order
   overall: DayState; // worst of all monitors
   generatedAt: string;
 }
@@ -229,6 +243,19 @@ export async function summarizeStatusPage(slug: string): Promise<StatusPageSumma
     bindings.map((b) => summarizeMonitor(b.monitorType, b.monitorId)),
   );
   const monitors = summaries.filter((m): m is MonitorSummary => m !== null);
+
+  const { incidentRepo } = await import('../db/repositories/incident.repo.ts');
+  const incidents: PublicIncident[] = (await incidentRepo.forPublic(page.id)).map((i) => ({
+    id: i.id,
+    title: i.title,
+    severity: i.severity,
+    resolvedAt: i.resolvedAt ? i.resolvedAt.toISOString() : null,
+    updates: i.updates.map((u) => ({
+      severity: u.severity,
+      body: u.body,
+      createdAt: u.createdAt.toISOString(),
+    })),
+  }));
   const overall: DayState = monitors.some((m) => m.currentStatus === 'down')
     ? 'down'
     : monitors.every((m) => m.currentStatus === 'up')
@@ -239,6 +266,7 @@ export async function summarizeStatusPage(slug: string): Promise<StatusPageSumma
   return {
     page: { slug: page.slug, title: page.title, description: page.description },
     monitors,
+    incidents,
     overall,
     generatedAt: new Date().toISOString(),
   };

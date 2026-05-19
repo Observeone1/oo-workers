@@ -41,3 +41,7 @@ bun scripts/tls-cert-test.ts
 # rows must NOT alert, transition rows must). Mutates the integration
 # DB with unique names + finally cleanup.
 bun scripts/qa-alerting-test.ts
+# Incident markdown→HTML safety — the only path that emits operator text
+# onto the public unauthenticated status page; pure, anti-vacuous (XSS
+# corpus must be neutralised AND the safe subset must still work).
+bun scripts/incident-render-test.ts

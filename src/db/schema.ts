@@ -499,3 +499,40 @@ export const statusPageMonitors = pgTable(
     index('idx_status_page_monitors_monitor').on(t.monitorType, t.monitorId),
   ],
 );
+
+// Operator-authored incident timeline (migration 0017). `severity` is
+// denormalised from the latest incident_update. `incident_updates.body`
+// is RAW markdown — rendered to safe HTML at request time, never stored
+// as HTML (see src/services/incident-render.ts).
+export const incidents = pgTable(
+  'incidents',
+  {
+    id: serial('id').primaryKey(),
+    statusPageId: integer('status_page_id')
+      .notNull()
+      .references(() => statusPages.id, { onDelete: 'cascade' }),
+    title: varchar('title', { length: 255 }).notNull(),
+    severity: varchar('severity', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('idx_incidents_status_page_id').on(t.statusPageId),
+    index('idx_incidents_resolved_at').on(t.resolvedAt),
+  ],
+);
+
+export const incidentUpdates = pgTable(
+  'incident_updates',
+  {
+    id: serial('id').primaryKey(),
+    incidentId: integer('incident_id')
+      .notNull()
+      .references(() => incidents.id, { onDelete: 'cascade' }),
+    severity: varchar('severity', { length: 16 }).notNull(),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_incident_updates_incident_id').on(t.incidentId)],
+);

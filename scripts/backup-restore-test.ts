@@ -48,6 +48,8 @@ const CONFIG_TABLES = [
   'monitor_regions',
   'status_pages',
   'status_page_monitors',
+  'incidents',
+  'incident_updates',
 ];
 const EXEC_TABLES = [
   'url_monitor_executions',
@@ -141,6 +143,13 @@ async function seed() {
   await db
     .insert(s.statusPageMonitors)
     .values({ statusPageId: sp.id, monitorType: 'url', monitorId: um.id });
+  const [inc] = await db
+    .insert(s.incidents)
+    .values({ statusPageId: sp.id, title: 'br-incident', severity: 'investigating' })
+    .returning();
+  await db
+    .insert(s.incidentUpdates)
+    .values({ incidentId: inc.id, severity: 'investigating', body: 'seed **body**' });
 
   // Every execution table: one recent + one >120d old.
   for (const t of [NEW, OLD]) {

@@ -1362,3 +1362,76 @@ td.artifacts {
 .artifact-thumb img:hover {
   border-color: var(--accent);
 }
+
+/* ---------- Incidents ---------- */
+.incidents-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.incidents-toolbar select {
+  margin-left: 8px;
+}
+.sev-pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  vertical-align: middle;
+}
+.sev-pill.sev-investigating {
+  background: #d97706;
+}
+.sev-pill.sev-identified {
+  background: #ea580c;
+}
+.sev-pill.sev-monitoring {
+  background: #65a30d;
+}
+.sev-pill.sev-resolved {
+  background: var(--up, #16a34a);
+}
+.incident-title-form {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 20px;
+}
+.incident-title-form input {
+  flex: 1;
+}
+.incident-thread {
+  margin: 8px 0 24px;
+}
+.incident-thread .upd {
+  border-left: 2px solid var(--border);
+  padding: 4px 0 4px 14px;
+  margin-bottom: 14px;
+}
+.incident-thread .upd-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.incident-thread .upd-meta time {
+  color: var(--muted);
+  font-size: 12px;
+}
+.incident-thread .upd-raw {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font:
+    13px/1.5 ui-monospace,
+    monospace;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0;
+}
