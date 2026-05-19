@@ -89,6 +89,8 @@ const TABLES: TableSpec[] = [
   { table: schema.monitorRegions, serial: false },
   { table: schema.statusPages, serial: true },
   { table: schema.statusPageMonitors, serial: false },
+  { table: schema.incidents, serial: true },
+  { table: schema.incidentUpdates, serial: true },
   { table: schema.urlMonitorExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.apiExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.tcpExecutions, serial: true, timeCol: 'startTime' },

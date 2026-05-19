@@ -250,3 +250,74 @@ export const createKey = async (
 
 export const revokeKey = (id: number) =>
   fetch(`/api/keys/${id}/revoke`, { ...COMMON, method: 'POST' });
+
+// ---------- Incidents (status-page timeline) ----------
+
+export type Severity = 'investigating' | 'identified' | 'monitoring' | 'resolved';
+
+export interface IncidentLite {
+  id: number;
+  statusPageId: number;
+  title: string;
+  severity: Severity;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface IncidentDetail extends IncidentLite {
+  updates: Array<{ id: number; severity: Severity; body: string; createdAt: string }>;
+}
+
+export const getIncidents = async (
+  statusPageId: number,
+  filter: 'all' | 'active' | 'resolved' = 'all',
+): Promise<IncidentLite[]> =>
+  (await fetch(`/api/incidents?status_page_id=${statusPageId}&filter=${filter}`, COMMON)).json();
+
+export const getIncident = async (id: number): Promise<IncidentDetail> =>
+  (await fetch(`/api/incidents/${id}`, COMMON)).json();
+
+export const createIncident = async (data: {
+  statusPageId: number;
+  title: string;
+  severity: Severity;
+  body: string;
+}): Promise<{ res: Response; data: IncidentLite | { error: string } }> => {
+  const res = await fetch('/api/incidents', {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      status_page_id: data.statusPageId,
+      title: data.title,
+      severity: data.severity,
+      body: data.body,
+    }),
+  });
+  return { res, data: await res.json() };
+};
+
+export const addIncidentUpdate = async (
+  id: number,
+  data: { severity: Severity; body: string },
+): Promise<{ res: Response; data: unknown }> => {
+  const res = await fetch(`/api/incidents/${id}/updates`, {
+    ...COMMON,
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  return { res, data: await res.json().catch(() => ({})) };
+};
+
+export const updateIncidentTitle = (id: number, title: string) =>
+  fetch(`/api/incidents/${id}`, {
+    ...COMMON,
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+
+export const deleteIncident = (id: number) =>
+  fetch(`/api/incidents/${id}`, { ...COMMON, method: 'DELETE' });

@@ -10,7 +10,53 @@
  * without a server-pushed update path.
  */
 
-import type { DayState, StatusPageSummary } from './status-page-aggregator.ts';
+import type { DayState, PublicIncident, StatusPageSummary } from './status-page-aggregator.ts';
+import { renderIncidentMarkdown } from './incident-render.ts';
+
+const SEV_LABEL: Record<string, string> = {
+  investigating: 'Investigating',
+  identified: 'Identified',
+  monitoring: 'Monitoring',
+  resolved: 'Resolved',
+};
+
+function utc(ts: string): string {
+  return new Date(ts).toUTCString();
+}
+
+function renderIncident(i: PublicIncident): string {
+  const sev = SEV_LABEL[i.severity] ? i.severity : 'investigating';
+  const latest = i.updates[i.updates.length - 1];
+  const thread = i.updates
+    .map(
+      (u) =>
+        `<div class="upd"><div class="upd-meta"><span class="sev-pill sev-${
+          SEV_LABEL[u.severity] ? u.severity : 'investigating'
+        }">${esc(SEV_LABEL[u.severity] ?? u.severity)}</span><time>${esc(utc(u.createdAt))}</time></div>` +
+        // renderIncidentMarkdown returns already-safe HTML — the single
+        // intended unescaped path on this page (see incident-render.ts).
+        `<div class="upd-body">${renderIncidentMarkdown(u.body)}</div></div>`,
+    )
+    .join('');
+  return `
+      <div class="incident sev-${sev}">
+        <div class="incident-head">
+          <span class="sev-pill sev-${sev}">${esc(SEV_LABEL[sev])}</span>
+          <span class="incident-title">${esc(i.title)}</span>
+        </div>
+        ${
+          latest
+            ? `<div class="upd-body latest">${renderIncidentMarkdown(latest.body)}</div>
+        <div class="incident-when">${esc(utc(latest.createdAt))}</div>`
+            : ''
+        }
+        ${
+          i.updates.length > 1
+            ? `<details><summary>Full timeline (${i.updates.length} updates)</summary>${thread}</details>`
+            : ''
+        }
+      </div>`;
+}
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(
@@ -39,7 +85,7 @@ function bar(state: DayState, dayIdxFromNow: number): string {
 }
 
 export function renderStatusPageHtml(summary: StatusPageSummary): string {
-  const { page, monitors, overall, generatedAt } = summary;
+  const { page, monitors, incidents, overall, generatedAt } = summary;
   const headline = overallHeadline(overall);
   return `<!doctype html>
 <html lang="en">
@@ -81,6 +127,49 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
     .overall.up { background: color-mix(in srgb, var(--up) 12%, transparent); }
     .overall.down { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
     .overall.unknown { background: var(--panel-2); color: var(--muted); }
+    .incidents { margin: 0 0 28px; }
+    .incident {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+    .incident.sev-investigating { border-left-color: #d97706; }
+    .incident.sev-identified { border-left-color: #ea580c; }
+    .incident.sev-monitoring { border-left-color: #65a30d; }
+    .incident.sev-resolved { border-left-color: var(--up); }
+    .incident-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .incident-title { font-weight: 600; font-size: 15px; }
+    .sev-pill {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      white-space: nowrap;
+      color: #fff;
+    }
+    .sev-pill.sev-investigating { background: #d97706; }
+    .sev-pill.sev-identified { background: #ea580c; }
+    .sev-pill.sev-monitoring { background: #65a30d; }
+    .sev-pill.sev-resolved { background: var(--up); }
+    .upd-body { font-size: 14px; }
+    .upd-body.latest { margin: 4px 0 2px; }
+    .upd-body p { margin: 6px 0; }
+    .upd-body code {
+      font-family: ui-monospace, monospace;
+      background: var(--panel-2);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .incident-when { color: var(--muted); font-size: 12px; }
+    .incident details { margin-top: 10px; }
+    .incident summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .incident .upd { border-top: 1px solid var(--border); padding: 10px 0 0; margin-top: 10px; }
+    .incident .upd-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .incident .upd-meta time { color: var(--muted); font-size: 12px; }
     .monitor {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -155,6 +244,12 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
       <span>${headline.emoji}</span>
       <span>${esc(headline.label)}</span>
     </div>
+
+    ${
+      incidents.length > 0
+        ? `<div class="incidents">${incidents.map(renderIncident).join('')}</div>`
+        : ''
+    }
 
     ${
       monitors.length === 0

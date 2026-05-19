@@ -18,6 +18,7 @@ import { renderDetail } from './detail';
 import { renderRegions } from './regions';
 import { renderChannels } from './channels';
 import { renderStatusPages } from './status-pages';
+import { renderIncidents } from './incidents';
 import { renderKeys } from './keys';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
@@ -69,7 +70,7 @@ async function refreshRegionBadge() {
 };
 
 function setActiveNav(
-  route: 'list' | 'regions' | 'channels' | 'status-pages' | 'keys' | 'docs' | null,
+  route: 'list' | 'regions' | 'channels' | 'status-pages' | 'incidents' | 'keys' | 'docs' | null,
 ) {
   document.querySelectorAll<HTMLAnchorElement>('.header-nav .nav-link').forEach((a) => {
     a.classList.toggle('active', route !== null && a.dataset.route === route);
@@ -91,6 +92,11 @@ function route() {
   if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
     setActiveNav('status-pages');
     renderStatusPages();
+    return;
+  }
+  if (h === '#/incidents' || h.startsWith('#/incidents/')) {
+    setActiveNav('incidents');
+    renderIncidents();
     return;
   }
   if (h === '#/keys' || h.startsWith('#/keys/')) {
