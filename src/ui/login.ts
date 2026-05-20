@@ -35,7 +35,7 @@ export function renderLogin(opts: { error?: string } = {}) {
 
   const main = $('#main');
   main.innerHTML = `
-    <div class="auth-shell">
+    <div class="auth-shell" data-testid="login-shell">
       <div class="auth-stage">
         <div class="auth-brand">
           <span class="brand-mark" aria-hidden="true"></span>

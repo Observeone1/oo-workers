@@ -33,7 +33,8 @@ test('01 login', async ({ browser }) => {
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
   await page.goto('/');
-  await expect(page.locator('.login-card')).toBeVisible();
+  // v2 redesign replaced .login-card with .auth-shell (now testid-anchored).
+  await expect(page.getByTestId('login-shell')).toBeVisible();
   await shot(page, '01-login.png');
   await ctx.close();
 });
