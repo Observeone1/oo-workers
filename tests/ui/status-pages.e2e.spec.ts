@@ -30,13 +30,21 @@ test('create page, bind monitor, view public render, delete', async ({ page, bro
   // Auto-redirect into the editor at #/status-pages/<id>. Editor form id
   // is stable (#status-page-edit-form).
   await page.waitForSelector('#status-page-edit-form', { timeout: 10_000 });
-  // Pick the first URL monitor.
-  await page
+  // Wait for at least one url: checkbox to actually render before
+  // attempting to check it — otherwise .first().check() may resolve
+  // before the form is populated, silently selecting nothing.
+  const urlCheckbox = page
     .locator('#status-page-edit-form input[name="m"][value^="url:"]')
-    .first()
-    .check();
+    .first();
+  await urlCheckbox.waitFor({ state: 'attached', timeout: 10_000 });
+  await urlCheckbox.check();
+  // Hard assert the checkbox is actually checked before submitting.
+  await expect(urlCheckbox).toBeChecked();
   await page.locator('#status-page-edit-form button[type="submit"]').click();
   await expect(page.getByTestId('banner-ok')).toBeVisible({ timeout: 5000 });
+  // banner-ok could appear with 0 monitors submitted; the banner text
+  // includes the count. Assert "1 monitor" landed before going public.
+  await expect(page.getByTestId('banner-ok')).toContainText(/1 monitor/i);
 
   // Fetch the public page in an UNAUTHENTICATED context — proves no auth required.
   const anonContext = await browser.newContext();
