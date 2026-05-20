@@ -24,9 +24,9 @@ test('a cookie-session user (no API key) can create and delete a monitor', async
   const page = await ctx.newPage();
 
   await page.goto('/');
-  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
-  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
-  await page.locator('.login-card button[type="submit"]').click();
+  await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
+  await page.getByTestId('login-card').locator('input[name="password"]').fill(E2E_USER.password);
+  await page.getByTestId('login-submit').click();
   await waitForList(page);
 
   const api = ctx.request; // shares the context cookie, sends no Bearer

@@ -28,9 +28,9 @@ test('create a key in the UI, use it, revoke it, and confirm it 401s', async ({
 
   // Sign in (cookie session), then open the Keys page.
   await page.goto('/');
-  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
-  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
-  await page.locator('.login-card button[type="submit"]').click();
+  await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
+  await page.getByTestId('login-card').locator('input[name="password"]').fill(E2E_USER.password);
+  await page.getByTestId('login-submit').click();
   await waitForList(page);
 
   await page.locator('#keys-link').click();
