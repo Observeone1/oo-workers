@@ -30,9 +30,9 @@ test('add dialog creates a TCP monitor with payload + expect-banner', async ({
   const name = `e2e-tcpb-${uniqueSuffix()}`;
   await page.goto('/');
   await waitForList(page);
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('tcp');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId('add-monitor-type-tile-tcp').click();
   await expect(page.locator('#tcp-row')).toBeVisible();
 
   await page.locator('#add-form input[name="name"]').fill(name);
@@ -41,10 +41,10 @@ test('add dialog creates a TCP monitor with payload + expect-banner', async ({
   await page.locator('#add-form input[name="tcp_payload_hex"]').fill('50494e470d0a');
   await page.locator('#add-form input[name="tcp_expect_banner"]').fill('PONG');
   await shot('tcp_banner_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="tcp"]').click();
+  await page.getByTestId('monitors-tab-tcp').click();
   const row = page.locator('tr[data-open][data-type="tcp"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   await shot('tcp_banner_list');
