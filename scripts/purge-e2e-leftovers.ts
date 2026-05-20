@@ -31,7 +31,25 @@
  * `bun run purge:e2e:all` (full).
  */
 
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import { sql as pg } from '../src/config/db.ts';
+
+// Mirrors src/scheduler.ts — every BullMQ queue the master worker uses.
+// Regional list keys (oo:jobs:<slug>) live outside BullMQ — see below.
+const BULLMQ_QUEUES = [
+  'url-monitor',
+  'api-check',
+  'qa-project',
+  'tcp-monitor',
+  'udp-monitor',
+  'db-monitor',
+  'tls-monitor',
+] as const;
+
+// src/scheduler.ts:regionalListKey() pattern. Agents long-poll these
+// raw Redis lists; if regions get purged the lists become orphan.
+const REGIONAL_LIST_KEY_PATTERN = 'oo:jobs:*';
 
 const NAME_PREFIXES = ['e2e-', 'qa-e2e-', 'spotcheck-'] as const;
 const SLUG_PREFIXES = ['e2e-', 'qa-e2e-', 'qg-', 'spotcheck-'] as const;
@@ -77,6 +95,12 @@ interface PurgeResult {
   regions: number;
   status_pages: number;
   total: number;
+  // BullMQ queues obliterated (`--all` only). When the DB is wiped but
+  // Redis isn't, queued jobs keep referencing dead IDs → FK insert
+  // failures in qa_test_executions. Flushing both keeps them in sync.
+  bullmq_queues_flushed: number;
+  // Raw Redis lists (oo:jobs:<region-slug>) deleted (`--all` only).
+  regional_lists_flushed: number;
 }
 
 async function deletePrefixed(
@@ -89,6 +113,57 @@ async function deletePrefixed(
     [patterns as unknown as string[]],
   )) as { length: number };
   return r.length;
+}
+
+/**
+ * Flush every BullMQ queue + regional Redis list the worker dispatches
+ * to. Without this, jobs queued before the DB purge keep firing with
+ * dead IDs (FK insert failure spam in qa_test_executions etc.).
+ *
+ * `obliterate({ force: true })` clears all job states (waiting, delayed,
+ * active, completed, failed) AND any repeatable schedulers — true reset.
+ *
+ * Returns { queues, regionalLists } so the CLI can report what got wiped.
+ */
+async function flushRedisQueues(): Promise<{ queues: number; regionalLists: number }> {
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+
+  let queues = 0;
+  let regionalLists = 0;
+  try {
+    // BullMQ queues — one Queue() handle per name, obliterate, close.
+    for (const name of BULLMQ_QUEUES) {
+      const q = new Queue(name, { connection });
+      try {
+        await q.obliterate({ force: true });
+        queues++;
+      } finally {
+        await q.close();
+      }
+    }
+    // Regional list keys (oo:jobs:<slug>) — non-BullMQ raw Redis lists.
+    // SCAN keeps the call non-blocking on large Redis instances.
+    let cursor = '0';
+    const toDelete: string[] = [];
+    do {
+      const [next, keys] = await connection.scan(
+        cursor,
+        'MATCH',
+        REGIONAL_LIST_KEY_PATTERN,
+        'COUNT',
+        100,
+      );
+      cursor = next;
+      toDelete.push(...keys);
+    } while (cursor !== '0');
+    if (toDelete.length > 0) {
+      regionalLists = await connection.del(...toDelete);
+    }
+  } finally {
+    await connection.quit();
+  }
+  return { queues, regionalLists };
 }
 
 async function truncateAll(table: string): Promise<number> {
@@ -119,6 +194,8 @@ export async function purgeE2eLeftovers(opts: { all?: boolean } = {}): Promise<P
     regions: 0,
     status_pages: 0,
     total: 0,
+    bullmq_queues_flushed: 0,
+    regional_lists_flushed: 0,
   };
 
   if (all) {
@@ -155,6 +232,19 @@ export async function purgeE2eLeftovers(opts: { all?: boolean } = {}): Promise<P
     result.alert_channels = ch;
     result.regions = rg;
     result.status_pages = sp;
+
+    // Flush BullMQ + regional lists AFTER the DB wipe. If we did it
+    // before, the scheduler's next tick could re-enqueue jobs for
+    // monitors that hadn't been deleted yet. After: DB is empty, no
+    // tick can re-enqueue, the flush is permanent.
+    const r = await flushRedisQueues().catch((e) => {
+      console.error(
+        `[purge-e2e --all] redis flush failed (continuing): ${e instanceof Error ? e.message : e}`,
+      );
+      return { queues: 0, regionalLists: 0 };
+    });
+    result.bullmq_queues_flushed = r.queues;
+    result.regional_lists_flushed = r.regionalLists;
   } else {
     const nameDeletes = await Promise.all(
       PARENT_NAME_TABLES.map((t) => deletePrefixed(t, 'name', NAME_PATTERNS).catch(() => 0)),
@@ -199,13 +289,13 @@ if (import.meta.main) {
     const r = await purgeE2eLeftovers({ all });
     const ms = Date.now() - t0;
     const tag = `purge-e2e ${all ? '--all' : '(prefixed)'}`;
-    if (r.total === 0) {
-      console.log(`[${tag}] no rows to clear (${ms}ms)`);
+    const parts = (Object.entries(r) as Array<[keyof PurgeResult, number | string]>)
+      .filter(([k, v]) => k !== 'total' && k !== 'mode' && typeof v === 'number' && v > 0)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ');
+    if (r.total === 0 && !parts) {
+      console.log(`[${tag}] nothing to clear (${ms}ms)`);
     } else {
-      const parts = (Object.entries(r) as Array<[keyof PurgeResult, number | string]>)
-        .filter(([k, v]) => k !== 'total' && k !== 'mode' && typeof v === 'number' && v > 0)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(' ');
       console.log(`[${tag}] cleared ${r.total} rows in ${ms}ms — ${parts}`);
     }
     process.exit(0);
