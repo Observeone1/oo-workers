@@ -260,6 +260,165 @@ check(
 );
 check('empty input → no warnings, no throw', adaptSaaSExport({}).warnings.length === 0);
 
+// 9. CLI v1.25.0 surrogate-id remap (Roadmap 3.3). The adapter must:
+//    - carry `id` through from monitors/api_checks/alert_channels,
+//    - normalize SaaS `channel_ids` → `channelRefs` on monitors,
+//    - emit `statusPages[]` with `monitors[].ref` resolved from
+//      `status_pages[].monitors[].monitor_id`,
+//    - normalize `monitor_type: 'api_check'` → `'api'`.
+//    Server-side resolution to real DB ids is covered separately by the
+//    live-server gating script (scripts/import-remap-test.ts).
+const V125 = adaptSaaSExport({
+  monitors: [
+    { id: 100, name: 'home', url: 'https://x.io', timeout_ms: 8000, channel_ids: [10, 11] },
+  ],
+  api_checks: [
+    {
+      id: 200,
+      name: 'health',
+      url: 'https://x.io/h',
+      method: 'GET',
+      cron_expression: '*/2 * * * *',
+      assertions: [],
+      channel_ids: [11],
+    },
+  ],
+  alert_channels: [
+    { id: 10, name: 'ops-email', type: 'email', config: { email: 'ops@x.io' } },
+    {
+      id: 11,
+      name: 'slack-alerts',
+      type: 'slack',
+      config: { webhook_url: 'https://hooks.slack.com/aaa' },
+    },
+  ],
+  status_pages: [
+    {
+      slug: 'public',
+      name: 'Public status',
+      monitors: [
+        { monitor_type: 'url', monitor_id: 100, display_name: 'Home' },
+        { monitor_type: 'api_check', monitor_id: 200, display_name: 'Health' },
+      ],
+    },
+  ],
+});
+const v125Url = V125.payload.urlMonitors[0];
+const v125Api = V125.payload.apiChecks[0];
+const v125Email = V125.payload.channels.find((c) => c.name === 'ops-email');
+const v125Slack = V125.payload.channels.find((c) => c.name === 'slack-alerts');
+check(
+  'v1.25.0 monitor id + channelRefs carried through',
+  v125Url.id === 100 && JSON.stringify(v125Url.channelRefs) === JSON.stringify([10, 11]),
+  JSON.stringify(v125Url),
+);
+check(
+  'v1.25.0 api_check id + channelRefs carried through',
+  v125Api.id === 200 && JSON.stringify(v125Api.channelRefs) === JSON.stringify([11]),
+  JSON.stringify(v125Api),
+);
+check(
+  'v1.25.0 channel ids carried through',
+  v125Email?.id === 10 && v125Slack?.id === 11,
+  JSON.stringify({ email: v125Email, slack: v125Slack }),
+);
+check(
+  'v1.25.0 statusPages emitted with monitor refs + type normalized',
+  V125.payload.statusPages?.length === 1 &&
+    V125.payload.statusPages[0].slug === 'public' &&
+    V125.payload.statusPages[0].title === 'Public status' &&
+    V125.payload.statusPages[0].monitors.length === 2 &&
+    V125.payload.statusPages[0].monitors[0].ref === 100 &&
+    V125.payload.statusPages[0].monitors[0].type === 'url' &&
+    V125.payload.statusPages[0].monitors[1].ref === 200 &&
+    V125.payload.statusPages[0].monitors[1].type === 'api',
+  JSON.stringify(V125.payload.statusPages),
+);
+
+// 9b. NEGATIVE CONTROL — anti-vacuous proof the remap is *gated*, not
+//     always-on. A pre-1.25.0 SaaS export with NO id fields must:
+//     - import monitors/channels/api_checks normally (no regression),
+//     - emit NO `id` / `channelRefs` keys (no fabrication),
+//     - omit `statusPages` entirely (since no monitor_id can resolve).
+//     If the new code ever ran always-on (forgot the `id !== undefined`
+//     guard) this case would FAIL — a passing v9 + failing v9b means the
+//     gate has rotted.
+const PRE_125 = adaptSaaSExport({
+  monitors: [{ name: 'home', url: 'https://x.io', timeout_ms: 1 }],
+  api_checks: [{ name: 'health', url: 'https://x.io/h', method: 'GET', assertions: [] }],
+  alert_channels: [{ name: 'ops-email', type: 'email', config: { email: 'a@b.c' } }],
+  status_pages: [
+    {
+      slug: 'public',
+      name: 'Public',
+      // monitors[].monitor_id present, but no id on the monitor in the
+      // bundle — refs can't resolve → page must be skipped, not made.
+      monitors: [{ monitor_type: 'url', monitor_id: 100 }],
+    },
+  ],
+});
+const pre = PRE_125.payload;
+check(
+  'pre-1.25.0 export: no id field leaks into urlMonitors',
+  pre.urlMonitors[0].id === undefined && !('channelRefs' in pre.urlMonitors[0]),
+  JSON.stringify(pre.urlMonitors[0]),
+);
+check(
+  'pre-1.25.0 export: no id field leaks into apiChecks',
+  pre.apiChecks[0].id === undefined && !('channelRefs' in pre.apiChecks[0]),
+  JSON.stringify(pre.apiChecks[0]),
+);
+check(
+  'pre-1.25.0 export: no id field leaks into channels',
+  pre.channels[0].id === undefined,
+  JSON.stringify(pre.channels[0]),
+);
+// On status_pages: the adapter passes them through (responsibility for
+// dangle-detection lives server-side — see #9d's rationale). Here we
+// only assert that NO surrogate id was fabricated into the bundle —
+// any monitor refs in the page MUST match what was in the SaaS export
+// verbatim, not invented ones.
+check(
+  'pre-1.25.0 export: adapter does not fabricate surrogate ids',
+  pre.urlMonitors.every((m) => m.id === undefined) &&
+    pre.apiChecks.every((m) => m.id === undefined) &&
+    pre.channels.every((c) => c.id === undefined),
+  JSON.stringify(pre),
+);
+
+// 9c. status_pages with NO monitors[] section → skipped (an empty status
+//     page is hollow, no value created). Counts toward skipped.status_pages.
+const emptySP = adaptSaaSExport({
+  status_pages: [{ slug: 'lonely', name: 'Lonely' }],
+});
+check(
+  'empty status_page (no monitors) is skipped, not created hollow',
+  emptySP.payload.statusPages === undefined && emptySP.skipped.status_pages === 1,
+  JSON.stringify(emptySP),
+);
+
+// 9d. status_pages whose refs all point at monitors NOT in this bundle
+//     (e.g. partial export). Skipped — server can't wire a dangling ref.
+const danglingSP = adaptSaaSExport({
+  monitors: [{ id: 1, name: 'a', url: 'https://x', timeout_ms: 1 }],
+  status_pages: [
+    {
+      slug: 'dangling',
+      name: 'Dangling',
+      monitors: [{ monitor_type: 'url', monitor_id: 999 /* not in bundle */ }],
+    },
+  ],
+});
+// At the adapter level we DO emit the page+ref unchanged — resolution
+// happens server-side. The dangling ref skip count + warning happen
+// there. This checks the adapter doesn't pre-emptively drop the SP.
+check(
+  'adapter emits status_page even when refs may dangle (resolution is server-side)',
+  danglingSP.payload.statusPages?.length === 1 &&
+    danglingSP.payload.statusPages[0].monitors[0].ref === 999,
+  JSON.stringify(danglingSP),
+);
+
 console.log(
   failed ? '\nimport-from-saas-test: FAILED' : '\nimport-from-saas-test: all checks passed',
 );

@@ -826,12 +826,31 @@ function buildApp(connection: Redis) {
       tcp: 0,
       udp: 0,
       channels: 0,
+      // Two-pass remap (CLI v1.25.0+): bundle-local surrogate ids on
+      // entities let us wire monitor↔channel and status-page↔monitor
+      // bindings AFTER all entities exist. Each row collected below
+      // is a (real-id, channelRefs) tuple for the binding pass.
+      statusPages: 0,
+      channelBindings: 0,
       skipped: [] as string[],
       // Advisories: imported, but won't fully work without operator
       // follow-up. Path-independent (UI import dialog + CLI wrapper both
       // surface this) — NOT counted as skipped, the rows ARE created.
       warnings: [] as string[],
     };
+
+    // Surrogate id (CLI v1.25.0 bundle-local) → real DB id, populated as
+    // we create each entity. Used in the second pass to wire bindings.
+    // For pre-1.25.0 exports the entries simply don't carry an id field
+    // and these maps stay empty — same behavior as before.
+    const urlMonitorIdMap = new Map<number, number>();
+    const apiCheckIdMap = new Map<number, number>();
+    const channelIdMap = new Map<number, number>();
+    // Per-monitor refs collected during the create pass so we don't have
+    // to re-scan the input later. `channelRefs` (if present) are bundle
+    // surrogate ids; resolved in the binding pass.
+    const urlChannelBindings: Array<{ realId: number; refs: number[]; name: string }> = [];
+    const apiChannelBindings: Array<{ realId: number; refs: number[]; name: string }> = [];
 
     for (const u of (body.urlMonitors ?? []) as any[]) {
       try {
@@ -849,6 +868,10 @@ function buildApp(connection: Redis) {
             statusCode: a.statusCode,
           })),
         );
+        if (typeof u.id === 'number') urlMonitorIdMap.set(u.id, m.id);
+        if (Array.isArray(u.channelRefs) && u.channelRefs.length > 0) {
+          urlChannelBindings.push({ realId: m.id, refs: u.channelRefs, name: u.name });
+        }
         created.url++;
       } catch (err) {
         created.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -875,6 +898,10 @@ function buildApp(connection: Redis) {
             value: ass.value ?? null,
           })),
         );
+        if (typeof a.id === 'number') apiCheckIdMap.set(a.id, m.id);
+        if (Array.isArray(a.channelRefs) && a.channelRefs.length > 0) {
+          apiChannelBindings.push({ realId: m.id, refs: a.channelRefs, name: a.name });
+        }
         created.api++;
       } catch (err) {
         created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -953,18 +980,22 @@ function buildApp(connection: Redis) {
         if (!VALID_CHANNEL_TYPES.includes(type)) {
           throw new Error(`type must be one of ${VALID_CHANNEL_TYPES.join(', ')}`);
         }
+        let createdChannel: { id: number } | undefined;
         if (type === 'email') {
           const to = typeof cfg.to === 'string' ? cfg.to.trim() : '';
           if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
             throw new Error('email channel needs a valid config.to address');
           }
-          await alertChannelRepo.create({ name, type, config: { to } });
+          [createdChannel] = await alertChannelRepo.create({ name, type, config: { to } });
         } else {
           const url = typeof cfg.url === 'string' ? cfg.url.trim() : '';
           if (!/^https?:\/\//i.test(url)) {
             throw new Error('channel needs an http(s) config.url');
           }
-          await alertChannelRepo.create({ name, type, config: { url } });
+          [createdChannel] = await alertChannelRepo.create({ name, type, config: { url } });
+        }
+        if (createdChannel && typeof ch.id === 'number') {
+          channelIdMap.set(ch.id, createdChannel.id);
         }
         created.channels++;
       } catch (err) {
@@ -973,13 +1004,101 @@ function buildApp(connection: Redis) {
         );
       }
     }
-    // Monitor→alert-channel routing is not part of the import payload:
-    // every monitor just created has zero channel bindings, so a
-    // migrated monitor alerts nobody until bound. True for ANY import
-    // path (UI dialog or CLI wrapper) — surfaced here so neither flies
-    // blind. (Removed once import carries/remaps bindings — roadmap 3.3.)
+
+    // ── Second pass: wire bindings using the surrogate→real id maps. ──
+    // CLI v1.25.0+ adapter packs `channelRefs` and `statusPages[].monitors`
+    // with bundle-local ids that resolve here. Refs that don't resolve
+    // (e.g. binding to a channel that itself got skipped at creation)
+    // are reported in `skipped` rather than silently dropped.
+    const resolveChannelRefs = (refs: number[], context: string): number[] => {
+      const resolved: number[] = [];
+      for (const r of refs) {
+        const real = channelIdMap.get(r);
+        if (real !== undefined) {
+          resolved.push(real);
+        } else {
+          created.skipped.push(
+            `${context}: channel ref ${r} did not resolve (channel may have been skipped or absent from bundle)`,
+          );
+        }
+      }
+      return resolved;
+    };
+    for (const b of urlChannelBindings) {
+      const ids = resolveChannelRefs(b.refs, `url ${b.name} channel binding`);
+      if (ids.length > 0) {
+        await monitorAlertChannelRepo.set('url', b.realId, ids);
+        created.channelBindings += ids.length;
+      }
+    }
+    for (const b of apiChannelBindings) {
+      const ids = resolveChannelRefs(b.refs, `api ${b.name} channel binding`);
+      if (ids.length > 0) {
+        await monitorAlertChannelRepo.set('api', b.realId, ids);
+        created.channelBindings += ids.length;
+      }
+    }
+
+    // Status pages — CLI v1.25.0+ ships `body.statusPages[]`. Each has a
+    // `monitors[]` of `{ ref, type }`; resolve refs against the
+    // url/api maps (qa/tcp/udp not yet supported as status-page targets
+    // in the CLI export schema). A page whose monitors all fail to
+    // resolve is created with zero bindings — still useful as a shell.
+    for (const sp of (body.statusPages ?? []) as Array<{
+      slug: string;
+      title: string;
+      description: string | null;
+      monitors: Array<{ ref: number; type: 'url' | 'api' }>;
+    }>) {
+      try {
+        // Pre-flight: resolve all refs before creating the page. If the
+        // bundle declared monitor refs but NONE resolved (pre-1.25.0
+        // export, or a partial bundle), creating an empty status page
+        // wouldn't be useful — skip and surface why. Partial resolution
+        // (some refs work, some don't) still creates the page with the
+        // good bindings + per-ref skip notes.
+        const bindings: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
+        const danglingNotes: string[] = [];
+        for (const m of sp.monitors ?? []) {
+          const map = m.type === 'url' ? urlMonitorIdMap : apiCheckIdMap;
+          const real = map.get(m.ref);
+          if (real !== undefined) {
+            bindings.push({ monitorType: m.type, monitorId: real });
+          } else {
+            danglingNotes.push(`${m.type} ref ${m.ref} did not resolve`);
+          }
+        }
+        if ((sp.monitors?.length ?? 0) > 0 && bindings.length === 0) {
+          // All refs dangled. Don't create a hollow shell.
+          created.skipped.push(
+            `status_page ${sp.slug}: all monitor refs dangling (${danglingNotes.join(', ')})`,
+          );
+          continue;
+        }
+        const [page] = await statusPageRepo.create({
+          slug: sp.slug,
+          title: sp.title,
+          description: sp.description,
+        });
+        for (const note of danglingNotes) {
+          created.skipped.push(`status_page ${sp.slug}: ${note}`);
+        }
+        if (bindings.length > 0) await statusPageMonitorRepo.set(page.id, bindings);
+        created.statusPages++;
+      } catch (err) {
+        created.skipped.push(
+          `status_page ${sp.slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // Monitor→alert-channel routing advisory: only when bindings were
+    // NOT supplied. If at least one binding was wired through from the
+    // bundle, the export is "new-style" (CLI v1.25.0+) — no warning.
+    // Pre-1.25.0 imports still get the loud "go bind your channels"
+    // nudge so a half-migrated stack doesn't fly blind.
     const monitorsCreated = created.url + created.api + created.qa + created.tcp + created.udp;
-    if (monitorsCreated > 0) {
+    if (monitorsCreated > 0 && created.channelBindings === 0) {
       created.warnings.push(
         `${monitorsCreated} monitor(s) imported with no alert-channel bindings — ` +
           `they will not alert anyone until you bind a channel to each ` +
