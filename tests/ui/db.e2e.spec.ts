@@ -29,9 +29,9 @@ test('create DB monitor through the dialog (protocol picker)', async ({ page, re
   await waitForList(page);
 
   const name = `e2e-db-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('db');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId('add-monitor-type-tile-db').click();
   await expect(page.locator('#url-row')).toBeHidden();
   await expect(page.locator('#db-row')).toBeVisible();
 
@@ -40,13 +40,13 @@ test('create DB monitor through the dialog (protocol picker)', async ({ page, re
   await page.locator('#add-form input[name="db_host"]').fill('127.0.0.1');
   await page.locator('#add-form input[name="db_port"]').fill('5442');
   await shot('create_db_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="db"]').click();
+  await page.getByTestId('monitors-tab-db').click();
   const row = page.locator('tr[data-open][data-type="db"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
-  await expect(row.locator('.url')).toContainText('postgres 127.0.0.1:5442');
+  await expect(row.getByTestId('monitor-row-target')).toContainText('postgres 127.0.0.1:5442');
   await shot('create_db_list_after');
 
   const list = await (await request.get('/api/monitors')).json();

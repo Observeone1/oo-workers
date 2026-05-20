@@ -119,7 +119,7 @@ export async function renderRegions() {
   const regionCards = regions
     .map(
       (r) => `
-    <article class="region-card${r.online ? '' : ' offline'}" data-region-id="${r.id}" data-slug="${esc(r.slug)}">
+    <article class="region-card${r.online ? '' : ' offline'}" data-region-id="${r.id}" data-slug="${esc(r.slug)}" data-testid="region-card-${esc(r.slug)}">
       <span class="accent-bar"></span>
       <div class="top">
         <div>
@@ -138,7 +138,7 @@ export async function renderRegions() {
       <div class="acts">
         <button class="btn sm region-rotate" data-region-id="${r.id}">Rotate key</button>
         <button class="btn sm" data-region-logs data-region-id="${r.id}">Logs</button>
-        <button class="btn sm danger region-delete" data-region-id="${r.id}" aria-label="Delete">
+        <button class="btn sm danger region-delete" data-region-id="${r.id}" data-testid="region-delete-btn" aria-label="Delete">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
         </button>
       </div>
@@ -150,10 +150,10 @@ export async function renderRegions() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Regions</h2>
+        <h2 data-testid="page-title">Regions</h2>
         <div class="sub">Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
       </div>
-      <button class="btn primary" id="add-region-btn">
+      <button class="btn primary" id="add-region-btn" data-testid="regions-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         Add region
       </button>
@@ -182,18 +182,18 @@ export async function renderRegions() {
 function renderOneTimeKey(otk: OneTimeKey): string {
   const verb = otk.action === 'created' ? 'created' : 'rotated';
   return `
-    <div class="reveal" style="margin-bottom:var(--s-5)">
+    <div class="reveal" data-testid="region-key-panel" style="margin-bottom:var(--s-5)">
       <h4>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Region '${esc(otk.slug)}' ${verb} — copy the key now
       </h4>
       <p class="warning">This is the only time the key is shown. Paste it into the agent env as <code>OO_AGENT_KEY</code> alongside <code>OO_REGION_SLUG=${esc(otk.slug)}</code>.</p>
       <div class="key-box">
-        <code>${esc(otk.cleartextKey)}</code>
+        <code data-testid="region-key-value">${esc(otk.cleartextKey)}</code>
       </div>
       <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
         <button type="button" class="btn" id="copy-key-btn">Copy to clipboard</button>
-        <button type="button" class="btn primary" id="dismiss-key-btn">I've copied it</button>
+        <button type="button" class="btn primary" id="dismiss-key-btn" data-testid="region-key-dismiss-btn">I've copied it</button>
       </div>
     </div>
   `;

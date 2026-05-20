@@ -31,21 +31,21 @@ test('add dialog hides the region picker for qa, shows it otherwise', async ({
   try {
     await page.goto('/');
     await waitForList(page);
-    await page.locator('#add-btn').click();
-    await expect(page.locator('#add-dialog')).toBeVisible();
-    const row = page.locator('#regions-row');
+    await page.getByTestId('header-add-monitor-btn').click();
+    await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+    const row = page.getByTestId('add-monitor-regions-row');
 
     // Non-qa with a region present → picker visible.
-    await page.locator('#type-select').selectOption('url');
+    await page.getByTestId('add-monitor-type-tile-url').click();
     await expect(row).toBeVisible();
 
     // qa → guard hides it.
-    await page.locator('#type-select').selectOption('qa');
+    await page.getByTestId('add-monitor-type-tile-qa').click();
     await expect(row).toBeHidden();
     await shot('qa_region_guard_hidden');
 
     // Toggling back restores it (the guard isn't sticky).
-    await page.locator('#type-select').selectOption('url');
+    await page.getByTestId('add-monitor-type-tile-url').click();
     await expect(row).toBeVisible();
   } finally {
     await request.delete(`${baseURL}/api/regions/${regionId}`).catch(() => {});

@@ -56,12 +56,17 @@ test('Pause/Resume toggle flips enabled state and row opacity', async ({ page, r
 
   await row.locator('button[data-toggle]').click();
   await expect(row).toHaveClass(/disabled/);
-  await expect(row.locator('button[data-toggle]')).toHaveText('Resume');
+  // v2 replaced the "Pause"/"Resume" button text with an icon; state
+  // lives in title and data-enabled attrs (data-enabled is the
+  // stricter machine-readable contract).
+  await expect(row.locator('button[data-toggle]')).toHaveAttribute('data-enabled', 'false');
+  await expect(row.locator('button[data-toggle]')).toHaveAttribute('title', 'Resume');
   await shot('row_paused');
 
   await row.locator('button[data-toggle]').click();
   await expect(row).not.toHaveClass(/disabled/);
-  await expect(row.locator('button[data-toggle]')).toHaveText('Pause');
+  await expect(row.locator('button[data-toggle]')).toHaveAttribute('data-enabled', 'true');
+  await expect(row.locator('button[data-toggle]')).toHaveAttribute('title', 'Pause');
 
   await deleteMonitorViaApi(request, 'url', seed.id);
 });

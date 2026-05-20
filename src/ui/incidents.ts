@@ -44,7 +44,7 @@ export async function renderIncidents() {
 }
 
 function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
-  return `<div class="banner banner-${b.kind}">${esc(b.text)}</div>`;
+  return `<div class="banner banner-${b.kind}" data-testid="banner-${b.kind}">${esc(b.text)}</div>`;
 }
 
 function sevPill(s: string): string {
@@ -87,7 +87,7 @@ async function renderList() {
           Each incident is a thread of updates.
         </div>
       </div>
-      <button class="btn primary" id="inc-create-btn">
+      <button class="btn primary" id="inc-create-btn" data-testid="incidents-create-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         New incident
       </button>

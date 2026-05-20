@@ -57,10 +57,10 @@ export async function renderChannels() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Alert channels</h2>
+        <h2 data-testid="page-title">Alert channels</h2>
         <div class="sub">How oo-workers reaches you when a monitor flips up→down and on recovery.</div>
       </div>
-      <button class="btn primary" id="add-channel-btn">
+      <button class="btn primary" id="add-channel-btn" data-testid="channels-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         Add channel
       </button>
@@ -86,7 +86,7 @@ export async function renderChannels() {
 }
 
 function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
-  return `<div class="banner banner-${b.kind}">${esc(b.text)}</div>`;
+  return `<div class="banner banner-${b.kind}" data-testid="banner-${b.kind}">${esc(b.text)}</div>`;
 }
 
 // Destination hint per type (URL is stored server-side, not returned for security)
@@ -100,7 +100,7 @@ const DEST_HINT: Record<ChannelType, string> = {
 function renderChannelCard(c: ChannelLite): string {
   const icon = CHANNEL_ICON[c.type] ?? '';
   return `
-    <article class="channel-card t-${c.type}" data-channel-id="${c.id}" data-channel-name="${esc(c.name)}">
+    <article class="channel-card t-${c.type}" data-channel-id="${c.id}" data-channel-name="${esc(c.name)}" data-testid="channel-card-${esc(c.name)}">
       <div class="row1">
         <div style="display:flex;gap:10px;align-items:flex-start;min-width:0">
           <span class="ch-icon">${icon}</span>
@@ -119,11 +119,11 @@ function renderChannelCard(c: ChannelLite): string {
         <span>created ${fmtAge(c.createdAt)}</span>
       </div>
       <div class="ch-acts">
-        <button class="btn sm channel-test" data-channel-id="${c.id}">
+        <button class="btn sm channel-test" data-channel-id="${c.id}" data-testid="channel-test-btn">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
           Send test
         </button>
-        <button class="btn sm danger channel-delete" data-channel-id="${c.id}" aria-label="Delete">
+        <button class="btn sm danger channel-delete" data-channel-id="${c.id}" data-testid="channel-delete-btn" aria-label="Delete">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         </button>
       </div>

@@ -35,15 +35,15 @@ test('failed QA run uploads trace + screenshot and detail page surfaces them', a
   const name = `e2e-artifacts-${uniqueSuffix()}`;
 
   // Create via the dialog so we exercise the same path real users hit.
-  await page.locator('#add-btn').click();
-  await page.locator('#type-select').selectOption('qa');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await page.getByTestId('add-monitor-type-tile-qa').click();
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('#add-form input[name="url"]').fill('https://example.com');
   await page.locator('#add-form textarea[name="qa_script"]').fill(FAIL_SCRIPT);
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
   await waitForList(page);
 
-  await page.locator('.tab[data-tab="qa"]').click();
+  await page.getByTestId('monitors-tab-qa').click();
   const row = page.locator('tr[data-open][data-type="qa"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
 
@@ -89,10 +89,11 @@ test('failed QA run uploads trace + screenshot and detail page surfaces them', a
 
   // Visit detail page and assert the artifacts cell rendered.
   await page.goto(`/#/qa/${created.id}`);
-  await page.waitForSelector('.detail-meta', { timeout: 10_000 });
-  const traceLink = page.locator('a.artifact-link', { hasText: 'trace.zip' }).first();
-  await expect(traceLink).toBeVisible();
-  await expect(page.locator('a.artifact-thumb').first()).toBeVisible();
+  // v2 renamed wrapper .detail-meta -> .detail-grid (testid'd as
+  // 'detail-meta-cards'); artifact links/thumbs now have stable testids.
+  await page.getByTestId('detail-meta-cards').waitFor({ timeout: 10_000 });
+  await expect(page.getByTestId('artifact-trace-link').first()).toBeVisible();
+  await expect(page.getByTestId('artifact-screenshot-thumb').first()).toBeVisible();
 
   // Fetch the trace through the proxy and confirm we get a non-empty zip.
   const traceRes = await request.get(`/api/artifacts?key=${encodeURIComponent(latest.traceUrl!)}`);

@@ -291,13 +291,13 @@ export async function renderList() {
       ${(['url', 'api', 'qa', 'tcp', 'udp', 'db', 'tls'] as const)
         .map(
           (t) =>
-            `<button class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}">${t.toUpperCase()}<span class="count">${counts[t]}</span></button>`,
+            `<button class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}" data-testid="monitors-tab-${t}">${t.toUpperCase()}<span class="count" data-testid="monitors-tab-${t}-count">${counts[t]}</span></button>`,
         )
         .join('')}
     </div>
     <div class="list-toolbar">
-      <input id="search-input" class="search" type="search" placeholder="Filter by name or URL…" value="${esc(search)}" autocomplete="off" />
-      <span class="showing-count">
+      <input id="search-input" data-testid="monitors-search-input" class="search" type="search" placeholder="Filter by name or URL…" value="${esc(search)}" autocomplete="off" />
+      <span class="showing-count" data-testid="monitors-summary">
         ${
           filtered.length === 0
             ? search
@@ -309,9 +309,9 @@ export async function renderList() {
     </div>
     ${
       pageRows.length === 0
-        ? `<div class="empty">${
+        ? `<div class="empty" data-testid="list-empty">${
             search
-              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search>Clear search</a>.`
+              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search data-testid="search-clear-link">Clear search</a>.`
               : `No ${activeTab.toUpperCase()} monitors yet. Click <b>Add monitor</b> to create one.`
           }</div>`
         : `<div class="tbl-wrap">
@@ -446,7 +446,7 @@ function rowFor(m: Monitor): string {
       <td class="col-status"><span class="dot ${cls}"></span></td>
       <td class="col-name">
         <div class="name">${esc(m.name)}</div>
-        <span class="target">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</span>
+        <span class="target" data-testid="monitor-row-target">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</span>
       </td>
       <td><span class="pill">every ${m.intervalSeconds}s</span></td>
       <td class="cell-meta">${fmtAge(m.latest?.startTime)}</td>

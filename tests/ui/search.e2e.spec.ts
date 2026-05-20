@@ -32,21 +32,26 @@ test('search filters list by name (case-insensitive substring)', async ({
 
   await page.goto('/');
   await waitForList(page);
-  const search = page.locator('#search-input');
+  const search = page.getByTestId('monitors-search-input');
   await expect(search).toBeVisible();
 
   await search.fill(`alpha-${suffix}`);
 
   const matchedRow = page.locator('tr[data-open]', { hasText: `e2e-search-alpha-${suffix}` });
   await expect(matchedRow).toHaveCount(1);
-  await expect(page.locator('tr[data-open]', { hasText: `e2e-search-beta-${suffix}` })).toHaveCount(0);
-  await expect(page.locator('.showing-count')).toContainText('Showing');
-  await expect(page.locator('.showing-count')).toContainText('filtered from');
+  await expect(
+    page.locator('tr[data-open]', { hasText: `e2e-search-beta-${suffix}` }),
+  ).toHaveCount(0);
+  // v2 summary text format is "N–M of K (filtered from L)" — "filtered from"
+  // is the stable marker that the filter is active.
+  await expect(page.getByTestId('monitors-summary')).toContainText('filtered from');
   await shot('search_alpha_match');
 
   // Case-insensitive
   await search.fill(`BETA-${suffix}`);
-  await expect(page.locator('tr[data-open]', { hasText: `e2e-search-beta-${suffix}` })).toHaveCount(1);
+  await expect(
+    page.locator('tr[data-open]', { hasText: `e2e-search-beta-${suffix}` }),
+  ).toHaveCount(1);
 
   await Promise.all([a, b, c].map((m) => deleteMonitorViaApi(request, 'url', m.id)));
 });
@@ -57,14 +62,14 @@ test('no-match search shows empty state with a clear link', async ({ page, reque
 
   await page.goto('/');
   await waitForList(page);
-  await page.locator('#search-input').fill(`zzz-no-such-monitor-${suffix}`);
+  await page.getByTestId('monitors-search-input').fill(`zzz-no-such-monitor-${suffix}`);
 
-  await expect(page.locator('.empty')).toContainText('No URL monitors match');
-  await expect(page.locator('[data-clear-search]')).toBeVisible();
+  await expect(page.getByTestId('list-empty')).toContainText('No URL monitors match');
+  await expect(page.getByTestId('search-clear-link')).toBeVisible();
   await shot('search_no_match');
 
-  await page.locator('[data-clear-search]').click();
-  await expect(page.locator('#search-input')).toHaveValue('');
+  await page.getByTestId('search-clear-link').click();
+  await expect(page.getByTestId('monitors-search-input')).toHaveValue('');
   // After clearing, the rows are back (at least the one we seeded).
   await expect(
     page.locator('tr[data-open]', { hasText: `e2e-search-x-${suffix}` }),

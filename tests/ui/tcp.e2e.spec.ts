@@ -5,9 +5,9 @@ test('create TCP monitor through the dialog', async ({ page, request, shot }) =>
   await waitForList(page);
 
   const name = `e2e-tcp-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('tcp');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId('add-monitor-type-tile-tcp').click();
   // URL row hides, TCP row shows.
   await expect(page.locator('#url-row')).toBeHidden();
   await expect(page.locator('#tcp-row')).toBeVisible();
@@ -16,14 +16,15 @@ test('create TCP monitor through the dialog', async ({ page, request, shot }) =>
   await page.locator('#add-form input[name="tcp_host"]').fill('example.com');
   await page.locator('#add-form input[name="tcp_port"]').fill('443');
   await shot('create_tcp_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="tcp"]').click();
+  await page.getByTestId('monitors-tab-tcp').click();
   const row = page.locator('tr[data-open][data-type="tcp"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   // Row shows host:port in the URL column.
-  await expect(row.locator('.url')).toContainText('example.com:443');
+  // v2: row target moved from .url to <span class="target" data-testid="monitor-row-target">
+  await expect(row.getByTestId('monitor-row-target')).toContainText('example.com:443');
   await shot('create_tcp_list_after');
 
   const list = await (await request.get('/api/monitors')).json();
@@ -42,7 +43,7 @@ test('TCP Run now executes and reports SUCCESS', async ({ page, request, shot })
 
   await page.goto('/');
   await waitForList(page);
-  await page.locator('.tab[data-tab="tcp"]').click();
+  await page.getByTestId('monitors-tab-tcp').click();
   const row = page.locator(`tr[data-open][data-type="tcp"][data-id="${seed.id}"]`);
   await row.waitFor();
   await row.locator('button[data-run]').click();
@@ -73,7 +74,7 @@ test('TCP timeout case marks the run FAILED', async ({ page, request, shot }) =>
 
   await page.goto('/');
   await waitForList(page);
-  await page.locator('.tab[data-tab="tcp"]').click();
+  await page.getByTestId('monitors-tab-tcp').click();
   const row = page.locator(`tr[data-open][data-type="tcp"][data-id="${seed.id}"]`);
   await row.waitFor();
   await row.locator('button[data-run]').click();

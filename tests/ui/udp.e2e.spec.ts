@@ -9,9 +9,9 @@ test('create UDP monitor through the dialog', async ({ page, request, shot }) =>
   await waitForList(page);
 
   const name = `e2e-udp-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('udp');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId('add-monitor-type-tile-udp').click();
   // URL row hides, UDP row + udp-fields show.
   await expect(page.locator('#url-row')).toBeHidden();
   await expect(page.locator('#tcp-row')).toBeHidden();
@@ -24,13 +24,13 @@ test('create UDP monitor through the dialog', async ({ page, request, shot }) =>
   await page.locator('#add-form input[name="udp_payload_hex"]').fill(DNS_QUERY_HEX);
   await page.locator('#add-form input[name="udp_expect_response"]').check();
   await shot('create_udp_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="udp"]').click();
+  await page.getByTestId('monitors-tab-udp').click();
   const row = page.locator('tr[data-open][data-type="udp"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
-  await expect(row.locator('.url')).toContainText('8.8.8.8:53');
+  await expect(row.getByTestId('monitor-row-target')).toContainText('8.8.8.8:53');
   await shot('create_udp_list_after');
 
   const list = await (await request.get('/api/monitors')).json();
@@ -56,7 +56,7 @@ test('UDP Run now executes a DNS query and reports SUCCESS', async ({ page, requ
 
   await page.goto('/');
   await waitForList(page);
-  await page.locator('.tab[data-tab="udp"]').click();
+  await page.getByTestId('monitors-tab-udp').click();
   const row = page.locator(`tr[data-open][data-type="udp"][data-id="${seed.id}"]`);
   await row.waitFor();
   await row.locator('button[data-run]').click();
@@ -94,7 +94,7 @@ test('UDP expect-response with no response marks the run FAILED', async ({ page,
 
   await page.goto('/');
   await waitForList(page);
-  await page.locator('.tab[data-tab="udp"]').click();
+  await page.getByTestId('monitors-tab-udp').click();
   const row = page.locator(`tr[data-open][data-type="udp"][data-id="${seed.id}"]`);
   await row.waitFor();
   await row.locator('button[data-run]').click();

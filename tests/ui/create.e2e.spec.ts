@@ -11,16 +11,17 @@ test('create URL monitor through the dialog', async ({ page, request, shot }) =>
   await waitForList(page);
 
   const name = `e2e-url-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('url');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  // v2: type is a tile (was a <select>); url is the default-active tile.
+  await page.getByTestId('add-monitor-type-tile-url').click();
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('#add-form input[name="url"]').fill('https://example.com');
   await shot('create_url_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="url"]').click();
+  await page.getByTestId('monitors-tab-url').click();
   const row = page.locator('tr[data-open][data-type="url"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   await shot('create_url_list_after');
@@ -36,8 +37,8 @@ test('create API monitor through the dialog', async ({ page, request, shot }) =>
   await waitForList(page);
 
   const name = `e2e-api-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await page.locator('#type-select').selectOption('api');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await page.getByTestId('add-monitor-type-tile-api').click();
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('#add-form input[name="url"]').fill('https://example.com');
   await page.locator('#add-form select[name="api_method"]').selectOption('GET');
@@ -45,10 +46,10 @@ test('create API monitor through the dialog', async ({ page, request, shot }) =>
     .locator('#add-form textarea[name="api_assertions"]')
     .fill('[{"type":"status_code","operator":"equals","value":"200"}]');
   await shot('create_api_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="api"]').click();
+  await page.getByTestId('monitors-tab-api').click();
   const row = page.locator('tr[data-open][data-type="api"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   await shot('create_api_list_after');
@@ -63,16 +64,16 @@ test('create QA (browser) monitor through the dialog', async ({ page, request, s
   await waitForList(page);
 
   const name = `e2e-qa-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await page.locator('#type-select').selectOption('qa');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await page.getByTestId('add-monitor-type-tile-qa').click();
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('#add-form input[name="url"]').fill('https://example.com');
   await page.locator('#add-form textarea[name="qa_script"]').fill(QA_SCRIPT);
   await shot('create_qa_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="qa"]').click();
+  await page.getByTestId('monitors-tab-qa').click();
   const row = page.locator('tr[data-open][data-type="qa"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   await shot('create_qa_list_after');

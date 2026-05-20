@@ -62,7 +62,7 @@ export async function renderDocs(section: string | null) {
         </div>
         <nav class="docs-nav">${tocHtml}</nav>
       </aside>
-      <div class="docs-body">${contentHtml}</div>
+      <div class="docs-body" data-testid="docs-body">${contentHtml}</div>
     </div>
   `;
 

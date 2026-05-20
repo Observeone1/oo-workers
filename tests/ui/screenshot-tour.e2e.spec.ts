@@ -33,7 +33,8 @@ test('01 login', async ({ browser }) => {
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
   await page.goto('/');
-  await expect(page.locator('.login-card')).toBeVisible();
+  // v2 redesign replaced .login-card with .auth-shell (now testid-anchored).
+  await expect(page.getByTestId('login-shell')).toBeVisible();
   await shot(page, '01-login.png');
   await ctx.close();
 });
@@ -75,21 +76,28 @@ test('12 monitor detail', async ({ page }) => {
 
 test('14 regions', async ({ page }) => {
   await page.goto('/#/regions');
-  await page.waitForSelector('.regions-page', { timeout: 10_000 });
+  // v2 dropped per-page wrapper classes; rely on the testid'd <h2>.
+  await page.getByTestId('page-title').filter({ hasText: 'Regions' }).waitFor({ timeout: 10_000 });
   await page.waitForTimeout(300);
   await shot(page, '14-regions.png');
 });
 
 test('15 channels', async ({ page }) => {
   await page.goto('/#/channels');
-  await page.waitForSelector('.channels-page', { timeout: 10_000 });
+  await page
+    .getByTestId('page-title')
+    .filter({ hasText: 'Alert channels' })
+    .waitFor({ timeout: 10_000 });
   await page.waitForTimeout(300);
   await shot(page, '15-channels.png');
 });
 
 test('16 status pages', async ({ page }) => {
   await page.goto('/#/status-pages');
-  await page.waitForSelector('.status-pages-page', { timeout: 10_000 });
+  await page
+    .getByTestId('page-title')
+    .filter({ hasText: 'Status pages' })
+    .waitFor({ timeout: 10_000 });
   await page.waitForTimeout(300);
   await shot(page, '16-status-pages.png');
 });
@@ -120,7 +128,13 @@ test('19 qa artifacts', async ({ page }) => {
 
 test('17 docs in-app', async ({ page }) => {
   await page.goto('/#/docs');
-  await page.waitForSelector('#main .docs-embed h1, #main .docs-embed h2', { timeout: 10_000 });
+  // v2 replaced .docs-embed with a .docs-layout shell whose content
+  // wrapper is testid-anchored as 'docs-body'.
+  await page
+    .getByTestId('docs-body')
+    .locator('h1, h2')
+    .first()
+    .waitFor({ timeout: 10_000 });
   await page.waitForTimeout(300);
   await shot(page, '17-docs.png');
 });

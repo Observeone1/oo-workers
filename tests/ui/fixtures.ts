@@ -21,8 +21,9 @@ export const test = base.extend<{
 export { expect };
 
 // Wait for the list view to be ready (tabs rendered).
+// Anchored on data-testid per tests/ui/CONVENTIONS.md.
 export async function waitForList(page: Page) {
-  await page.waitForSelector('.tab[data-tab="url"]');
+  await page.getByTestId('monitors-tab-url').waitFor({ state: 'visible' });
 }
 
 // Unique suffix for monitor names so reruns don't clash with leftover rows.
@@ -72,4 +73,30 @@ export async function deleteMonitorViaApi(
   id: number,
 ) {
   await request.delete(`/api/monitors/${type}/${id}`).catch(() => {});
+}
+
+// Seed a URL monitor for specs that need at least one row in the list
+// (e.g. the detail view spec, or the status-page binding spec). The
+// global-setup purge starts every run with an empty DB, so any spec
+// that asserts on an existing row must create its own seed first.
+// Returns { id, name } so the caller can clean up in afterAll.
+export async function seedUrlMonitor(
+  request: import('@playwright/test').APIRequestContext,
+  opts: { url?: string; intervalSeconds?: number } = {},
+): Promise<{ id: number; name: string }> {
+  const name = `e2e-seed-${uniqueSuffix()}`;
+  const res = await request.post('/api/monitors/url', {
+    data: {
+      name,
+      url: opts.url ?? 'https://example.com',
+      intervalSeconds: opts.intervalSeconds ?? 60,
+      timeoutMs: 10_000,
+      assertions: [{ operator: 'equals', statusCode: 200 }],
+    },
+  });
+  if (!res.ok()) {
+    throw new Error(`seedUrlMonitor failed: ${res.status()} ${await res.text()}`);
+  }
+  const created = (await res.json()) as { id: number };
+  return { id: created.id, name };
 }

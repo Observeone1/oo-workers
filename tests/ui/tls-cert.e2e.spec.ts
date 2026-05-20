@@ -31,9 +31,9 @@ test('add dialog creates a TLS monitor with host/port/warn-days', async ({
   const name = `e2e-tls-${uniqueSuffix()}`;
   await page.goto('/');
   await waitForList(page);
-  await page.locator('#add-btn').click();
-  await expect(page.locator('#add-dialog')).toBeVisible();
-  await page.locator('#type-select').selectOption('tls');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId('add-monitor-type-tile-tls').click();
   await expect(page.locator('#tls-row')).toBeVisible();
 
   await page.locator('#add-form input[name="name"]').fill(name);
@@ -41,10 +41,10 @@ test('add dialog creates a TLS monitor with host/port/warn-days', async ({
   await page.locator('#add-form input[name="tls_port"]').fill('443');
   await page.locator('#add-form input[name="tls_warn_days"]').fill('30');
   await shot('tls_cert_dialog');
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="tls"]').click();
+  await page.getByTestId('monitors-tab-tls').click();
   const row = page.locator('tr[data-open][data-type="tls"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
   await shot('tls_cert_list');

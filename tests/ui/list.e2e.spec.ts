@@ -5,17 +5,17 @@ test.describe('list view', () => {
     await page.goto('/');
     await waitForList(page);
 
-    await expect(page.locator('header h1')).toContainText('oo-workers');
-    await expect(page.locator('#add-btn')).toBeVisible();
-    await expect(page.locator('#import-btn')).toBeVisible();
+    await expect(page.getByTestId('brand')).toContainText('oo-workers');
+    await expect(page.getByTestId('header-add-monitor-btn')).toBeVisible();
+    await expect(page.getByTestId('header-import-btn')).toBeVisible();
 
     // The default tab is URL. Counts shown in tabs match the API.
     const api = await (await page.request.get('/api/monitors')).json();
-    await expect(page.locator('.tab[data-tab="url"] .count')).toHaveText(String(api.url.length));
-    await expect(page.locator('.tab[data-tab="api"] .count')).toHaveText(String(api.api.length));
-    await expect(page.locator('.tab[data-tab="qa"] .count')).toHaveText(String(api.qa.length));
-    await expect(page.locator('.tab[data-tab="tcp"] .count')).toHaveText(String(api.tcp.length));
-    await expect(page.locator('.tab[data-tab="udp"] .count')).toHaveText(String(api.udp.length));
+    for (const t of ['url', 'api', 'qa', 'tcp', 'udp'] as const) {
+      await expect(page.getByTestId(`monitors-tab-${t}-count`)).toHaveText(
+        String(api[t].length),
+      );
+    }
 
     await shot('list_url_tab');
   });
@@ -24,12 +24,12 @@ test.describe('list view', () => {
     await page.goto('/');
     await waitForList(page);
 
-    await page.locator('.tab[data-tab="api"]').click();
-    await expect(page.locator('.tab.active')).toHaveAttribute('data-tab', 'api');
+    await page.getByTestId('monitors-tab-api').click();
+    await expect(page.getByTestId('monitors-tab-api')).toHaveClass(/active/);
     await shot('list_api_tab');
 
-    await page.locator('.tab[data-tab="qa"]').click();
-    await expect(page.locator('.tab.active')).toHaveAttribute('data-tab', 'qa');
+    await page.getByTestId('monitors-tab-qa').click();
+    await expect(page.getByTestId('monitors-tab-qa')).toHaveClass(/active/);
     await shot('list_qa_tab');
   });
 });

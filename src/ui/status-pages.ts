@@ -105,7 +105,7 @@ async function renderList() {
   const listItems = pages
     .map(
       (p) => `
-    <div class="sp-item${p.id === activePageId ? ' active' : ''}" data-id="${p.id}">
+    <div class="sp-item${p.id === activePageId ? ' active' : ''}" data-id="${p.id}" data-testid="sp-item-${esc(p.slug)}">
       <div class="ttl">
         ${esc(p.title)}
         <span class="pill mono" style="font-size:10.5px">${p.id === activePageId ? monitorCount : '…'} monitors</span>
@@ -156,17 +156,17 @@ async function renderList() {
         <span class="cap">Editing · ${esc(activePage.title)}</span>
         <span class="spacer"></span>
         <a class="btn sm" href="#/status-pages/${activePage.id}">Manage monitors</a>
-        <button class="btn sm danger sp-delete" data-id="${activePage.id}" data-slug="${esc(activePage.slug)}">Delete</button>
+        <button class="btn sm danger sp-delete" data-id="${activePage.id}" data-slug="${esc(activePage.slug)}" data-testid="sp-delete-btn">Delete</button>
       </div>`
     : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted)">Create a status page to see the preview.</div>`;
 
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Status pages</h2>
+        <h2 data-testid="page-title">Status pages</h2>
         <div class="sub">Public uptime pages at <code>/status/&lt;slug&gt;</code> — no auth required.</div>
       </div>
-      <button class="btn primary" id="new-sp-btn">
+      <button class="btn primary" id="new-sp-btn" data-testid="sp-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         New page
       </button>
@@ -195,7 +195,7 @@ async function renderList() {
 }
 
 function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
-  return `<div class="banner banner-${b.kind}">${esc(b.text)}</div>`;
+  return `<div class="banner banner-${b.kind}" data-testid="banner-${b.kind}">${esc(b.text)}</div>`;
 }
 
 function wireListView(pages: StatusPageLite[]) {
