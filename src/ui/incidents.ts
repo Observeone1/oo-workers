@@ -87,7 +87,7 @@ async function renderList() {
           Each incident is a thread of updates.
         </div>
       </div>
-      <button class="btn primary" id="inc-create-btn">
+      <button class="btn primary" id="inc-create-btn" data-testid="incidents-create-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         New incident
       </button>

@@ -43,7 +43,9 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
   try {
     // --- Create the incident through the operator UI ---
     await page.goto('/#/incidents');
-    await page.waitForSelector('#incident-create-form', { timeout: 8000 });
+    // v2: create form lives inside a slide-in panel; open it first.
+    await page.getByTestId('incidents-create-btn').click();
+    await page.waitForSelector('#incident-create-form', { state: 'visible', timeout: 8000 });
     await page.locator('#inc-page').selectOption(String(pageId));
     await page.locator('#incident-create-form input[name="title"]').fill(title);
     await page
