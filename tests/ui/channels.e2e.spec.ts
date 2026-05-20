@@ -7,11 +7,10 @@ import { test, expect, waitForList, uniqueSuffix } from './fixtures';
 test('channels page renders nav link and lands on #/channels', async ({ page, shot }) => {
   await page.goto('/');
   await waitForList(page);
-  const navLink = page.locator('#channels-link');
+  const navLink = page.getByTestId('nav-channels');
   await expect(navLink).toBeVisible();
   await navLink.click();
-  await page.waitForSelector('.channels-page');
-  await expect(page.locator('.channels-page h2')).toHaveText('Alert channels');
+  await expect(page.getByTestId('page-title')).toHaveText('Alert channels');
   await shot('channels_page_empty_or_seeded');
 });
 

@@ -57,7 +57,7 @@ export async function renderChannels() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Alert channels</h2>
+        <h2 data-testid="page-title">Alert channels</h2>
         <div class="sub">How oo-workers reaches you when a monitor flips up→down and on recovery.</div>
       </div>
       <button class="btn primary" id="add-channel-btn">
