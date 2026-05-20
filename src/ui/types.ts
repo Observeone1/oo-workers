@@ -1,4 +1,4 @@
-export type MonType = 'url' | 'api' | 'qa' | 'tcp' | 'udp' | 'db' | 'tls';
+export type MonType = 'url' | 'api' | 'qa' | 'tcp' | 'udp' | 'db' | 'tls' | 'heartbeat';
 
 export interface RunLite {
   id: number;
@@ -28,6 +28,14 @@ export interface Monitor {
   protocol?: string;
   latest?: RunLite | null;
   testCount?: number;
+  // Heartbeat-only: bundled together because the detail/list views
+  // need them for the public URL + status surface. periodSeconds maps
+  // to intervalSeconds conceptually but the worker doesn't run on it.
+  token?: string;
+  periodSeconds?: number;
+  graceSeconds?: number;
+  lastPingAt?: string | null;
+  status?: 'PENDING' | 'UP' | 'OVERDUE';
 }
 
 export interface MonitorsByType {
@@ -38,6 +46,7 @@ export interface MonitorsByType {
   udp: Monitor[];
   db: Monitor[];
   tls: Monitor[];
+  heartbeat: Monitor[];
 }
 
 export interface MonitorDetail {

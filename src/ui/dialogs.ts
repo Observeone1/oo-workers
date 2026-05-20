@@ -138,6 +138,10 @@ function initAddDialog() {
     udp: 'Check',
     db: 'Check',
     tls: 'Certificate',
+    // Heartbeats are inverted-direction (the service pings us). "Check"
+    // would be misleading — operator inputs the expected period, not
+    // what to check.
+    heartbeat: 'Schedule',
   };
 
   const syncFields = (t: MonType = 'url') => {
@@ -150,8 +154,10 @@ function initAddDialog() {
     addDialog.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
       el.hidden = el.dataset.for !== t;
     });
-    // The shared URL row is for url/api/qa; TCP/UDP/DB/TLS swap in their own rows.
-    $('#url-row').hidden = t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls';
+    // The shared URL row is for url/api/qa; TCP/UDP/DB/TLS swap in their
+    // own rows; heartbeat has no target at all (service pings us).
+    $('#url-row').hidden =
+      t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls' || t === 'heartbeat';
     $('#tcp-row').hidden = t !== 'tcp';
     $('#udp-row').hidden = t !== 'udp';
     $('#db-row').hidden = t !== 'db';
@@ -346,6 +352,29 @@ function initAddDialog() {
         verifyHostname: fd.get('tls_verify_hostname') === 'on',
         expectCnRegex: expectCnRegex || null,
       };
+    } else if (type === 'heartbeat') {
+      const period = Number(fd.get('hb_period_seconds'));
+      if (!Number.isFinite(period) || period < 30) {
+        alertDialog({
+          title: 'Validation error',
+          body: 'Expected period must be a number ≥ 30 seconds',
+        });
+        return;
+      }
+      const grace = Number(fd.get('hb_grace_seconds') || 60);
+      if (!Number.isFinite(grace) || grace < 0) {
+        alertDialog({
+          title: 'Validation error',
+          body: 'Grace must be a non-negative number',
+        });
+        return;
+      }
+      body = {
+        name,
+        periodSeconds: period,
+        graceSeconds: grace,
+        description: String(fd.get('hb_description') ?? '').trim() || null,
+      };
     } else {
       // udp
       const host = String(fd.get('udp_host') ?? '').trim();
@@ -447,7 +476,9 @@ function syncRegionsRow() {
   // a <select id="type-select"> which the redesign replaced with
   // .type-tile buttons; activeAddType is the canonical source now.)
   const row = document.getElementById('regions-row') as HTMLElement;
-  row.hidden = cachedRegions.length === 0 || activeAddType === 'qa';
+  // Heartbeats also hide regions — they run nowhere (the SERVICE pings us).
+  row.hidden =
+    cachedRegions.length === 0 || activeAddType === 'qa' || activeAddType === 'heartbeat';
 }
 
 function collectSelectedRegionIds(): number[] {

@@ -69,7 +69,7 @@ export async function ensureSessionAccount(request: APIRequestContext): Promise<
 // delete via the UI for coverage, but this is a safety net.
 export async function deleteMonitorViaApi(
   request: import('@playwright/test').APIRequestContext,
-  type: 'url' | 'api' | 'qa' | 'tcp' | 'udp',
+  type: 'url' | 'api' | 'qa' | 'tcp' | 'udp' | 'heartbeat',
   id: number,
 ) {
   await request.delete(`/api/monitors/${type}/${id}`).catch(() => {});
