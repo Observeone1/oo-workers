@@ -74,3 +74,29 @@ export async function deleteMonitorViaApi(
 ) {
   await request.delete(`/api/monitors/${type}/${id}`).catch(() => {});
 }
+
+// Seed a URL monitor for specs that need at least one row in the list
+// (e.g. the detail view spec, or the status-page binding spec). The
+// global-setup purge starts every run with an empty DB, so any spec
+// that asserts on an existing row must create its own seed first.
+// Returns { id, name } so the caller can clean up in afterAll.
+export async function seedUrlMonitor(
+  request: import('@playwright/test').APIRequestContext,
+  opts: { url?: string; intervalSeconds?: number } = {},
+): Promise<{ id: number; name: string }> {
+  const name = `e2e-seed-${uniqueSuffix()}`;
+  const res = await request.post('/api/monitors/url', {
+    data: {
+      name,
+      url: opts.url ?? 'https://example.com',
+      intervalSeconds: opts.intervalSeconds ?? 60,
+      timeoutMs: 10_000,
+      assertions: [{ operator: 'equals', statusCode: 200 }],
+    },
+  });
+  if (!res.ok()) {
+    throw new Error(`seedUrlMonitor failed: ${res.status()} ${await res.text()}`);
+  }
+  const created = (await res.json()) as { id: number };
+  return { id: created.id, name };
+}

@@ -1,8 +1,25 @@
-import { test, expect, waitForList, uniqueSuffix } from './fixtures';
+import {
+  test,
+  expect,
+  waitForList,
+  uniqueSuffix,
+  seedUrlMonitor,
+  deleteMonitorViaApi,
+} from './fixtures';
 
 // Status pages settings + public render (#/status-pages → editor → /status/<slug>).
 // The public page is auth-free so we drop the bearer header for the GET to
 // prove that path works for anonymous visitors.
+
+// global-setup purges the DB before every run; the second test binds a
+// URL monitor to a status page so we need at least one to exist.
+let seededUrlMonitorId = 0;
+test.beforeAll(async ({ request }) => {
+  seededUrlMonitorId = (await seedUrlMonitor(request)).id;
+});
+test.afterAll(async ({ request }) => {
+  if (seededUrlMonitorId > 0) await deleteMonitorViaApi(request, 'url', seededUrlMonitorId);
+});
 
 test('status pages nav link lands on settings page', async ({ page, shot }) => {
   await page.goto('/');

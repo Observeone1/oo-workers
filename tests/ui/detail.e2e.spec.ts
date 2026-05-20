@@ -1,4 +1,14 @@
-import { test, expect, waitForList } from './fixtures';
+import { test, expect, waitForList, seedUrlMonitor, deleteMonitorViaApi } from './fixtures';
+
+// global-setup purges the DB before every run, so the list starts
+// empty. Seed one URL monitor so there's a row to click into.
+let seededId = 0;
+test.beforeAll(async ({ request }) => {
+  seededId = (await seedUrlMonitor(request)).id;
+});
+test.afterAll(async ({ request }) => {
+  if (seededId > 0) await deleteMonitorViaApi(request, 'url', seededId);
+});
 
 test('opens detail view from list and shows meta cards + sparkline', async ({ page, shot }) => {
   await page.goto('/');
