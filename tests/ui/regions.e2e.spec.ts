@@ -7,11 +7,10 @@ import { test, expect, waitForList, uniqueSuffix } from './fixtures';
 test('regions page renders header link and lands on #/regions', async ({ page, shot }) => {
   await page.goto('/');
   await waitForList(page);
-  const navLink = page.locator('#regions-link');
+  const navLink = page.getByTestId('nav-regions');
   await expect(navLink).toBeVisible();
   await navLink.click();
-  await page.waitForSelector('.regions-page');
-  await expect(page.locator('.regions-page h2')).toHaveText('Regions');
+  await expect(page.getByTestId('page-title')).toHaveText('Regions');
   await shot('regions_page_empty_or_seeded');
 });
 

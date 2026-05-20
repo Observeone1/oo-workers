@@ -150,7 +150,7 @@ export async function renderRegions() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Regions</h2>
+        <h2 data-testid="page-title">Regions</h2>
         <div class="sub">Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
       </div>
       <button class="btn primary" id="add-region-btn">
