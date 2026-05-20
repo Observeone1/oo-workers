@@ -124,7 +124,7 @@ export async function renderSettings(tab?: SettingsTab) {
           <div class="k">Instance</div>
           <div class="v mono">oo-workers</div>
           <div class="k" style="margin-top:8px">License</div>
-          <div class="v mono">self-host · MIT</div>
+          <div class="v mono">self-host · Apache-2.0</div>
         </div>
       </aside>
       <section class="settings-content" id="settings-content"></section>

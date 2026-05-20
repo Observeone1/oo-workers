@@ -61,12 +61,6 @@ export async function renderDocs(section: string | null) {
           Documentation
         </div>
         <nav class="docs-nav">${tocHtml}</nav>
-        <div class="docs-rail-foot">
-          <a href="/docs" target="_blank" class="docs-open-link">
-            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            Open full page
-          </a>
-        </div>
       </aside>
       <div class="docs-body">${contentHtml}</div>
     </div>
