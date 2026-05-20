@@ -21,8 +21,9 @@ export const test = base.extend<{
 export { expect };
 
 // Wait for the list view to be ready (tabs rendered).
+// Anchored on data-testid per tests/ui/CONVENTIONS.md.
 export async function waitForList(page: Page) {
-  await page.waitForSelector('.tab[data-tab="url"]');
+  await page.getByTestId('monitors-tab-url').waitFor({ state: 'visible' });
 }
 
 // Unique suffix for monitor names so reruns don't clash with leftover rows.

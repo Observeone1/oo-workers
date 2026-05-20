@@ -17,26 +17,42 @@
     <!-- ============ HEADER ============ -->
     <header class="app-header" id="app-header">
       <div class="left">
-        <a href="#/" class="brand">
+        <a href="#/" class="brand" data-testid="brand">
           <span class="brand-mark" aria-hidden="true"></span>
           oo-workers
           <span class="brand-tag">self-host</span>
         </a>
         <nav class="nav" id="nav" hidden>
-          <a href="#/" class="nav-link" data-route="list">Monitors</a>
-          <a href="#/regions" class="nav-link" data-route="regions">
+          <a href="#/" class="nav-link" data-route="list" data-testid="nav-monitors">Monitors</a>
+          <a href="#/regions" class="nav-link" data-route="regions" data-testid="nav-regions">
             Regions
             <span class="nav-badge" id="regions-badge" hidden></span>
           </a>
-          <a href="#/channels" class="nav-link" data-route="channels">Channels</a>
-          <a href="#/status-pages" class="nav-link" data-route="status-pages">Status pages</a>
-          <a href="#/incidents" class="nav-link" data-route="incidents">Incidents</a>
-          <a href="#/docs" class="nav-link" data-route="docs">Docs</a>
+          <a href="#/channels" class="nav-link" data-route="channels" data-testid="nav-channels"
+            >Channels</a
+          >
+          <a
+            href="#/status-pages"
+            class="nav-link"
+            data-route="status-pages"
+            data-testid="nav-status-pages"
+            >Status pages</a
+          >
+          <a
+            href="#/incidents"
+            class="nav-link"
+            data-route="incidents"
+            data-testid="nav-incidents"
+            >Incidents</a
+          >
+          <a href="#/docs" class="nav-link" data-route="docs" data-testid="nav-docs">Docs</a>
         </nav>
       </div>
       <div class="right" id="header-right">
-        <button class="btn" id="import-btn" hidden>Import JSON</button>
-        <button class="btn primary" id="add-btn" hidden>
+        <button class="btn" id="import-btn" data-testid="header-import-btn" hidden>
+          Import JSON
+        </button>
+        <button class="btn primary" id="add-btn" data-testid="header-add-monitor-btn" hidden>
           <svg
             width="12"
             height="12"
