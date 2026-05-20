@@ -397,6 +397,54 @@ async function main() {
         await probe.end();
       }
 
+      // 6a) --include-artifacts produces a tar.gz envelope (verify on-disk
+      //     shape) and restores cleanly — even with no S3 configured the
+      //     artifacts/ entries are absent, DB restore still runs.
+      //
+      //     Full S3 round-trip (object upload/download fidelity) requires
+      //     test-bucket infrastructure outside scope of this script; that
+      //     coverage lands separately. This subtest catches format
+      //     regressions and the "no-S3 fallback" path.
+      const tgz = resolve(tmp, 'art.oodump.tar.gz');
+      const art1 = await run(
+        ['bun', exp, '--scope', 'all', '--include-artifacts', '-o', tgz],
+        'oo_br_src',
+      );
+      const tarGzOk =
+        art1.code === 0 &&
+        (() => {
+          const buf = readFileSync(tgz);
+          // gzip magic: 1f 8b
+          if (buf[0] !== 0x1f || buf[1] !== 0x8b) return false;
+          // Decompress and check for "ustar" at offset 257 (tar header magic).
+          const inner = gunzipSync(buf);
+          return inner.slice(257, 262).toString('ascii') === 'ustar';
+        })();
+      check(
+        '--include-artifacts produces a valid tar.gz envelope',
+        tarGzOk,
+        art1.stderr.trim().split('\n').pop(),
+      );
+
+      // Restore the tar.gz envelope on a fresh sibling. With no S3
+      // configured the artifacts/ entries (if any) are skipped with a
+      // warning; the DB rows still round-trip identically.
+      await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_tar WITH (FORCE)`);
+      await admin.unsafe(`CREATE DATABASE oo_br_tar`);
+      const tarMig = await run(['bun', resolve(REPO, 'src/db/migrate.ts')], 'oo_br_tar');
+      if (tarMig.code === 0) {
+        const tarImp = await run(['bun', imp, '--from', tgz], 'oo_br_tar');
+        const tarCounts = await counts('oo_br_tar');
+        check(
+          'tar.gz envelope restores (DB rows round-trip; artifacts skipped if no S3)',
+          tarImp.code === 0 && eq(src, tarCounts),
+          tarImp.code !== 0 ? tarImp.stderr.trim().split('\n').pop() : diff(src, tarCounts),
+        );
+        await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_tar WITH (FORCE)`);
+      } else {
+        check('migrate oo_br_tar (for tar.gz restore subtest)', false, tarMig.stderr.trim());
+      }
+
       // 6) schema-head guard rejects BEFORE truncate (split DB unchanged).
       const raw = gunzipSync(readFileSync(allGz)).toString('utf8');
       const lines = raw.split('\n');

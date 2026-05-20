@@ -22,6 +22,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createGunzip, createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import tar from 'tar-stream';
 import {
   and,
   asc,
@@ -36,6 +38,13 @@ import type { PgTable } from 'drizzle-orm/pg-core';
 import { db, sql } from '../config/db.ts';
 import * as schema from '../db/schema.ts';
 import { logger } from '../utils/logger.ts';
+import {
+  getObjectResponse,
+  isStorageConfigured,
+  listObjectsWithSize,
+  putObject,
+} from './object-storage.ts';
+import { runBackfill } from './storage-backfill.ts';
 
 const BACKUP_FORMAT = 1;
 export const DEFAULT_SINCE_DAYS = 90;
@@ -46,6 +55,13 @@ export interface BackupOptions {
   /** `none` = config only, `window` = config + last `sinceDays`, `all` = everything. */
   scope: DataScope;
   sinceDays: number;
+  /**
+   * When true, the output is a tar.gz envelope containing `meta.json`,
+   * `dump.ndjson`, and `artifacts/<key>` entries mirroring the S3 bucket.
+   * When false (default), the output is the legacy single-stream `.ndjson.gz`.
+   * Restore auto-detects either format via magic-byte sniff.
+   */
+  includeArtifacts?: boolean;
 }
 
 interface Manifest {
@@ -55,6 +71,19 @@ interface Manifest {
   createdAt: string;
   scope: DataScope;
   sinceDays: number | null;
+}
+
+/** Metadata stored in `meta.json` at the tar root. */
+interface TarMeta {
+  format: number;
+  ooVersion: string;
+  schemaHead: string;
+  createdAt: string;
+  scope: DataScope;
+  sinceDays: number | null;
+  includesArtifacts: true;
+  artifactCount: number;
+  artifactBytes: number;
 }
 
 /**
@@ -181,13 +210,114 @@ async function* ndjson(opts: BackupOptions): AsyncGenerator<string> {
  * with no multi-member concerns). NDJSON is pushed through `createGzip()`
  * with backpressure: flat memory at both ends. gzip runs on libuv's
  * threadpool, so compression overlaps DB reads without blocking the loop.
+ *
+ * When `opts.includeArtifacts` is true the writer switches to a tar.gz
+ * envelope containing `meta.json` + `dump.ndjson` + `artifacts/<key>` for
+ * every object in the configured S3 bucket. Restore auto-detects either
+ * format via magic-byte sniff, so DB-only consumers stay unaffected.
  */
 export function exportStream(opts: BackupOptions): ReadableStream<Uint8Array> {
+  if (opts.includeArtifacts) {
+    return exportTarGz(opts);
+  }
   const gz = createGzip();
   const src = Readable.from(ndjson(opts));
   src.on('error', (e) => gz.destroy(e));
   src.pipe(gz);
   return Readable.toWeb(gz) as unknown as ReadableStream<Uint8Array>;
+}
+
+/**
+ * tar.gz envelope writer. Pack order matters: the meta.json header lets
+ * a peeking consumer (or a future selective-restore mode) read what's
+ * inside before touching the body. NDJSON dump rides as a single tar
+ * entry; artifacts follow, streamed one-by-one from S3 so the worker
+ * holds at most one object in memory at a time.
+ *
+ * If object storage isn't configured we still emit a valid envelope —
+ * meta.json + dump.ndjson — with `artifactCount: 0`. This keeps the
+ * UI flow uniform even on stacks that haven't wired S3.
+ */
+function exportTarGz(opts: BackupOptions): ReadableStream<Uint8Array> {
+  const pack = tar.pack();
+  const gz = createGzip();
+  pack.pipe(gz);
+
+  (async () => {
+    try {
+      const keysAndSizes = isStorageConfigured() ? await listObjectsWithSize('') : [];
+      const meta: TarMeta = {
+        format: BACKUP_FORMAT,
+        ooVersion: await ooVersion(),
+        schemaHead: await schemaHead(),
+        createdAt: new Date().toISOString(),
+        scope: opts.scope,
+        sinceDays: opts.scope === 'window' ? opts.sinceDays : null,
+        includesArtifacts: true,
+        artifactCount: keysAndSizes.length,
+        artifactBytes: keysAndSizes.reduce((a, k) => a + k.size, 0),
+      };
+
+      // meta.json — header first so consumers can read it cheaply.
+      await packEntry(pack, 'meta.json', Buffer.from(JSON.stringify(meta, null, 2)));
+
+      // dump.ndjson — write through a PassThrough to get the final length
+      // (tar needs Content-Length up-front). Buffered in memory; for very
+      // large dumps switch to a streaming-size tar variant later.
+      const ndjsonBuf = await streamToBuffer(Readable.from(ndjson(opts)));
+      await packEntry(pack, 'dump.ndjson', ndjsonBuf);
+
+      // artifacts/<key> — one tar entry per S3 object, streamed.
+      for (const { key, size } of keysAndSizes) {
+        try {
+          const res = await getObjectResponse(key);
+          if (!res.body) continue;
+          const entry = pack.entry({ name: `artifacts/${key}`, size });
+          const body = Readable.fromWeb(
+            res.body as unknown as Parameters<typeof Readable.fromWeb>[0],
+          );
+          await pipeline(body, entry);
+        } catch (err) {
+          logger.warn(
+            `backup: skipping artifact ${key}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
+      pack.finalize();
+    } catch (err) {
+      pack.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return Readable.toWeb(gz) as unknown as ReadableStream<Uint8Array>;
+}
+
+async function packEntry(pack: tar.Pack, name: string, body: Buffer): Promise<void> {
+  await new Promise<void>((done, fail) => {
+    pack.entry({ name, size: body.length }, body, (err) => (err ? fail(err) : done()));
+  });
+}
+
+async function streamToBuffer(src: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of src) {
+    chunks.push(typeof c === 'string' ? Buffer.from(c) : (c as Buffer));
+  }
+  return Buffer.concat(chunks);
+}
+
+/** Used by the GET /api/backup/estimate handler. */
+export async function estimateArtifacts(): Promise<{
+  artifactCount: number;
+  artifactBytes: number;
+}> {
+  if (!isStorageConfigured()) return { artifactCount: 0, artifactBytes: 0 };
+  const entries = await listObjectsWithSize('');
+  return {
+    artifactCount: entries.length,
+    artifactBytes: entries.reduce((a, e) => a + e.size, 0),
+  };
 }
 
 /**
@@ -366,7 +496,18 @@ async function restoreLines(
   return { schemaHead: manifest!.schemaHead, counts };
 }
 
-/** Fresh-restore a single-file gzip dump (UI upload / CLI `--from <file>`). */
+/**
+ * Fresh-restore a single-file gzip dump (UI upload / CLI `--from <file>`).
+ *
+ * Auto-detects the envelope format by sniffing magic bytes after gunzip:
+ *   - tar magic ("ustar" at offset 257) → tar.gz path (meta.json + dump.ndjson + artifacts/)
+ *   - everything else                   → legacy NDJSON path (v1.7.0 dumps)
+ *
+ * Both paths converge on the same single-transaction DB restore. The tar
+ * path additionally walks `artifacts/` entries and `putObject`s each to S3,
+ * then triggers the boot-time `runBackfill()` so any pre-v1.0 inline-only
+ * QA scripts get re-uploaded on the new host.
+ */
 export async function restore(
   body: ReadableStream<Uint8Array> | NodeJS.ReadableStream,
   opts: { force: boolean },
@@ -375,7 +516,174 @@ export async function restore(
     body instanceof ReadableStream
       ? Readable.fromWeb(body as unknown as Parameters<typeof Readable.fromWeb>[0])
       : (body as Readable);
-  return restoreLines(gunzipLines(node), opts);
+
+  // Decompress once. Capture the first tar-header-sized chunk to dispatch,
+  // then rebuild a fresh Readable by prepending the peeked bytes to the
+  // remaining gunzip output. Cleaner than unshift+pipe interactions.
+  const gz = createGunzip();
+  node.on('error', (e) => gz.destroy(e));
+  node.pipe(gz);
+
+  const iter = gz[Symbol.asyncIterator]();
+  const peekChunks: Buffer[] = [];
+  let peekLen = 0;
+  while (peekLen < 512) {
+    const { value, done } = await iter.next();
+    if (done) break;
+    const buf = typeof value === 'string' ? Buffer.from(value) : (value as Buffer);
+    peekChunks.push(buf);
+    peekLen += buf.length;
+  }
+  const peek = Buffer.concat(peekChunks);
+
+  // Re-wrap: yield the peeked buffer first, then drain the rest of the
+  // iterator. Downstream consumers see a single contiguous stream.
+  async function* combined(): AsyncGenerator<Buffer> {
+    if (peek.length > 0) yield peek;
+    for (;;) {
+      const { value, done } = await iter.next();
+      if (done) return;
+      yield typeof value === 'string' ? Buffer.from(value) : (value as Buffer);
+    }
+  }
+  const rejoined = Readable.from(combined());
+
+  if (isTarMagic(peek)) {
+    return restoreTar(rejoined, opts);
+  }
+  return restoreLines(linesFromStream(rejoined), opts);
+}
+
+/** tar header has `ustar` (with optional null) starting at byte 257. */
+function isTarMagic(peek: Buffer): boolean {
+  if (peek.length < 263) return false;
+  return peek.slice(257, 262).toString('ascii') === 'ustar';
+}
+
+/** Split an already-gunzipped stream into NDJSON lines. */
+async function* linesFromStream(s: Readable): AsyncGenerator<string> {
+  let buf = '';
+  for await (const chunk of s) {
+    buf += typeof chunk === 'string' ? chunk : (chunk as Buffer).toString('utf8');
+    let nl = buf.indexOf('\n');
+    while (nl >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (line) yield line;
+      nl = buf.indexOf('\n');
+    }
+  }
+  if (buf.trim()) yield buf;
+}
+
+/**
+ * Restore from a tar (already-gunzipped) stream. Reads meta.json + dump.ndjson
+ * into memory (small), applies the DB restore through the existing path, then
+ * streams each `artifacts/<key>` tar entry to S3 via `putObject`. Finally
+ * triggers `runBackfill()` so any pre-v1.0 inline `qa_generated_tests.script`
+ * rows get re-uploaded on the new host.
+ *
+ * DB is the durability anchor: artifact upload failures are logged and
+ * continued so partial-S3-outage doesn't roll back the DB. Missing-object
+ * 404s on browser-run trace links degrade gracefully — same behavior as
+ * today.
+ */
+async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promise<RestoreResult> {
+  const extract = tar.extract();
+  let meta: TarMeta | undefined;
+  let dumpBuf: Buffer | undefined;
+  const artifactQueue: { key: string; body: Buffer; contentType: string }[] = [];
+
+  const extractDone = (async () => {
+    for await (const entry of extract as AsyncIterable<
+      {
+        header: { name: string };
+        [Symbol.asyncIterator](): AsyncIterator<Buffer>;
+      } & NodeJS.ReadableStream
+    >) {
+      const name = entry.header.name;
+      const chunks: Buffer[] = [];
+      for await (const c of entry) chunks.push(c as Buffer);
+      const body = Buffer.concat(chunks);
+
+      if (name === 'meta.json') {
+        meta = JSON.parse(body.toString('utf8')) as TarMeta;
+      } else if (name === 'dump.ndjson') {
+        dumpBuf = body;
+      } else if (name.startsWith('artifacts/')) {
+        const key = name.slice('artifacts/'.length);
+        const contentType = guessContentType(key);
+        artifactQueue.push({ key, body, contentType });
+      }
+    }
+  })();
+
+  gunzipped.pipe(extract);
+  await extractDone;
+
+  if (!meta) throw new RestoreError('tar dump missing meta.json');
+  if (meta.format !== BACKUP_FORMAT) {
+    throw new RestoreError(`unsupported backup format ${meta.format}`);
+  }
+  if (!dumpBuf) throw new RestoreError('tar dump missing dump.ndjson');
+
+  // DB restore reuses the single-file path: synthesize an NDJSON line iterator
+  // over the buffered dump and feed it into the existing transactional loader.
+  async function* lines(): AsyncGenerator<string> {
+    let buf = dumpBuf!.toString('utf8');
+    let nl = buf.indexOf('\n');
+    while (nl >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      if (line) yield line;
+      nl = buf.indexOf('\n');
+    }
+    if (buf.trim()) yield buf;
+  }
+  const result = await restoreLines(lines(), opts);
+
+  // Artifacts: best-effort uploads after the DB transaction commits.
+  if (isStorageConfigured()) {
+    let uploaded = 0;
+    let failed = 0;
+    for (const a of artifactQueue) {
+      try {
+        await putObject(a.key, a.body, a.contentType);
+        uploaded += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn(
+          `restore: artifact upload failed for ${a.key}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    logger.info(`restore: artifacts uploaded=${uploaded} failed=${failed}`);
+
+    // Re-upload any pre-v1.0 inline-only script rows on the new host.
+    try {
+      const bf = await runBackfill();
+      logger.info(`restore: backfill ${JSON.stringify(bf)}`);
+    } catch (err) {
+      logger.warn(
+        `restore: post-restore backfill failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  } else if (artifactQueue.length > 0) {
+    logger.warn(
+      `restore: ${artifactQueue.length} artifact(s) in dump but OO_OBJECT_STORAGE_* not configured — skipped`,
+    );
+  }
+
+  return result;
+}
+
+function guessContentType(key: string): string {
+  if (key.endsWith('.zip')) return 'application/zip';
+  if (key.endsWith('.png')) return 'image/png';
+  if (key.endsWith('.jpg') || key.endsWith('.jpeg')) return 'image/jpeg';
+  if (key.endsWith('.spec.ts') || key.endsWith('.ts')) return 'text/typescript';
+  if (key.endsWith('.json')) return 'application/json';
+  return 'application/octet-stream';
 }
 
 /**

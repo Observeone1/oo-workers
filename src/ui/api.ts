@@ -59,8 +59,21 @@ export const importJson = async (
 // Download is a plain authed navigation: the oo_session cookie rides along
 // on a same-origin GET, and the browser streams the gzip straight to disk
 // without buffering it in JS — important for large dumps.
-export const backupUrl = (scope: string, since: number) =>
-  `/api/backup?scope=${encodeURIComponent(scope)}&since=${since}`;
+export const backupUrl = (scope: string, since: number, includeArtifacts: boolean) => {
+  const qs = `scope=${encodeURIComponent(scope)}&since=${since}`;
+  return includeArtifacts ? `/api/backup?${qs}&includeArtifacts=1` : `/api/backup?${qs}`;
+};
+
+export interface BackupEstimate {
+  artifactCount: number;
+  artifactBytes: number;
+}
+
+export const backupEstimate = async (): Promise<BackupEstimate> => {
+  const res = await fetch('/api/backup/estimate', COMMON);
+  if (!res.ok) return { artifactCount: 0, artifactBytes: 0 };
+  return res.json();
+};
 
 export const restoreBackup = async (
   file: File,

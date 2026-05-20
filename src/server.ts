@@ -56,6 +56,7 @@ import {
 import { getObjectResponse } from './services/object-storage.ts';
 import {
   DEFAULT_SINCE_DAYS,
+  estimateArtifacts,
   exportStream,
   restore,
   RestoreError,
@@ -107,7 +108,9 @@ function buildApp(connection: Redis) {
   app.use('/api/import', writeAuth);
   // Backup/restore is write-gated even on GET — the dump contains API-key
   // and password hashes, so it must never be reachable unauthenticated.
+  // The `/*` line covers /api/backup/estimate too.
   app.use('/api/backup', writeAuth);
+  app.use('/api/backup/*', writeAuth);
   app.use('/api/restore', writeAuth);
   app.use('/api/channels/*', async (c, next) => {
     if (c.req.method === 'GET') return next();
@@ -1187,20 +1190,42 @@ function buildApp(connection: Redis) {
   });
 
   // ---------- API: full logical backup & restore ----------
-  // GET streams a gzip NDJSON dump (config + windowed execution data).
+  // GET streams a gzip dump. Two formats:
+  //   - default: legacy NDJSON-gz (config + windowed execution data)
+  //   - ?includeArtifacts=1: tar.gz envelope with meta.json + dump.ndjson +
+  //                          artifacts/<key> for every S3 object (QA scripts
+  //                          + per-run traces/screenshots). Restore detects
+  //                          either format via magic-byte sniff.
   // scope: window (default, last `since` days) | all | none (config only).
   app.get('/api/backup', (c) => {
     const scopeParam = c.req.query('scope');
     const scope: DataScope = scopeParam === 'all' || scopeParam === 'none' ? scopeParam : 'window';
     const since = Number(c.req.query('since')) || DEFAULT_SINCE_DAYS;
+    const includeArtifacts = c.req.query('includeArtifacts') === '1';
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    return new Response(exportStream({ scope, sinceDays: since }), {
+    const filename = includeArtifacts
+      ? `oo-backup-${stamp}.oodump.tar.gz`
+      : `oo-backup-${stamp}.oodump.gz`;
+    return new Response(exportStream({ scope, sinceDays: since, includeArtifacts }), {
       headers: {
         'content-type': 'application/gzip',
-        'content-disposition': `attachment; filename="oo-backup-${stamp}.oodump.gz"`,
+        'content-disposition': `attachment; filename="${filename}"`,
         'cache-control': 'no-store',
       },
     });
+  });
+
+  // GET /api/backup/estimate — used by the UI Backup dialog to preview the
+  // artifact bundle size before the user clicks Download. Returns 0/0 if
+  // object storage isn't configured on this stack.
+  app.get('/api/backup/estimate', async (c) => {
+    try {
+      const result = await estimateArtifacts();
+      return c.json(result);
+    } catch (err) {
+      logger.error(`backup estimate failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ artifactCount: 0, artifactBytes: 0 });
+    }
   });
 
   // POST the raw gzip dump as the request body. Fresh-restore: refuses a

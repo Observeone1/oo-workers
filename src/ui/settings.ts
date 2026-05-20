@@ -11,6 +11,7 @@ import {
   createKey,
   revokeKey,
   backupUrl,
+  backupEstimate,
   restoreBackup,
   type KeyLite,
   type KeyScope,
@@ -740,6 +741,13 @@ function renderBackup(panel: HTMLElement) {
             <button data-val="none" data-testid="backup-scope-none">Config only</button>
           </div>
         </div>
+        <div class="field" style="margin-top:var(--s-3)">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="s-include-artifacts" data-testid="backup-include-artifacts" checked />
+            <span>Include browser run artifacts <span id="s-artifacts-estimate" class="opt"></span></span>
+          </label>
+          <p class="help" style="margin-top:6px">QA test scripts and Playwright trace/screenshot files for failed browser runs. Without these, a restored host has dangling references.</p>
+        </div>
         <div style="margin-top:var(--s-4);display:flex;justify-content:flex-end">
           <button class="btn primary" id="s-backup-download" data-testid="backup-download-btn">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -777,12 +785,29 @@ function renderBackup(panel: HTMLElement) {
     });
   });
 
+  // Artifacts estimate — fetch once on mount; tag onto the checkbox label.
+  // No warning threshold: just show the count + size next to the label.
+  const estimateEl = panel.querySelector<HTMLElement>('#s-artifacts-estimate');
+  const artifactsBox = panel.querySelector<HTMLInputElement>('#s-include-artifacts');
+  if (estimateEl) {
+    void backupEstimate().then((est) => {
+      if (est.artifactCount === 0) {
+        estimateEl.textContent = '';
+        return;
+      }
+      const mb = est.artifactBytes / (1024 * 1024);
+      const size = mb < 1 ? `${Math.round(est.artifactBytes / 1024)} KB` : `${mb.toFixed(1)} MB`;
+      estimateEl.textContent = `(~${est.artifactCount} object${est.artifactCount === 1 ? '' : 's'}, ${size})`;
+    });
+  }
+
   // Download
   panel.querySelector('#s-backup-download')?.addEventListener('click', () => {
     const scope =
       panel.querySelector<HTMLButtonElement>('#s-scope-seg button.on')?.dataset.val ?? 'window';
+    const includeArtifacts = artifactsBox?.checked ?? true;
     const a = document.createElement('a');
-    a.href = backupUrl(scope, 90);
+    a.href = backupUrl(scope, 90, includeArtifacts);
     a.click();
   });
 
