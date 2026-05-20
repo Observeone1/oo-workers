@@ -25,6 +25,7 @@
     "test:incident-render": "bun scripts/incident-render-test.ts",
     "test:auth-profile": "bun scripts/auth-profile-test.ts",
     "test:import-remap": "bun scripts/import-remap-test.ts",
+    "test:heartbeat": "bun scripts/heartbeat-test.ts",
     "purge:e2e": "bun scripts/purge-e2e-leftovers.ts",
     "purge:e2e:all": "bun scripts/purge-e2e-leftovers.ts --all",
     "test:ui:e2e": "playwright test --config=playwright.ui.config.ts",

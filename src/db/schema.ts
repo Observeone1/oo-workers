@@ -288,6 +288,35 @@ export const tlsExecutions = pgTable(
 );
 
 // ============================================================
+// Heartbeat monitors (Roadmap 8) — inverted-direction:
+// the service pings us, we alert when it doesn't.
+// ============================================================
+
+export const heartbeatMonitors = pgTable(
+  'heartbeat_monitors',
+  {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    description: text('description'),
+    // 32 random bytes → 43 base64url chars; public path component on
+    // POST /heartbeat/:token (no auth — services can't carry bearers).
+    token: varchar('token', { length: 64 }).notNull().unique(),
+    periodSeconds: integer('period_seconds').notNull(),
+    graceSeconds: integer('grace_seconds').notNull().default(60),
+    lastPingAt: timestamp('last_ping_at', { withTimezone: true }),
+    // PENDING (just created, no ping yet) | UP (within grace) | OVERDUE.
+    status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_heartbeat_monitors_enabled_status').on(t.enabled, t.status),
+    index('idx_heartbeat_monitors_token').on(t.token),
+  ],
+);
+
+// ============================================================
 // QA (Playwright) monitoring
 // ============================================================
 

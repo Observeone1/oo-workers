@@ -39,6 +39,8 @@ import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
+import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
+import { dispatchAlert } from './services/alert-dispatch.ts';
 import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -128,6 +130,10 @@ export function startScheduler(connection: Redis) {
         tickUdpMonitors(getQueue, connection),
         tickDbMonitors(getQueue, connection),
         tickTlsMonitors(getQueue, connection),
+        // Heartbeats are inverted-direction (service pings us) — no
+        // BullMQ jobs to dispatch, just an overdue sweep that fires
+        // outage alerts via the existing channel system.
+        tickHeartbeats(),
       ]);
     } catch (err) {
       logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -436,5 +442,34 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
         }`,
       );
     }
+  }
+}
+
+// ---------------- heartbeat ----------------
+// Roadmap 8. Heartbeats are inverted-direction monitors — the service
+// pings POST /heartbeat/:token, the worker tracks last_ping_at. This
+// tick sweeps for enabled UP heartbeats whose
+// (now - last_ping_at) > (period + grace), transitions them to OVERDUE,
+// and fires an outage alert via the existing channel system. The state
+// transition is idempotent (markOverdue returns null if status already
+// OVERDUE) so a heartbeat alerts ONCE per outage, not on every tick.
+async function tickHeartbeats(): Promise<void> {
+  const overdue = await heartbeatRepo.findOverdue();
+  for (const h of overdue) {
+    const transitioned = await heartbeatRepo.markOverdue(h.id);
+    if (!transitioned) continue; // someone else got there (or already OVERDUE)
+    logger.info(`heartbeat #${h.id} (${h.name}) → OVERDUE`);
+    await dispatchAlert({
+      monitor: { type: 'heartbeat', id: h.id, name: h.name, target: h.name },
+      event: 'outage',
+      status: 'FAILED',
+      errorMessage:
+        h.lastPingAt === null
+          ? 'no ping received yet'
+          : `no ping in ${Math.round(
+              (Date.now() - h.lastPingAt.getTime()) / 1000,
+            )}s (expected every ${h.periodSeconds}s + ${h.graceSeconds}s grace)`,
+      startTime: new Date().toISOString(),
+    });
   }
 }
