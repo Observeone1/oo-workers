@@ -62,3 +62,8 @@ bun scripts/auth-profile-test.ts
 # fails the back-compat case; one that never wires them fails the
 # positive case. Cleans its own prefix-namespaced rows in finally.
 bun scripts/import-remap-test.ts
+# Heartbeat monitors (Roadmap 8). Inverted-direction; the service pings
+# /heartbeat/:token, scheduler flips status OVERDUE when ping is late.
+# Anti-vacuous: idempotent OVERDUE transition prevents double-alerts;
+# wasOverdue=true ONLY on recovery (proven by negative I-check).
+bun scripts/heartbeat-test.ts

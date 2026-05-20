@@ -16,6 +16,7 @@ import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
 import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
+import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { parseHexPayload } from './services/udp-probe.ts';
 import { randomBytes } from 'node:crypto';
 import {
@@ -39,7 +40,7 @@ import {
   monitorAlertChannelRepo,
   type ChannelType,
 } from './db/repositories/alert-channel.repo.ts';
-import { sendToChannel } from './services/alert-dispatch.ts';
+import { dispatchAlert, sendToChannel } from './services/alert-dispatch.ts';
 import { isLocalMailpit, findRecentTestMessage } from './services/mailpit.ts';
 import { statusPageMonitorRepo, statusPageRepo } from './db/repositories/status-page.repo.ts';
 import { incidentRepo, SEVERITIES, type Severity } from './db/repositories/incident.repo.ts';
@@ -329,7 +330,7 @@ function buildApp(connection: Redis) {
 
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
-    const [urls, apis, qas, tcps, udps, dbs, tlss] = await Promise.all([
+    const [urls, apis, qas, tcps, udps, dbs, tlss, hbs] = await Promise.all([
       urlMonitorRepo.findAllWithLatest(),
       apiCheckRepo.findAllWithLatest(),
       qaProjectRepo.findAllWithLatest(),
@@ -337,8 +338,18 @@ function buildApp(connection: Redis) {
       udpMonitorRepo.findAllWithLatest(),
       dbMonitorRepo.findAllWithLatest(),
       tlsMonitorRepo.findAllWithLatest(),
+      heartbeatRepo.list(),
     ]);
-    return c.json({ url: urls, api: apis, qa: qas, tcp: tcps, udp: udps, db: dbs, tls: tlss });
+    return c.json({
+      url: urls,
+      api: apis,
+      qa: qas,
+      tcp: tcps,
+      udp: udps,
+      db: dbs,
+      tls: tlss,
+      heartbeat: hbs,
+    });
   });
 
   // ---------- API: fleet availability ----------
@@ -416,6 +427,14 @@ function buildApp(connection: Redis) {
         monitor: { ...m, type: 'tls' },
         runs: runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs })),
       });
+    }
+    if (type === 'heartbeat') {
+      const [m] = await heartbeatRepo.findById(id);
+      if (!m) return c.json({ error: 'not found' }, 404);
+      // No executions for heartbeats (inverted-direction). The detail
+      // view just needs the row + the public ingest URL the operator
+      // wires their cron to.
+      return c.json({ monitor: { ...m, type: 'heartbeat' }, runs: [] });
     }
     return c.json({ error: 'bad type' }, 400);
   });
@@ -600,6 +619,62 @@ function buildApp(connection: Redis) {
     return c.json(m, 201);
   });
 
+  // Heartbeat — inverted-direction (service pings us). create returns
+  // the token in the body since the operator needs the public URL to
+  // wire into their cron/service. The token is also visible on subsequent
+  // GETs (it's not a secret — it's a URL component).
+  app.post('/api/monitors/heartbeat', async (c) => {
+    const body = await c.req.json();
+    if (!body.name || typeof body.name !== 'string') {
+      return c.json({ error: 'name is required' }, 400);
+    }
+    const period = Number(body.periodSeconds);
+    if (!Number.isFinite(period) || period < 30) {
+      // Floor at 30s: tighter doesn't make sense for service-ping
+      // cadence and would force tight scheduler tick (currently 10s).
+      return c.json({ error: 'periodSeconds must be a number ≥ 30' }, 400);
+    }
+    const grace = Number(body.graceSeconds ?? 60);
+    if (!Number.isFinite(grace) || grace < 0) {
+      return c.json({ error: 'graceSeconds must be a non-negative number' }, 400);
+    }
+    const [m] = await heartbeatRepo.create({
+      name: body.name,
+      description: body.description ?? null,
+      periodSeconds: period,
+      graceSeconds: grace,
+      enabled: body.enabled ?? true,
+    });
+    return c.json(m, 201);
+  });
+
+  app.patch('/api/monitors/heartbeat/:id', async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+    const body = await c.req.json();
+    const update: Record<string, unknown> = {};
+    if (typeof body.name === 'string') update.name = body.name;
+    if (body.description !== undefined) update.description = body.description;
+    if (body.periodSeconds !== undefined) {
+      const p = Number(body.periodSeconds);
+      if (!Number.isFinite(p) || p < 30) {
+        return c.json({ error: 'periodSeconds must be a number ≥ 30' }, 400);
+      }
+      update.periodSeconds = p;
+    }
+    if (body.graceSeconds !== undefined) {
+      const g = Number(body.graceSeconds);
+      if (!Number.isFinite(g) || g < 0) {
+        return c.json({ error: 'graceSeconds must be a non-negative number' }, 400);
+      }
+      update.graceSeconds = g;
+    }
+    if (typeof body.enabled === 'boolean') update.enabled = body.enabled;
+    const [m] = await heartbeatRepo.update(id, update);
+    if (!m) return c.json({ error: 'not found' }, 404);
+    return c.json(m);
+  });
+
   app.post('/api/monitors/qa', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.targetUrl || !Array.isArray(body.tests) || body.tests.length === 0) {
@@ -638,6 +713,7 @@ function buildApp(connection: Redis) {
     else if (type === 'udp') await udpMonitorRepo.deleteById(id);
     else if (type === 'db') await dbMonitorRepo.deleteById(id);
     else if (type === 'tls') await tlsMonitorRepo.deleteById(id);
+    else if (type === 'heartbeat') await heartbeatRepo.delete(id);
     else return c.json({ error: 'bad type' }, 400);
     // monitor_alert_channels and status_page_monitors have no real FK
     // (different monitor types live in different tables) — clean them up
@@ -700,6 +776,7 @@ function buildApp(connection: Redis) {
     else if (type === 'udp') await udpMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'db') await dbMonitorRepo.updateEnabled(id, body.enabled);
     else if (type === 'tls') await tlsMonitorRepo.updateEnabled(id, body.enabled);
+    else if (type === 'heartbeat') await heartbeatRepo.update(id, { enabled: body.enabled });
     else return c.json({ error: 'bad type' }, 400);
     return c.body(null, 204);
   });
@@ -1470,6 +1547,38 @@ function buildApp(connection: Redis) {
   const STATUS_CSP =
     "default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'";
+  // ---------- Public heartbeat ingest (Roadmap 8) ----------
+  // POST /heartbeat/:token — UNAUTHENTICATED. Services / cron jobs ping
+  // this on each successful run; we update last_ping_at + flip status
+  // to UP. If the heartbeat was OVERDUE, fire a recovery alert.
+  // Accepts both POST and GET so cron environments without a POST flag
+  // (`curl URL` works as GET) still register a ping. Body is ignored.
+  const handlePing = async (
+    c: import('hono').Context,
+    method: 'GET' | 'POST',
+  ): Promise<Response> => {
+    const token = c.req.param('token');
+    if (!token) return c.json({ error: 'token required' }, 400);
+    const result = await heartbeatRepo.recordPing(token);
+    if (!result) return c.json({ error: 'unknown heartbeat' }, 404);
+    const { row, wasOverdue } = result;
+    if (wasOverdue) {
+      // Fire-and-forget — never throws (see dispatchAlert contract).
+      void dispatchAlert({
+        monitor: { type: 'heartbeat', id: row.id, name: row.name, target: row.name },
+        event: 'recovery',
+        status: 'SUCCESS',
+        startTime: new Date().toISOString(),
+      }).catch(() => {});
+    }
+    return c.json(
+      { ok: true, status: row.status, lastPingAt: row.lastPingAt },
+      method === 'POST' ? 200 : 200,
+    );
+  };
+  app.post('/heartbeat/:token', (c) => handlePing(c, 'POST'));
+  app.get('/heartbeat/:token', (c) => handlePing(c, 'GET'));
+
   app.get('/status/:slug', async (c) => {
     const slug = c.req.param('slug');
     c.header('Content-Security-Policy', STATUS_CSP);
