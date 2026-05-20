@@ -33,16 +33,27 @@ export default defineConfig({
   testMatch: /.*\.e2e\.spec\.ts/,
   outputDir: './tests/ui/screenshots/artifacts',
   reporter: [['list']],
-  // SPA boot occasionally races the auth header on first goto and lands on
-  // the login screen. One retry papers over this without masking real bugs.
-  retries: 1,
+  // Purge leftover e2e-* monitors/channels/regions/status-pages BEFORE
+  // any spec runs. Critical for WSL memory stability: each enabled QA
+  // monitor accumulated across crashed runs spawns its own Chromium
+  // via the worker (QA_PROJECT_CONCURRENCY=5), and the runaway sum is
+  // what crashes WSL during the full suite.
+  globalSetup: './tests/ui/global-setup.ts',
+  // No retries: a flaky pass-after-retry hides real bugs AND doubles
+  // peak memory on the failing spec. Specs that need a "one retry on
+  // auth race" wrapper should opt in per-test, not globally.
+  retries: 0,
   workers: 1,
   use: {
     baseURL: process.env.UI_BASE_URL ?? 'http://localhost:3010',
     headless: true,
     viewport: { width: 1280, height: 800 },
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    // 'off' instead of 'retain-on-failure': trace.zip is 10–100MB per
+    // failed test and the screenshot already gives us the visual
+    // failure context. Re-enable per-spec with test.use({trace:'on'})
+    // when actually debugging.
+    trace: 'off',
     // When OO_AUTH_ENABLED=true on the stack, every request through the
     // Playwright APIRequestContext + Page-context fetches sends this
     // bearer header. OO_E2E_API_KEY is generated in run-integration.sh
