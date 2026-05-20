@@ -40,12 +40,12 @@ function renderArtifactsCell(r: RunLite): string {
   const shots = Array.isArray(r.screenshotUrls) ? r.screenshotUrls : [];
   if (!trace && shots.length === 0) return '<td class="meta">—</td>';
   const traceLink = trace
-    ? `<a class="artifact-link" href="/api/artifacts?key=${encodeURIComponent(trace)}" title="Download Playwright trace.zip — open with: npx playwright show-trace trace.zip">trace.zip</a>`
+    ? `<a class="artifact-link" data-testid="artifact-trace-link" href="/api/artifacts?key=${encodeURIComponent(trace)}" title="Download Playwright trace.zip — open with: npx playwright show-trace trace.zip">trace.zip</a>`
     : '';
   const thumbs = shots
     .map(
       (k) =>
-        `<a class="artifact-thumb" href="/api/artifacts?key=${encodeURIComponent(k)}" target="_blank" title="${esc(k)}"><img src="/api/artifacts?key=${encodeURIComponent(k)}" alt="screenshot" loading="lazy" /></a>`,
+        `<a class="artifact-thumb" data-testid="artifact-screenshot-thumb" href="/api/artifacts?key=${encodeURIComponent(k)}" target="_blank" title="${esc(k)}"><img src="/api/artifacts?key=${encodeURIComponent(k)}" alt="screenshot" loading="lazy" /></a>`,
     )
     .join('');
   return `<td class="artifacts">${traceLink}${thumbs ? '<div class="artifact-thumbs">' + thumbs + '</div>' : ''}</td>`;
