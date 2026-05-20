@@ -66,6 +66,19 @@ function applyFilter(runs: RunLite[], filter: Filter): RunLite[] {
 }
 
 export async function renderDetail(type: MonType, id: number) {
+  // Heartbeats short-circuit the runs/regions/latency-chart machinery —
+  // they have none of those (inverted-direction). Show the public URL,
+  // status, last ping, and a copy-paste curl example instead.
+  if (type === 'heartbeat') {
+    const data = await getDetail(type, id);
+    if (data.error) {
+      main.innerHTML = `<div class="empty">${esc(data.error)}</div>`;
+      return;
+    }
+    renderHeartbeatDetail(data.monitor as Record<string, unknown>);
+    return;
+  }
+
   const [data, regionsList] = await Promise.all([
     getDetail(type, id),
     getRegions().catch(() => [] as RegionLite[]),
@@ -210,4 +223,88 @@ function sparklineSvg(values: number[], w: number, h: number, stroke: string): s
   return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
     <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="1.5" />
   </svg>`;
+}
+
+// Heartbeat detail — no runs, no regions, no latency. Just the public
+// ingest URL (the operator's primary action: copy it to their cron),
+// status + last-ping age, and a copy-paste curl example.
+function renderHeartbeatDetail(m: Record<string, unknown>) {
+  const name = String(m.name ?? '');
+  const description = m.description ? String(m.description) : '';
+  const status = String(m.status ?? 'PENDING') as 'PENDING' | 'UP' | 'OVERDUE';
+  const token = String(m.token ?? '');
+  const periodSeconds = Number(m.periodSeconds ?? 0);
+  const graceSeconds = Number(m.graceSeconds ?? 0);
+  const enabled = m.enabled === true;
+  const lastPingAt = m.lastPingAt ? String(m.lastPingAt) : null;
+  const pingUrl = `${location.origin}/heartbeat/${token}`;
+  const curl = `curl -fsS ${pingUrl}`;
+  const cronExample = `*/${Math.max(1, Math.round(periodSeconds / 60))} * * * * ${curl} >/dev/null`;
+  const dotClass = statusClass(status);
+
+  main.innerHTML = `
+    <a href="#/" class="back-link">← All monitors</a>
+    <header class="detail-head">
+      <h1>${esc(name)} ${enabled ? iconActive : iconPaused}</h1>
+      ${description ? `<p class="detail-desc">${esc(description)}</p>` : ''}
+    </header>
+    <div class="detail-grid" data-testid="detail-meta-cards">
+      <div class="meta-card">
+        <span class="lbl">Status</span>
+        <span class="val"><span class="dot ${dotClass}"></span> ${esc(status)}</span>
+      </div>
+      <div class="meta-card">
+        <span class="lbl">Period</span>
+        <span class="val">${periodSeconds}s</span>
+      </div>
+      <div class="meta-card">
+        <span class="lbl">Grace</span>
+        <span class="val">${graceSeconds}s</span>
+      </div>
+      <div class="meta-card">
+        <span class="lbl">Last ping</span>
+        <span class="val">${lastPingAt ? esc(fmtAge(lastPingAt)) : 'never'}</span>
+      </div>
+    </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-head">
+        <span class="h"><em>Public ping URL</em></span>
+      </div>
+      <div class="panel-body">
+        <p class="help" style="margin-bottom: 8px">
+          Your service POSTs (or GETs) this URL on every successful run.
+          We track the timestamp and alert if we don't see a ping within
+          <strong>${periodSeconds}s + ${graceSeconds}s grace</strong>.
+          The URL is the only secret — anyone with it can mark your
+          heartbeat alive. If it leaks, delete and recreate this monitor.
+        </p>
+        <div class="codeblock" data-testid="heartbeat-ping-url">
+          <code>${esc(pingUrl)}</code>
+          <button class="btn sm" data-copy="${esc(pingUrl)}" data-testid="heartbeat-copy-url">Copy</button>
+        </div>
+        <p class="help" style="margin-top: 12px"><strong>curl one-shot:</strong></p>
+        <div class="codeblock"><code>${esc(curl)}</code><button class="btn sm" data-copy="${esc(curl)}">Copy</button></div>
+        <p class="help" style="margin-top: 12px"><strong>cron line (every ${Math.round(periodSeconds / 60)} min):</strong></p>
+        <div class="codeblock"><code>${esc(cronExample)}</code><button class="btn sm" data-copy="${esc(cronExample)}">Copy</button></div>
+      </div>
+    </section>
+  `;
+
+  // Wire copy buttons.
+  main.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const prev = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => {
+          btn.textContent = prev;
+        }, 1200);
+      } catch {
+        // ignore — secure-context only; show no feedback rather than alert
+      }
+    });
+  });
 }

@@ -26,6 +26,10 @@ const STATUS_CLASS: Record<string, string> = {
   SUCCESS: 'up',
   FAILED: 'down',
   PENDING: 'pending',
+  // Heartbeat-only enum: UP is the same green as SUCCESS, OVERDUE the
+  // same red as FAILED. Treated identically by the fleet stats.
+  UP: 'up',
+  OVERDUE: 'down',
   passed: 'up',
   failed: 'down',
   error: 'down',

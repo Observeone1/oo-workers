@@ -28,6 +28,12 @@ export function setActiveTab(t: MonType) {
 }
 
 function targetFor(m: Monitor): string {
+  if (m.type === 'heartbeat') {
+    // Heartbeats have no target host/url — show last-ping status + age.
+    if (m.status === 'PENDING') return 'waiting for first ping';
+    if (m.status === 'OVERDUE') return `OVERDUE since ${fmtAge(m.lastPingAt ?? undefined)}`;
+    return m.lastPingAt ? `pinged ${fmtAge(m.lastPingAt)}` : 'no pings yet';
+  }
   if (m.host) {
     const hostPort = `${m.host}:${m.port ?? ''}`;
     return m.protocol ? `${m.protocol} ${hostPort}` : hostPort;
@@ -134,6 +140,7 @@ export async function renderList() {
     udp: data.udp.length,
     db: data.db.length,
     tls: data.tls.length,
+    heartbeat: data.heartbeat.length,
   };
 
   const allForTab = data[activeTab];
@@ -147,7 +154,16 @@ export async function renderList() {
   const showingTo = Math.min(start + PAGE_SIZE, filtered.length);
 
   // Fleet stats
-  const allMonitors = [...data.url, ...data.api, ...data.qa, ...data.tcp, ...data.udp, ...data.db];
+  const allMonitors = [
+    ...data.url,
+    ...data.api,
+    ...data.qa,
+    ...data.tcp,
+    ...data.udp,
+    ...data.db,
+    ...data.tls,
+    ...data.heartbeat,
+  ];
   const upCount = allMonitors.filter(
     (m) => m.enabled && statusClass(m.latest?.status) === 'up',
   ).length;
@@ -288,7 +304,7 @@ export async function renderList() {
     ${fleetSection}
     ${incidentWidget}
     <div class="tabs">
-      ${(['url', 'api', 'qa', 'tcp', 'udp', 'db', 'tls'] as const)
+      ${(['url', 'api', 'qa', 'tcp', 'udp', 'db', 'tls', 'heartbeat'] as const)
         .map(
           (t) =>
             `<button class="tab ${t === activeTab ? 'active' : ''}" data-tab="${t}" data-testid="monitors-tab-${t}">${t.toUpperCase()}<span class="count" data-testid="monitors-tab-${t}-count">${counts[t]}</span></button>`,
@@ -438,9 +454,19 @@ function wirePagination(totalPages: number) {
 }
 
 function rowFor(m: Monitor): string {
-  const cls = statusClass(m.latest?.status);
+  // Heartbeats use their own status (UP/OVERDUE/PENDING) on `m.status`,
+  // not the run-result pipeline that other types route through `m.latest`.
+  const cls = m.type === 'heartbeat' ? statusClass(m.status) : statusClass(m.latest?.status);
   const latency = m.latest?.responseTimeMs ?? m.latest?.durationMs;
   const target = targetFor(m);
+  // Schedule cell: heartbeats use period + grace, not interval.
+  const schedule =
+    m.type === 'heartbeat'
+      ? `every ${m.periodSeconds ?? '?'}s + ${m.graceSeconds ?? 0}s grace`
+      : `every ${m.intervalSeconds}s`;
+  // Last-event cell: heartbeats show lastPingAt; others use latest.startTime.
+  const lastEvent =
+    m.type === 'heartbeat' ? fmtAge(m.lastPingAt ?? undefined) : fmtAge(m.latest?.startTime);
   return `
     <tr class="clickable${m.enabled ? '' : ' disabled'}" data-open data-type="${m.type}" data-id="${m.id}">
       <td class="col-status"><span class="dot ${cls}"></span></td>
@@ -448,10 +474,10 @@ function rowFor(m: Monitor): string {
         <div class="name">${esc(m.name)}</div>
         <span class="target" data-testid="monitor-row-target">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</span>
       </td>
-      <td><span class="pill">every ${m.intervalSeconds}s</span></td>
-      <td class="cell-meta">${fmtAge(m.latest?.startTime)}</td>
+      <td><span class="pill">${schedule}</span></td>
+      <td class="cell-meta">${lastEvent}</td>
       <td class="cell-num">
-        ${latency != null ? `${latency}<span class="dim">ms</span>` : '—'}
+        ${m.type === 'heartbeat' ? '—' : latency != null ? `${latency}<span class="dim">ms</span>` : '—'}
       </td>
       <td class="col-actions">
         <div class="row-actions">
