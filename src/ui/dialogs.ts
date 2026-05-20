@@ -29,8 +29,8 @@ function getConfirmDialog(): HTMLDialogElement {
         <h3 id="confirm-title"></h3>
         <p id="confirm-body"></p>
         <div class="dialog-actions">
-          <button type="button" class="confirm-cancel">Cancel</button>
-          <button type="button" class="confirm-ok primary"></button>
+          <button type="button" class="confirm-cancel" data-testid="confirm-cancel">Cancel</button>
+          <button type="button" class="confirm-ok primary" data-testid="confirm-ok"></button>
         </div>
       </div>
     `;

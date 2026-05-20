@@ -44,7 +44,7 @@ export async function renderIncidents() {
 }
 
 function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {
-  return `<div class="banner banner-${b.kind}">${esc(b.text)}</div>`;
+  return `<div class="banner banner-${b.kind}" data-testid="banner-${b.kind}">${esc(b.text)}</div>`;
 }
 
 function sevPill(s: string): string {

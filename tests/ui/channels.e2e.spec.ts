@@ -22,7 +22,7 @@ test('create channel, send test alert (502 path), then delete', async ({ page })
   // Create via slideover — point at a guaranteed-unreachable host so the
   // test fires the 502 path (channel exists, but delivery fails).
   await page.getByTestId('channels-add-btn').click();
-  const so = page.locator('.slideover');
+  const so = page.getByTestId('slideover');
   await expect(so).toBeVisible();
   await so.locator('#so-ch-name').fill(name);
   // Webhook is the default-checked type radio.
@@ -32,15 +32,15 @@ test('create channel, send test alert (502 path), then delete', async ({ page })
 
   const card = page.getByTestId(`channel-card-${name}`);
   await expect(card).toBeVisible();
-  await expect(page.locator('.banner-ok')).toBeVisible();
+  await expect(page.getByTestId('banner-ok')).toBeVisible();
 
   // Send-test → banner flips to error (URL unreachable).
-  await card.locator('.channel-test').click();
-  await expect(page.locator('.banner-err')).toBeVisible({ timeout: 15000 });
+  await card.getByTestId('channel-test-btn').click();
+  await expect(page.getByTestId('banner-err')).toBeVisible({ timeout: 15000 });
 
   // Delete — confirm via native dialog
-  await card.locator('.channel-delete').click();
-  await page.locator('#confirm-dialog .confirm-ok').click();
+  await card.getByTestId('channel-delete-btn').click();
+  await page.getByTestId('confirm-ok').click();
   await expect(card).toHaveCount(0, { timeout: 5000 });
 });
 
@@ -52,7 +52,7 @@ test('create an email channel (recipient field) and test-fire without SMTP → e
   await expect(page.getByTestId('page-title')).toHaveText('Alert channels');
 
   await page.getByTestId('channels-add-btn').click();
-  const so = page.locator('.slideover');
+  const so = page.getByTestId('slideover');
   await expect(so).toBeVisible();
   await so.locator('#so-ch-name').fill(name);
   // Selecting email swaps the destination field from URL → Recipient.
@@ -64,15 +64,15 @@ test('create an email channel (recipient field) and test-fire without SMTP → e
   // Created (validates the email-address path + config.to server-side).
   const card = page.getByTestId(`channel-card-${name}`);
   await expect(card).toBeVisible();
-  await expect(page.locator('.banner-ok')).toBeVisible();
+  await expect(page.getByTestId('banner-ok')).toBeVisible();
 
   // Test-fire: e2e stack has no OO_SMTP_* → sendEmail throws "SMTP not
   // configured", surfaced as the 502 error banner (same as webhook 502).
-  await card.locator('.channel-test').click();
-  await expect(page.locator('.banner-err')).toBeVisible({ timeout: 15000 });
+  await card.getByTestId('channel-test-btn').click();
+  await expect(page.getByTestId('banner-err')).toBeVisible({ timeout: 15000 });
 
-  await card.locator('.channel-delete').click();
-  await page.locator('#confirm-dialog .confirm-ok').click();
+  await card.getByTestId('channel-delete-btn').click();
+  await page.getByTestId('confirm-ok').click();
   await expect(card).toHaveCount(0, { timeout: 5000 });
 });
 
@@ -103,7 +103,7 @@ test('channel picker appears in add-monitor dialog when channels exist', async (
   await page.goto('/#/channels');
   const card = page.getByTestId(`channel-card-${name}`);
   await expect(card).toBeVisible();
-  await card.locator('.channel-delete').click();
-  await page.locator('#confirm-dialog .confirm-ok').click();
+  await card.getByTestId('channel-delete-btn').click();
+  await page.getByTestId('confirm-ok').click();
   await expect(card).toHaveCount(0, { timeout: 5000 });
 });

@@ -87,7 +87,7 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
       .locator('#incident-update-form textarea[name="body"]')
       .fill('Root cause fixed. Back to normal.');
     await page.locator('#incident-update-form button[type="submit"]').click();
-    await expect(page.locator('.banner-ok')).toContainText('resolved', { timeout: 8000 });
+    await expect(page.getByTestId('banner-ok')).toContainText('resolved', { timeout: 8000 });
 
     // Resolved-within-24h still shows on the public page, now resolved.
     const pub2 = await request.get(`/status/${slug}`);

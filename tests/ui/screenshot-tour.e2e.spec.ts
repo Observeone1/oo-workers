@@ -128,8 +128,13 @@ test('19 qa artifacts', async ({ page }) => {
 
 test('17 docs in-app', async ({ page }) => {
   await page.goto('/#/docs');
-  // v2 replaced .docs-embed with .docs-layout + .docs-body wrapper.
-  await page.waitForSelector('#main .docs-body h1, #main .docs-body h2', { timeout: 10_000 });
+  // v2 replaced .docs-embed with a .docs-layout shell whose content
+  // wrapper is testid-anchored as 'docs-body'.
+  await page
+    .getByTestId('docs-body')
+    .locator('h1, h2')
+    .first()
+    .waitFor({ timeout: 10_000 });
   await page.waitForTimeout(300);
   await shot(page, '17-docs.png');
 });
