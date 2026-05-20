@@ -83,6 +83,30 @@ export async function renderRegions() {
     .sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''));
   const recentContact = lastSeen.length > 0 ? fmtAge(lastSeen[0].lastSeenAt) : 'never';
 
+  // Version-skew banner: any region whose last-reported agent version
+  // differs from the master's own version. The skew bool is computed
+  // server-side (versionSkew on the row) so we only need to count.
+  const skewedRegions = regions.filter((r) => r.versionSkew);
+  const masterVersion = regions.find((r) => r.masterVersion)?.masterVersion;
+  const skewBanner =
+    skewedRegions.length > 0 && masterVersion
+      ? `<div class="banner warn" data-testid="version-skew-banner" style="margin-bottom: 12px">
+          <strong>Version skew detected</strong> —
+          ${skewedRegions.length} ${skewedRegions.length === 1 ? 'agent is' : 'agents are'} running
+          ${skewedRegions.length === 1 ? 'a different version than' : 'different versions than'}
+          the master (<code>${esc(masterVersion)}</code>):
+          ${skewedRegions
+            .map(
+              (r) =>
+                `<span style="margin-right: 8px"><strong>${esc(r.slug)}</strong>=<code>${esc(
+                  r.agentVersion ?? 'unknown',
+                )}</code></span>`,
+            )
+            .join('')}
+          Upgrade the agent containers to match — see the Regions docs.
+        </div>`
+      : '';
+
   const heroSection = `
     <div class="regions-hero">
       <div class="globe-card">
@@ -160,6 +184,8 @@ export async function renderRegions() {
     </div>
 
     ${oneTimeKey ? renderOneTimeKey(oneTimeKey) : ''}
+
+    ${skewBanner}
 
     ${heroSection}
 

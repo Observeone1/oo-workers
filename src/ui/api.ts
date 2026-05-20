@@ -85,6 +85,12 @@ export interface RegionLite {
   lastSeenAt: string | null;
   createdAt: string;
   online: boolean;
+  // Roadmap follow-up: version-skew warning. Master sends back its own
+  // version per row + the agent's last-reported version + a precomputed
+  // skew bool so the UI doesn't have to redo the comparison.
+  agentVersion?: string | null;
+  masterVersion?: string;
+  versionSkew?: boolean;
 }
 
 export const getRegions = async (): Promise<RegionLite[]> =>

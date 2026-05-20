@@ -29,13 +29,13 @@ test('login screen accepts a valid email/password and signs the user in', async 
   const page = await ctx.newPage();
 
   await page.goto('/');
-  await expect(page.locator('.login-card')).toBeVisible();
-  await expect(page.locator('.login-card h2')).toHaveText('Sign in');
+  await expect(page.getByTestId('login-card')).toBeVisible();
+  await expect(page.getByTestId('login-heading')).toHaveText('Sign in');
   await shot('login_screen', page);
 
-  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
-  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
-  await page.locator('.login-card button[type="submit"]').click();
+  await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
+  await page.getByTestId('login-card').locator('input[name="password"]').fill(E2E_USER.password);
+  await page.getByTestId('login-submit').click();
 
   await waitForList(page);
   await expect(page.locator('#sign-out')).toBeVisible();
@@ -55,14 +55,14 @@ test('login screen rejects invalid credentials with an inline error', async ({
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
   await page.goto('/');
-  await expect(page.locator('.login-card')).toBeVisible();
+  await expect(page.getByTestId('login-card')).toBeVisible();
 
-  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
-  await page.locator('.login-card input[name="password"]').fill('definitely-the-wrong-password');
-  await page.locator('.login-card button[type="submit"]').click();
+  await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
+  await page.getByTestId('login-card').locator('input[name="password"]').fill('definitely-the-wrong-password');
+  await page.getByTestId('login-submit').click();
 
-  await expect(page.locator('.login-error')).toBeVisible();
-  await expect(page.locator('.login-error')).toContainText(/invalid/i);
+  await expect(page.getByTestId('login-error')).toBeVisible();
+  await expect(page.getByTestId('login-error')).toContainText(/invalid/i);
   await shot('login_invalid', page);
 
   await ctx.close();
@@ -76,15 +76,15 @@ test('cookie session persists across reload', async ({ browser, request }) => {
   const page = await ctx.newPage();
 
   await page.goto('/');
-  await page.locator('.login-card input[name="email"]').fill(E2E_USER.email);
-  await page.locator('.login-card input[name="password"]').fill(E2E_USER.password);
-  await page.locator('.login-card button[type="submit"]').click();
+  await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
+  await page.getByTestId('login-card').locator('input[name="password"]').fill(E2E_USER.password);
+  await page.getByTestId('login-submit').click();
   await waitForList(page);
 
   // Reload — should NOT bounce back to the login screen.
   await page.reload();
   await waitForList(page);
-  await expect(page.locator('.login-card')).toHaveCount(0);
+  await expect(page.getByTestId('login-card')).toHaveCount(0);
   await expect(page.locator('#sign-out')).toBeVisible();
 
   await ctx.close();

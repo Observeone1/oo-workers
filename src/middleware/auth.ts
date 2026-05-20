@@ -131,7 +131,11 @@ export function requireAgent(): MiddlewareHandler {
     apiKeyRepo.touchLastUsed(row.id).catch((err) => {
       logger.error(`touchLastUsed(${row.id}) failed: ${err instanceof Error ? err.message : err}`);
     });
-    regionRepo.touchLastSeen(region.id).catch((err) => {
+    // Read the agent's reported version (Roadmap follow-up: version-skew).
+    // Optional — older agents won't send it; the repo treats undefined
+    // as "leave column unchanged" so we don't blow away a known value.
+    const agentVersion = c.req.header('X-Agent-Version') ?? null;
+    regionRepo.touchLastSeen(region.id, agentVersion).catch((err) => {
       logger.error(
         `touchLastSeen(region#${region.id}) failed: ${err instanceof Error ? err.message : err}`,
       );

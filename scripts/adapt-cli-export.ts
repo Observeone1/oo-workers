@@ -117,6 +117,11 @@ interface SaaSSuite {
 
 // SaaS channel types: email|slack|discord|teams|telegram|sms|webhook.
 // oo-workers supports only these four; the rest have no faithful target.
+// teams specifically is NOT mapped: Microsoft deprecated MessageCard in
+// favor of Adaptive Cards (which Power Automate routes), so building
+// our own teams payload would be a maintenance burden with high
+// breakage risk. Operators who need Teams alerts should configure a
+// Teams Workflow on the channel side that accepts our generic webhook.
 const SUPPORTED_CHANNEL_TYPES = ['webhook', 'discord', 'slack', 'email'] as const;
 type SupportedChannelType = (typeof SUPPORTED_CHANNEL_TYPES)[number];
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -163,6 +168,21 @@ function readChannelRefs(v: unknown): number[] | undefined {
   return refs.length > 0 ? refs : undefined;
 }
 
+// Faithful enabled-state. SaaS exports may carry one of several
+// equivalent fields depending on the resource type:
+//   - monitors / api_checks → `enabled` (newer CLI versions),
+//     `is_paused` (negated), or absent (treated as enabled).
+//   - qa suites already use `schedule_active` — handled separately
+//     in the suite loop.
+// Returns boolean (default true). The previous adapter hardcoded
+// enabled: true for url/api which silently re-enabled monitors the
+// operator had paused on SaaS. This honors paused state on import.
+function readEnabled(src: Record<string, unknown>): boolean {
+  if (src.enabled === false) return false;
+  if (src.is_paused === true) return false;
+  return true;
+}
+
 export function adaptSaaSExport(src: SaaSExport): AdaptResult {
   const urlMonitors: ImportPayload['urlMonitors'] = (src.monitors ?? []).map((m) => {
     const id = readId(m.id);
@@ -173,7 +193,7 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       url: m.url as string,
       timeoutMs: (m.timeout_ms as number) ?? 30000,
       intervalSeconds: cronToSeconds(m.interval as string),
-      enabled: true,
+      enabled: readEnabled(m),
       // SaaS HTTP monitors are uptime checks → assert 200.
       assertions: [{ operator: 'equals', statusCode: 200 }],
       ...(channelRefs !== undefined && { channelRefs }),
@@ -192,7 +212,7 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       body: (c.body as string) ?? null,
       timeoutMs: (c.timeout_ms as number) ?? 10000,
       intervalSeconds: cronToSeconds(c.cron_expression as string),
-      enabled: true,
+      enabled: readEnabled(c),
       assertions: ((c.assertions as Array<Record<string, unknown>>) ?? []).map((a) => ({
         type: a.type as string,
         operator: a.operator as string,

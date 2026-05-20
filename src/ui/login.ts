@@ -61,10 +61,10 @@ export function renderLogin(opts: { error?: string } = {}) {
         </div>
       </div>
       <div class="auth-form-wrap">
-        <div class="auth-card">
-          <p class="lead">Sign in</p>
+        <div class="auth-card" data-testid="login-card">
+          <p class="lead" data-testid="login-heading">Sign in</p>
           <p class="lead-sub">Enter your credentials to access the dashboard.</p>
-          <form id="login-form">
+          <form id="login-form" data-testid="login-form">
             <div class="auth-field">
               <label>Email</label>
               <input name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
@@ -73,8 +73,8 @@ export function renderLogin(opts: { error?: string } = {}) {
               <label>Password</label>
               <input name="password" type="password" autocomplete="current-password" placeholder="Password" required />
             </div>
-            ${opts.error ? `<div class="banner err" style="margin-bottom:12px">${esc(opts.error)}</div>` : ''}
-            <button type="submit" class="btn primary submit">
+            ${opts.error ? `<div class="banner err" data-testid="login-error" style="margin-bottom:12px">${esc(opts.error)}</div>` : ''}
+            <button type="submit" class="btn primary submit" data-testid="login-submit">
               Sign in
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="m9 18 6-6-6-6"/></svg>
             </button>

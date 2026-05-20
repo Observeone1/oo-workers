@@ -25,6 +25,7 @@ import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
 import { logger } from './utils/logger.ts';
+import { packageVersion } from './utils/version.ts';
 import type { AgentResultBody } from './services/agent-dispatch.ts';
 
 export interface AgentConfig {
@@ -97,6 +98,9 @@ export async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
         // "socket connection was closed unexpectedly". Long-poll is naturally
         // low-frequency so we don't need the pool's throughput win.
         Connection: 'close',
+        // Master caches this on the regions row so /api/regions can flag
+        // version skew (different agent vs master versions in the fleet).
+        'X-Agent-Version': packageVersion(),
       },
       // Slightly longer than server-side wait so the agent doesn't time out
       // before master returns 204.
@@ -120,6 +124,7 @@ async function postResult(cfg: AgentConfig, body: AgentResultBody): Promise<void
         Authorization: `Bearer ${cfg.agentKey}`,
         'content-type': 'application/json',
         Connection: 'close',
+        'X-Agent-Version': packageVersion(),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),

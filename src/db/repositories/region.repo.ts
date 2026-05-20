@@ -28,12 +28,17 @@ export const regionRepo = {
     return rows[0] ?? null;
   },
 
-  /** Fire-and-forget — keeps regions.last_seen_at fresh from long-poll traffic. */
-  touchLastSeen(id: number) {
-    return db
-      .update(regions)
-      .set({ lastSeenAt: sql`NOW()` })
-      .where(eq(regions.id, id));
+  /** Fire-and-forget — keeps regions.last_seen_at fresh from long-poll
+   *  traffic. If the agent sent X-Agent-Version, cache it alongside so
+   *  the master can flag version skew on /api/regions GET. */
+  touchLastSeen(id: number, agentVersion?: string | null) {
+    const set: Record<string, unknown> = { lastSeenAt: sql`NOW()` };
+    if (typeof agentVersion === 'string' && agentVersion.length > 0) {
+      // Trim to schema length (32) defensively in case an agent sends
+      // a longer version string somehow.
+      set.agentVersion = agentVersion.slice(0, 32);
+    }
+    return db.update(regions).set(set).where(eq(regions.id, id));
   },
 
   list() {
@@ -44,6 +49,7 @@ export const regionRepo = {
         label: regions.label,
         apiKeyId: regions.apiKeyId,
         lastSeenAt: regions.lastSeenAt,
+        agentVersion: regions.agentVersion,
         createdAt: regions.createdAt,
       })
       .from(regions)
