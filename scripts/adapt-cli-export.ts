@@ -24,17 +24,27 @@
 // Still skipped (no self-host target yet): heartbeats, status_pages,
 // incidents.
 
+// `id` fields throughout are CLI v1.25.0 bundle-local surrogate ids.
+// They are NOT real DB ids on the target — the import handler uses them
+// to resolve cross-references within the same payload (e.g. a monitor's
+// `channelRefs` → the channel just created in the same call). Optional
+// for back-compat with pre-1.25.0 exports (id absent → no remap, same
+// behavior as before).
 export interface ImportPayload {
   version: 1;
   urlMonitors: Array<{
+    id?: number;
     name: string;
     url: string;
     timeoutMs: number;
     intervalSeconds: number;
     enabled: boolean;
     assertions: Array<{ operator: string; statusCode: number }>;
+    // Surrogate ids referring to `channels[].id` in this same payload.
+    channelRefs?: number[];
   }>;
   apiChecks: Array<{
+    id?: number;
     name: string;
     url: string;
     method: string;
@@ -44,6 +54,7 @@ export interface ImportPayload {
     intervalSeconds: number;
     enabled: boolean;
     assertions: Array<{ type: string; operator: string; path: string | null; value: unknown }>;
+    channelRefs?: number[];
   }>;
   qaProjects: Array<{
     name: string;
@@ -53,9 +64,18 @@ export interface ImportPayload {
     tests: Array<{ name: string; script: string }>;
   }>;
   channels: Array<{
+    id?: number;
     name: string;
     type: 'webhook' | 'discord' | 'slack' | 'email';
     config: Record<string, unknown>;
+  }>;
+  // CLI v1.25.0 status pages with bundle-local monitor refs. `type` is
+  // normalized to oo-workers's enum ('api' instead of SaaS's 'api_check').
+  statusPages?: Array<{
+    slug: string;
+    title: string;
+    description: string | null;
+    monitors: Array<{ ref: number; type: 'url' | 'api' }>;
   }>;
 }
 
@@ -111,43 +131,77 @@ interface SaaSChannel {
   config?: { email?: unknown; webhook_url?: unknown };
 }
 
+interface SaaSStatusPage {
+  slug?: string;
+  name?: string;
+  description?: string | null;
+  monitors?: Array<{ monitor_type?: string; monitor_id?: number; display_name?: string }>;
+}
+
 interface SaaSExport {
   monitors?: Array<Record<string, unknown>>;
   api_checks?: Array<Record<string, unknown>>;
   heartbeats?: unknown[];
   suites?: SaaSSuite[];
   alert_channels?: SaaSChannel[];
-  status_pages?: unknown[];
+  status_pages?: SaaSStatusPage[];
   incidents?: unknown[];
 }
 
-export function adaptSaaSExport(src: SaaSExport): AdaptResult {
-  const urlMonitors = (src.monitors ?? []).map((m) => ({
-    name: m.name as string,
-    url: m.url as string,
-    timeoutMs: (m.timeout_ms as number) ?? 30000,
-    intervalSeconds: cronToSeconds(m.interval as string),
-    enabled: true,
-    // SaaS HTTP monitors are uptime checks → assert 200.
-    assertions: [{ operator: 'equals', statusCode: 200 }],
-  }));
+// Read an optional numeric surrogate id. CLI v1.25.0+ emits these on
+// monitors/api_checks/alert_channels; older exports don't, so missing
+// is fine (just no remap will happen on import).
+function readId(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
 
-  const apiChecks = (src.api_checks ?? []).map((c) => ({
-    name: c.name as string,
-    url: c.url as string,
-    method: (c.method as string) ?? 'GET',
-    headers: (c.headers as Record<string, string>) ?? {},
-    body: (c.body as string) ?? null,
-    timeoutMs: (c.timeout_ms as number) ?? 10000,
-    intervalSeconds: cronToSeconds(c.cron_expression as string),
-    enabled: true,
-    assertions: ((c.assertions as Array<Record<string, unknown>>) ?? []).map((a) => ({
-      type: a.type as string,
-      operator: a.operator as string,
-      path: (a.path as string) ?? null,
-      value: a.value ?? null,
-    })),
-  }));
+// channel_ids on a monitor/api_check is `number[]` per CLI v1.25.0 spec.
+// Tolerate odd shapes: drop non-numeric entries, return undefined on empty.
+function readChannelRefs(v: unknown): number[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const refs = v.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+  return refs.length > 0 ? refs : undefined;
+}
+
+export function adaptSaaSExport(src: SaaSExport): AdaptResult {
+  const urlMonitors: ImportPayload['urlMonitors'] = (src.monitors ?? []).map((m) => {
+    const id = readId(m.id);
+    const channelRefs = readChannelRefs(m.channel_ids);
+    return {
+      ...(id !== undefined && { id }),
+      name: m.name as string,
+      url: m.url as string,
+      timeoutMs: (m.timeout_ms as number) ?? 30000,
+      intervalSeconds: cronToSeconds(m.interval as string),
+      enabled: true,
+      // SaaS HTTP monitors are uptime checks → assert 200.
+      assertions: [{ operator: 'equals', statusCode: 200 }],
+      ...(channelRefs !== undefined && { channelRefs }),
+    };
+  });
+
+  const apiChecks: ImportPayload['apiChecks'] = (src.api_checks ?? []).map((c) => {
+    const id = readId(c.id);
+    const channelRefs = readChannelRefs(c.channel_ids);
+    return {
+      ...(id !== undefined && { id }),
+      name: c.name as string,
+      url: c.url as string,
+      method: (c.method as string) ?? 'GET',
+      headers: (c.headers as Record<string, string>) ?? {},
+      body: (c.body as string) ?? null,
+      timeoutMs: (c.timeout_ms as number) ?? 10000,
+      intervalSeconds: cronToSeconds(c.cron_expression as string),
+      enabled: true,
+      assertions: ((c.assertions as Array<Record<string, unknown>>) ?? []).map((a) => ({
+        type: a.type as string,
+        operator: a.operator as string,
+        path: (a.path as string) ?? null,
+        value: a.value ?? null,
+      })),
+      ...(channelRefs !== undefined && { channelRefs }),
+    };
+  });
 
   // suites → qaProjects, but only suites with inline tests (see header).
   const qaProjects: ImportPayload['qaProjects'] = [];
@@ -198,21 +252,70 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       channelsSkipped++;
       continue;
     }
+    const id = readId((ch as Record<string, unknown>).id);
     if (type === 'email') {
       const to = typeof ch.config?.email === 'string' ? ch.config.email.trim() : '';
       if (!EMAIL_RE.test(to)) {
         channelsSkipped++;
         continue;
       }
-      channels.push({ name: ch.name, type: 'email', config: { to } });
+      channels.push({
+        ...(id !== undefined && { id }),
+        name: ch.name,
+        type: 'email',
+        config: { to },
+      });
     } else {
       const u = typeof ch.config?.webhook_url === 'string' ? ch.config.webhook_url.trim() : '';
       if (!HTTP_RE.test(u)) {
         channelsSkipped++;
         continue;
       }
-      channels.push({ name: ch.name, type: type as SupportedChannelType, config: { url: u } });
+      channels.push({
+        ...(id !== undefined && { id }),
+        name: ch.name,
+        type: type as SupportedChannelType,
+        config: { url: u },
+      });
     }
+  }
+
+  // status_pages → statusPages. CLI v1.25.0 emits `{ slug, name,
+  // description, monitors: [{ monitor_type, monitor_id, display_name }] }`.
+  // We normalize SaaS's `monitor_type: 'api_check'` → oo-workers's `'api'`
+  // and use `ref` (matching channelRefs naming) for the surrogate-id pointer.
+  // A status page with no resolvable monitors gets skipped (an empty SP
+  // has no value); same for ones missing slug.
+  const statusPages: NonNullable<ImportPayload['statusPages']> = [];
+  let statusPagesSkipped = 0;
+  for (const sp of src.status_pages ?? []) {
+    if (!sp.slug || typeof sp.slug !== 'string') {
+      statusPagesSkipped++;
+      continue;
+    }
+    const monitors = (Array.isArray(sp.monitors) ? sp.monitors : [])
+      .map((m) => {
+        const ref = readId(m.monitor_id);
+        const rawType = typeof m.monitor_type === 'string' ? m.monitor_type : '';
+        const type: 'url' | 'api' | null =
+          rawType === 'url' ? 'url' : rawType === 'api_check' || rawType === 'api' ? 'api' : null;
+        if (ref === undefined || type === null) return null;
+        return { ref, type };
+      })
+      .filter((m): m is { ref: number; type: 'url' | 'api' } => m !== null);
+    if (monitors.length === 0) {
+      // Either no monitors attached on SaaS, or none had a usable
+      // surrogate id (pre-1.25.0 export). Either way an empty status
+      // page is not useful — skip rather than create a hollow one.
+      statusPagesSkipped++;
+      continue;
+    }
+    statusPages.push({
+      slug: sp.slug,
+      title: typeof sp.name === 'string' ? sp.name : sp.slug,
+      description: typeof sp.description === 'string' ? sp.description : null,
+      monitors,
+    });
   }
 
   // NOTE: the monitor→alert-channel "routing not migrated" advisory is
@@ -222,7 +325,17 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
   // carry only SaaS-export-derived advisories (suite secrets above).
 
   return {
-    payload: { version: 1, urlMonitors, apiChecks, qaProjects, channels },
+    payload: {
+      version: 1,
+      urlMonitors,
+      apiChecks,
+      qaProjects,
+      channels,
+      // Only emit statusPages when there's at least one — keeps the
+      // payload trivially back-compatible with older /api/import builds
+      // that don't know about the field.
+      ...(statusPages.length > 0 && { statusPages }),
+    },
     skipped: {
       heartbeats: src.heartbeats?.length ?? 0,
       // suites NOT brought across (no inline scripts / malformed) — a
@@ -231,7 +344,10 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       // channels NOT brought across: unsupported type (teams/telegram/
       // sms) or missing/invalid endpoint.
       alert_channels: channelsSkipped,
-      status_pages: src.status_pages?.length ?? 0,
+      // status_pages NOT brought across: missing slug, or no monitors
+      // with resolvable surrogate ids (pre-1.25.0 CLI export). The
+      // imported ones are in payload.statusPages.
+      status_pages: statusPagesSkipped,
       incidents: src.incidents?.length ?? 0,
     },
     warnings,
@@ -251,6 +367,9 @@ if (import.meta.main) {
   console.log(`  apiChecks:   ${payload.apiChecks.length}`);
   console.log(`  qaProjects:  ${payload.qaProjects.length}`);
   console.log(`  channels:    ${payload.channels.length}`);
+  if (payload.statusPages && payload.statusPages.length > 0) {
+    console.log(`  statusPages: ${payload.statusPages.length}`);
+  }
   console.log(
     `  skipped:     ${Object.entries(skipped)
       .map(([k, v]) => `${k}=${v}`)

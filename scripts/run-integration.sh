@@ -55,3 +55,10 @@ bun scripts/incident-render-test.ts
 # password unchanged). Mutates the integration DB with a throwaway
 # user + finally cleanup.
 bun scripts/auth-profile-test.ts
+# Surrogate-id remap on /api/import (Roadmap 3.3). Boots the real Hono
+# app, POSTs three crafted bundles (v1.25.0 / pre-1.25.0 / dangling), and
+# reads the resulting monitor_alert_channels + status_page_monitors rows
+# back from Postgres. Anti-vacuous: a handler that always wires bindings
+# fails the back-compat case; one that never wires them fails the
+# positive case. Cleans its own prefix-namespaced rows in finally.
+bun scripts/import-remap-test.ts
