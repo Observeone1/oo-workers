@@ -32,8 +32,8 @@ export function openSlideover(opts: SlideoverOpts): void {
     </div>
     <div class="body">${opts.body}</div>
     <div class="foot">
-      <button class="btn" data-close-so>Cancel</button>
-      <button class="btn primary" data-primary-so>${opts.primaryLabel ?? 'Save'}</button>
+      <button class="btn" data-close-so data-testid="slideover-cancel">Cancel</button>
+      <button class="btn primary" data-primary-so data-testid="slideover-primary">${opts.primaryLabel ?? 'Save'}</button>
     </div>
   `;
 
