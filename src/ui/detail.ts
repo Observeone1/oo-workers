@@ -143,7 +143,7 @@ function renderWithFilter(
       </div>
     </div>
     ${chips}
-    <div class="detail-grid">
+    <div class="detail-grid" data-testid="detail-meta-cards">
       <div class="meta-card"><div class="label">Runs (last 100)</div><div class="value">${runs.length}</div></div>
       <div class="meta-card"><div class="label">Success rate</div><div class="value">${successRate}</div></div>
       <div class="meta-card"><div class="label">Last latency</div><div class="value">${lastLatency != null ? `${lastLatency}ms` : '—'}</div></div>
