@@ -446,7 +446,7 @@ function rowFor(m: Monitor): string {
       <td class="col-status"><span class="dot ${cls}"></span></td>
       <td class="col-name">
         <div class="name">${esc(m.name)}</div>
-        <span class="target">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</span>
+        <span class="target" data-testid="monitor-row-target">${esc(target)}${m.type === 'qa' ? ` · ${m.testCount ?? 0} test(s)` : ''}</span>
       </td>
       <td><span class="pill">every ${m.intervalSeconds}s</span></td>
       <td class="cell-meta">${fmtAge(m.latest?.startTime)}</td>

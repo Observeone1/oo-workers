@@ -117,7 +117,7 @@
     <main id="main"></main>
 
     <!-- ============ ADD MONITOR DIALOG (v2 — sectioned with side rail) ============ -->
-    <dialog id="add-dialog" class="v2">
+    <dialog id="add-dialog" class="v2" data-testid="add-monitor-dialog">
       <div class="dialog-shell">
         <!-- Side rail -->
         <aside class="dialog-rail" id="add-rail">
@@ -171,31 +171,31 @@
             <div class="form-section" data-section="type">
               <div class="sec-head"><span class="ttl">Type</span></div>
               <div class="type-grid" id="type-grid">
-                <button type="button" class="type-tile active" data-type="url">
+                <button type="button" class="type-tile active" data-type="url" data-testid="add-monitor-type-tile-url">
                   <span class="ttl">URL</span>
                   <span class="desc">HTTP ping with status code check</span>
                 </button>
-                <button type="button" class="type-tile" data-type="api">
+                <button type="button" class="type-tile" data-type="api" data-testid="add-monitor-type-tile-api">
                   <span class="ttl">API</span>
                   <span class="desc">Request + JSONPath assertions</span>
                 </button>
-                <button type="button" class="type-tile" data-type="qa">
+                <button type="button" class="type-tile" data-type="qa" data-testid="add-monitor-type-tile-qa">
                   <span class="ttl">QA</span>
                   <span class="desc">Inline Playwright script</span>
                 </button>
-                <button type="button" class="type-tile" data-type="tcp">
+                <button type="button" class="type-tile" data-type="tcp" data-testid="add-monitor-type-tile-tcp">
                   <span class="ttl">TCP</span>
                   <span class="desc">Host:port reachability</span>
                 </button>
-                <button type="button" class="type-tile" data-type="udp">
+                <button type="button" class="type-tile" data-type="udp" data-testid="add-monitor-type-tile-udp">
                   <span class="ttl">UDP</span>
                   <span class="desc">Datagram probe</span>
                 </button>
-                <button type="button" class="type-tile" data-type="db">
+                <button type="button" class="type-tile" data-type="db" data-testid="add-monitor-type-tile-db">
                   <span class="ttl">DB</span>
                   <span class="desc">Postgres / MySQL / Redis liveness</span>
                 </button>
-                <button type="button" class="type-tile" data-type="tls">
+                <button type="button" class="type-tile" data-type="tls" data-testid="add-monitor-type-tile-tls">
                   <span class="ttl">TLS</span>
                   <span class="desc">Certificate expiry &amp; chain check</span>
                 </button>
@@ -515,7 +515,7 @@
             </div>
 
             <!-- ── Section 4 · Regions ── -->
-            <div class="form-section" data-section="regions" id="regions-row" hidden>
+            <div class="form-section" data-section="regions" id="regions-row" data-testid="add-monitor-regions-row" hidden>
               <div class="sec-head">
                 <span class="ttl">Where to run</span>
                 <span class="opt"><a href="#/regions">manage regions →</a></span>
@@ -540,7 +540,14 @@
           <div class="dialog-actions">
             <span class="left">⌘+Enter to save</span>
             <button type="button" class="btn" data-close-dialog>Cancel</button>
-            <button type="submit" class="btn primary" form="add-form">Create monitor</button>
+            <button
+              type="submit"
+              class="btn primary"
+              form="add-form"
+              data-testid="add-monitor-submit"
+            >
+              Create monitor
+            </button>
           </div>
         </div>
         <!-- .dialog-main -->
