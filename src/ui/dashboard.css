@@ -63,6 +63,20 @@ hr {
   scrollbar-width: thin;
 }
 
+/* visually-hidden text for icon-only controls — screen readers pick it
+   up, sighted users don't see it. WCAG-recommended pattern. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* =================================================================
    HEADER + NAV
    ================================================================= */
