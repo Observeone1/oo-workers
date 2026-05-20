@@ -32,15 +32,17 @@ test.beforeEach(async ({ request }) => {
 // scope=none — a tiny, constant dump — to assert the contract only.
 
 test('clicking Download produces a real dump file', async ({ page, shot }) => {
-  await page.goto('/');
-  await waitForList(page);
-  await page.locator('#backup-btn').click();
-  await expect(page.locator('#backup-dialog')).toBeVisible();
-  await page.locator('#backup-dialog input[name="backup_scope"][value="none"]').check();
+  // v2: backup moved from a header dialog (#backup-btn → #backup-dialog)
+  // into the Settings → Backup tab. Scope picker became a segmented
+  // control (data-val=none|window|all) instead of radio inputs.
+  await page.goto('/#/settings');
+  await page.getByTestId('settings-tab-backup').click();
+  await expect(page.getByTestId('backup-download-btn')).toBeVisible();
+  await page.getByTestId('backup-scope-none').click();
   await shot('backup_dialog');
 
   const dl = page.waitForEvent('download');
-  await page.locator('#backup-download').click();
+  await page.getByTestId('backup-download-btn').click();
   const download = await dl;
 
   const m = manifestOf(await download.path());

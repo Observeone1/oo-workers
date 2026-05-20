@@ -88,7 +88,7 @@ export async function renderSettings(tab?: SettingsTab) {
   const rail = visibleSections
     .map(
       (s) => `
-    <button class="set-step${s.id === activeTab ? ' active' : ''}" data-section="${s.id}">
+    <button class="set-step${s.id === activeTab ? ' active' : ''}" data-section="${s.id}" data-testid="settings-tab-${s.id}">
       <span class="ico">${s.icon}</span>
       <span class="lbl">
         <span class="t">${s.label}</span>
@@ -735,13 +735,13 @@ function renderBackup(panel: HTMLElement) {
         <div class="field">
           <label>History window</label>
           <div class="seg-inline" id="s-scope-seg">
-            <button data-val="window" class="on">Last 90 days</button>
-            <button data-val="all">All history</button>
-            <button data-val="none">Config only</button>
+            <button data-val="window" data-testid="backup-scope-window" class="on">Last 90 days</button>
+            <button data-val="all" data-testid="backup-scope-all">All history</button>
+            <button data-val="none" data-testid="backup-scope-none">Config only</button>
           </div>
         </div>
         <div style="margin-top:var(--s-4);display:flex;justify-content:flex-end">
-          <button class="btn primary" id="s-backup-download">
+          <button class="btn primary" id="s-backup-download" data-testid="backup-download-btn">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Download
           </button>
