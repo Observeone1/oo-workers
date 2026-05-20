@@ -204,6 +204,9 @@ function initAddDialog() {
       tile.classList.add('active');
       activeAddType = (tile.dataset.type ?? 'url') as MonType;
       syncFields(activeAddType);
+      // QA-guard: hide the regions picker for type=qa (browser checks
+      // run on master only, never on regional agents).
+      syncRegionsRow();
     });
   });
 
@@ -440,9 +443,11 @@ async function refreshRegionsPicker() {
 // yields ERROR exec rows. Hide the "Run from" picker for type=qa so it
 // can't be set in the first place (also hidden when there are no regions).
 function syncRegionsRow() {
+  // Reads the v2 active type tile via module state. (Pre-v2 this read
+  // a <select id="type-select"> which the redesign replaced with
+  // .type-tile buttons; activeAddType is the canonical source now.)
   const row = document.getElementById('regions-row') as HTMLElement;
-  const type = (document.getElementById('type-select') as HTMLSelectElement | null)?.value;
-  row.hidden = cachedRegions.length === 0 || type === 'qa';
+  row.hidden = cachedRegions.length === 0 || activeAddType === 'qa';
 }
 
 function collectSelectedRegionIds(): number[] {
