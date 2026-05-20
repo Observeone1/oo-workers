@@ -18,15 +18,15 @@ test('QA script lands in object storage and is recallable', async ({ page, reque
   await waitForList(page);
 
   const name = `e2e-storage-${uniqueSuffix()}`;
-  await page.locator('#add-btn').click();
-  await page.locator('#type-select').selectOption('qa');
+  await page.getByTestId('header-add-monitor-btn').click();
+  await page.getByTestId('add-monitor-type-tile-qa').click();
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('#add-form input[name="url"]').fill('https://example.com');
   await page.locator('#add-form textarea[name="qa_script"]').fill(QA_SCRIPT);
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   await waitForList(page);
-  await page.locator('.tab[data-tab="qa"]').click();
+  await page.getByTestId('monitors-tab-qa').click();
   const row = page.locator('tr[data-open][data-type="qa"]', { hasText: name });
   await expect(row).toBeVisible({ timeout: 5000 });
 
