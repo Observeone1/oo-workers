@@ -1,8 +1,32 @@
 import { defineConfig, devices } from '@playwright/test';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // Local-only UI e2e config. Runs against a live oo-workers stack
 // (defaults to http://localhost:3010, matching docker-compose UI_PORT=3010).
 // Not wired into CI — kept manual for now via `bun run test:ui:e2e`.
+
+// Load .env into process.env so dev-only knobs (OO_E2E_DISCORD_WEBHOOK,
+// OO_E2E_API_KEY, OO_MAILPIT_API, OO_SMTP_*) reach the test process
+// without the operator having to re-export them on every run.
+// Minimal hand-rolled parser — no new dep; existing vars win.
+(() => {
+  const envPath = resolve(import.meta.dirname, '.env');
+  if (!existsSync(envPath)) return;
+  for (const raw of readFileSync(envPath, 'utf8').split('\n')) {
+    const line = raw.replace(/^﻿/, '').trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!key || key in process.env) continue;
+    let val = line.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    process.env[key] = val;
+  }
+})();
 
 export default defineConfig({
   testDir: './tests/ui',
