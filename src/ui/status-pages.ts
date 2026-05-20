@@ -163,7 +163,7 @@ async function renderList() {
   main.innerHTML = `
     <div class="page-head">
       <div>
-        <h2>Status pages</h2>
+        <h2 data-testid="page-title">Status pages</h2>
         <div class="sub">Public uptime pages at <code>/status/&lt;slug&gt;</code> — no auth required.</div>
       </div>
       <button class="btn primary" id="new-sp-btn">

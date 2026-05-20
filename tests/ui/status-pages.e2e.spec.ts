@@ -7,11 +7,10 @@ import { test, expect, waitForList, uniqueSuffix } from './fixtures';
 test('status pages nav link lands on settings page', async ({ page, shot }) => {
   await page.goto('/');
   await waitForList(page);
-  const navLink = page.locator('#status-pages-link');
+  const navLink = page.getByTestId('nav-status-pages');
   await expect(navLink).toBeVisible();
   await navLink.click();
-  await page.waitForSelector('.status-pages-page');
-  await expect(page.locator('.status-pages-page h2')).toHaveText('Status pages');
+  await expect(page.getByTestId('page-title')).toHaveText('Status pages');
   await shot('status_pages_settings_empty');
 });
 
