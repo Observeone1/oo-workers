@@ -419,6 +419,53 @@ check(
   JSON.stringify(danglingSP),
 );
 
+// 10. Faithful enabled-state for url/api imports. The adapter used to
+//     hardcode `enabled: true`, which silently re-enabled monitors the
+//     operator had paused on SaaS. Now we honor `enabled: false` and
+//     `is_paused: true`; absence still defaults to true (current SaaS
+//     exports often omit the field entirely).
+const enabledFaithful = adaptSaaSExport({
+  monitors: [
+    // Explicitly disabled → must remain disabled on import.
+    { name: 'off-url', url: 'https://x.io/o', timeout_ms: 1, enabled: false },
+    // Paused (alternate field) → must also map to enabled=false.
+    { name: 'paused-url', url: 'https://x.io/p', timeout_ms: 1, is_paused: true },
+    // Field absent → default true (back-compat with older exports).
+    { name: 'default-url', url: 'https://x.io/d', timeout_ms: 1 },
+  ],
+  api_checks: [
+    { name: 'off-api', url: 'https://x.io/a', method: 'GET', assertions: [], enabled: false },
+    { name: 'on-api', url: 'https://x.io/b', method: 'GET', assertions: [] },
+  ],
+});
+const urlMap = Object.fromEntries(enabledFaithful.payload.urlMonitors.map((m) => [m.name, m]));
+const apiMap = Object.fromEntries(enabledFaithful.payload.apiChecks.map((m) => [m.name, m]));
+check(
+  '10. enabled:false on source URL monitor → enabled:false on import',
+  urlMap['off-url'].enabled === false,
+  JSON.stringify(urlMap['off-url']),
+);
+check(
+  '10. is_paused:true on source URL monitor → enabled:false on import',
+  urlMap['paused-url'].enabled === false,
+  JSON.stringify(urlMap['paused-url']),
+);
+check(
+  '10. absent enabled/is_paused → enabled:true (back-compat default)',
+  urlMap['default-url'].enabled === true,
+  JSON.stringify(urlMap['default-url']),
+);
+check(
+  '10. enabled:false on source API check → enabled:false on import',
+  apiMap['off-api'].enabled === false,
+  JSON.stringify(apiMap['off-api']),
+);
+check(
+  '10. absent enabled on API check → enabled:true',
+  apiMap['on-api'].enabled === true,
+  JSON.stringify(apiMap['on-api']),
+);
+
 console.log(
   failed ? '\nimport-from-saas-test: FAILED' : '\nimport-from-saas-test: all checks passed',
 );

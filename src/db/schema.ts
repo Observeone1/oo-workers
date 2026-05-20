@@ -437,6 +437,9 @@ export const regions = pgTable(
       .notNull()
       .references(() => apiKeys.id, { onDelete: 'restrict' }),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    // Cached on every agent poll from the X-Agent-Version header.
+    // Compared against the master's package.json on /api/regions GET.
+    agentVersion: varchar('agent_version', { length: 32 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

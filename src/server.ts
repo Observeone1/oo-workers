@@ -41,6 +41,7 @@ import {
   type ChannelType,
 } from './db/repositories/alert-channel.repo.ts';
 import { dispatchAlert, sendToChannel } from './services/alert-dispatch.ts';
+import { packageVersion } from './utils/version.ts';
 import { isLocalMailpit, findRecentTestMessage } from './services/mailpit.ts';
 import { statusPageMonitorRepo, statusPageRepo } from './db/repositories/status-page.repo.ts';
 import { incidentRepo, SEVERITIES, type Severity } from './db/repositories/incident.repo.ts';
@@ -1227,6 +1228,7 @@ function buildApp(connection: Redis) {
   app.get('/api/regions', async (c) => {
     const rows = await regionRepo.list();
     const now = Date.now();
+    const masterVersion = packageVersion();
     return c.json(
       rows.map((r) => ({
         id: r.id,
@@ -1235,6 +1237,13 @@ function buildApp(connection: Redis) {
         lastSeenAt: r.lastSeenAt,
         createdAt: r.createdAt,
         online: r.lastSeenAt ? now - r.lastSeenAt.getTime() < ONLINE_THRESHOLD_MS : false,
+        agentVersion: r.agentVersion,
+        masterVersion,
+        // Skew: agent reported a version AND it differs from master.
+        // Online check intentionally omitted — an offline-then-back agent
+        // still needs the warning so the operator upgrades before the
+        // next outage window.
+        versionSkew: r.agentVersion !== null && r.agentVersion !== masterVersion,
       })),
     );
   });
