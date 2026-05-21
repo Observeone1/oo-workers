@@ -137,22 +137,52 @@ function exportTarGz(opts: BackupOptions): ReadableStream<Uint8Array> {
       const ndjsonBuf = await streamToBuffer(Readable.from(ndjson(opts)));
       await packEntry(pack, 'dump.ndjson', ndjsonBuf);
 
-      // artifacts/<key> — one tar entry per S3 object, streamed.
+      // artifacts/<key> — one tar entry per S3 object, streamed. Track
+      // actual successes so the meta-actual entry at the end can tell
+      // the operator whether any objects skipped on fetch failure.
+      let actualCount = 0;
+      let actualBytes = 0;
+      let failedCount = 0;
       for (const { key, size } of keysAndSizes) {
         try {
           const res = await getObjectResponse(key);
-          if (!res.body) continue;
+          if (!res.body) {
+            failedCount++;
+            continue;
+          }
           const entry = pack.entry({ name: `artifacts/${key}`, size });
           const body = Readable.fromWeb(
             res.body as unknown as Parameters<typeof Readable.fromWeb>[0],
           );
           await pipeline(body, entry);
+          actualCount++;
+          actualBytes += size;
         } catch (err) {
+          failedCount++;
           logger.warn(
             `backup: skipping artifact ${key}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
+
+      // meta.json claimed `artifactCount` based on the up-front listObjects()
+      // call — but individual fetches may have failed and been logged-and-
+      // skipped. Append a `meta-actual.json` with the real counts so a
+      // post-mortem (or a future selective-restore) can detect divergence.
+      // We don't rewrite `meta.json` because tar's header has to be written
+      // before its body, and the first meta is already on the wire.
+      if (failedCount > 0 || actualCount !== keysAndSizes.length) {
+        logger.warn(
+          `backup: artifact discrepancy planned=${keysAndSizes.length} actual=${actualCount} failed=${failedCount}`,
+        );
+      }
+      const metaActual = {
+        artifactCount: actualCount,
+        artifactBytes: actualBytes,
+        artifactsFailed: failedCount,
+        artifactsPlanned: keysAndSizes.length,
+      };
+      await packEntry(pack, 'meta-actual.json', Buffer.from(JSON.stringify(metaActual, null, 2)));
 
       pack.finalize();
     } catch (err) {

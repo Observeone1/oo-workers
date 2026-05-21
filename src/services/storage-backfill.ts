@@ -149,8 +149,16 @@ async function sweepOrphans(): Promise<{ deleted: number; failed: number }> {
   logger.info(`storage-backfill: ${orphans.length} orphan object(s) to sweep`);
   let deleted = 0;
   let failed = 0;
-  await Promise.all(
-    orphans.map(async (key) => {
+  // Bounded concurrency: an unbounded Promise.all on N orphans would
+  // hammer S3 with N concurrent DELETEs and could trip per-second rate
+  // limits on hosted backends (R2, B2). Concurrency 8 keeps wall-clock
+  // reasonable on big orphan sets without saturating the upstream.
+  const POOL = 8;
+  let cursor = 0;
+  const workers = Array.from({ length: POOL }, async () => {
+    while (cursor < orphans.length) {
+      const i = cursor++;
+      const key = orphans[i];
       try {
         await deleteObject(key);
         deleted++;
@@ -160,8 +168,9 @@ async function sweepOrphans(): Promise<{ deleted: number; failed: number }> {
           `storage-backfill: orphan delete failed for ${key}: ${err instanceof Error ? err.message : err}`,
         );
       }
-    }),
-  );
+    }
+  });
+  await Promise.all(workers);
   return { deleted, failed };
 }
 

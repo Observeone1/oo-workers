@@ -13,6 +13,7 @@
  *      POST /api/auth/login)
  */
 
+import { createHash } from 'node:crypto';
 import type { Context, MiddlewareHandler } from 'hono';
 import { apiKeyRepo, type ApiKeyRow } from '../db/repositories/api-key.repo.ts';
 import { regionRepo } from '../db/repositories/region.repo.ts';
@@ -22,6 +23,24 @@ import { authService, SESSION_COOKIE } from '../services/auth.service.ts';
 export type Scope = 'read' | 'write' | 'agent';
 
 export const KEY_PREFIX_LEN = 11; // "oo_" + first 8 random chars
+
+// Validated-key cache. argon2id verify is intentionally slow (~100ms);
+// without a cache an agent doing long-poll fetches paid that cost on
+// every request. Key is sha256(cleartext) so we never keep the
+// cleartext itself in memory; value is the validated row + expiry.
+// 30 seconds is short enough that key revocation propagates within a
+// reasonable window (the dashboard's "Revoke" UI says nothing about
+// instant kill — operators expect a brief delay) and long enough that
+// a typical long-poll cadence (30s) hits cache.
+const VALIDATE_KEY_CACHE_TTL_MS = 30_000;
+const VALIDATE_KEY_CACHE = new Map<string, { row: ApiKeyRow; expiresAt: number }>();
+
+function hashCleartextForCache(cleartext: string): string {
+  return createHash('sha256').update(cleartext).digest('hex');
+}
+
+/** Cap cache size so a flood of distinct invalid keys can't exhaust memory. */
+const VALIDATE_KEY_CACHE_MAX = 1024;
 
 export function extractKey(c: Context): string | null {
   const header = c.req.header('authorization');
@@ -42,14 +61,40 @@ export function extractKey(c: Context): string | null {
 /**
  * Validate a cleartext key against the DB. Returns the matching active
  * row or null. Used by both the auth middleware and the login endpoint.
+ *
+ * Caches successful verifications for `VALIDATE_KEY_CACHE_TTL_MS` (30s)
+ * so high-throughput agents long-polling don't pay the argon2 cost
+ * per request. Cache key is sha256(cleartext) — the cleartext is never
+ * stored. Cache misses still do a real DB lookup + argon2 verify.
+ *
+ * Revocation takes effect within `VALIDATE_KEY_CACHE_TTL_MS` (not
+ * instantly) — acceptable for an open-source dashboard where the
+ * "Revoke" affordance is a single-operator decision, not a panic
+ * button. If a hard-kill is ever needed, restart the process.
  */
 export async function validateKey(cleartext: string): Promise<ApiKeyRow | null> {
   if (!cleartext.startsWith('oo_') || cleartext.length < KEY_PREFIX_LEN + 1) return null;
+
+  const cacheKey = hashCleartextForCache(cleartext);
+  const cached = VALIDATE_KEY_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.row;
+  }
+
   const prefix = cleartext.slice(0, KEY_PREFIX_LEN);
   const row = await apiKeyRepo.findActiveByPrefix(prefix);
   if (!row) return null;
   const ok = await Bun.password.verify(cleartext, row.keyHash);
   if (!ok) return null;
+
+  // LRU-ish eviction: when full, dump the oldest entry. Map iteration
+  // order is insertion order in JS, so .keys().next().value is the
+  // oldest. Good enough — we only cap to bound memory under attack.
+  if (VALIDATE_KEY_CACHE.size >= VALIDATE_KEY_CACHE_MAX) {
+    const oldest = VALIDATE_KEY_CACHE.keys().next().value;
+    if (oldest) VALIDATE_KEY_CACHE.delete(oldest);
+  }
+  VALIDATE_KEY_CACHE.set(cacheKey, { row, expiresAt: Date.now() + VALIDATE_KEY_CACHE_TTL_MS });
   return row;
 }
 
