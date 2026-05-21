@@ -2,6 +2,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { urlMonitorAssertions, urlMonitorExecutions, urlMonitors } from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
+import { projectLatest } from './_with-latest.ts';
 
 export const urlMonitorRepo = {
   async findAllWithLatest() {
@@ -29,28 +30,14 @@ export const urlMonitorRepo = {
     return rows.map(({ url_monitors: m, latest: l }) => ({
       ...m,
       type: 'url' as const,
-      latest:
-        l && l.id !== null
-          ? (() => {
-              const projected = projectStalled(
-                {
-                  status: l.status,
-                  regionId: l.regionId,
-                  errorMessage: l.errorMessage,
-                },
-                l.startTime,
-                m.intervalSeconds,
-              );
-              return {
-                id: l.id,
-                status: projected.status,
-                statusCode: l.statusCode,
-                responseTimeMs: l.responseTimeMs,
-                errorMessage: projected.errorMessage,
-                startTime: l.startTime,
-              };
-            })()
-          : null,
+      latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
+        id: l.id as number,
+        status: p.status,
+        statusCode: l.statusCode,
+        responseTimeMs: l.responseTimeMs,
+        errorMessage: p.errorMessage,
+        startTime: l.startTime,
+      })),
     }));
   },
 
