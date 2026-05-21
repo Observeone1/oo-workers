@@ -40,7 +40,7 @@ function renderArtifactsCell(r: RunLite): string {
   const shots = Array.isArray(r.screenshotUrls) ? r.screenshotUrls : [];
   if (!trace && shots.length === 0) return '<td class="meta">—</td>';
   const traceLink = trace
-    ? `<a class="artifact-link" data-testid="artifact-trace-link" href="/api/artifacts?key=${encodeURIComponent(trace)}" title="Download Playwright trace.zip — open with: npx playwright show-trace trace.zip">trace.zip</a>`
+    ? `<a class="artifact-link" data-testid="artifact-trace-link" href="/api/artifacts?key=${encodeURIComponent(trace)}" title="Download Playwright trace.zip. Open with: npx playwright show-trace trace.zip">trace.zip</a>`
     : '';
   const thumbs = shots
     .map(
@@ -164,7 +164,7 @@ function renderWithFilter(
     </div>
     <div class="sparkline-wrap">
       <div class="head">
-        <span class="cell-meta">Latency — last 30 runs</span>
+        <span class="cell-meta">Latency, last 30 runs</span>
         <span class="cell-meta">${esc(regionLabel(filter, regions))}</span>
       </div>
       ${sparkline}
@@ -276,7 +276,7 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
           Your service POSTs (or GETs) this URL on every successful run.
           We track the timestamp and alert if we don't see a ping within
           <strong>${periodSeconds}s + ${graceSeconds}s grace</strong>.
-          The URL is the only secret — anyone with it can mark your
+          The URL is the only secret. Anyone with it can mark your
           heartbeat alive. If it leaks, delete and recreate this monitor.
         </p>
         <div class="codeblock" data-testid="heartbeat-ping-url">
