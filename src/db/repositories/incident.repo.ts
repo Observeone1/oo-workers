@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, or } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { DEFAULTS } from '../../constants.ts';
 import { incidents, incidentUpdates } from '../schema.ts';
 
 export type IncidentRow = typeof incidents.$inferSelect;
@@ -93,7 +94,8 @@ export const incidentRepo = {
   },
 
   /** Admin list for one page (newest activity first), optionally only
-   *  active or only resolved. */
+   *  active or only resolved. Capped at LIST_DEFAULT_LIMIT to bound
+   *  memory on long-lived pages with thousands of incidents. */
   listForPage(statusPageId: number, filter: 'all' | 'active' | 'resolved' = 'all') {
     const cond =
       filter === 'active'
@@ -101,7 +103,12 @@ export const incidentRepo = {
         : filter === 'resolved'
           ? and(eq(incidents.statusPageId, statusPageId), isNotNull(incidents.resolvedAt))
           : eq(incidents.statusPageId, statusPageId);
-    return db.select().from(incidents).where(cond).orderBy(desc(incidents.updatedAt));
+    return db
+      .select()
+      .from(incidents)
+      .where(cond)
+      .orderBy(desc(incidents.updatedAt))
+      .limit(DEFAULTS.LIST_DEFAULT_LIMIT);
   },
 
   /**

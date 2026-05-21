@@ -20,12 +20,11 @@ test('create heartbeat via dialog + detail view exposes the public URL', async (
   // URL row hides, heartbeat row shows.
   await expect(page.locator('#url-row')).toBeHidden();
   await expect(page.locator('#heartbeat-row')).toBeVisible();
-  // Regions row hides for heartbeat (it runs nowhere — services ping us).
-  // The row is `#regions-row`; if no regions exist it's already hidden
-  // by data, so we only assert when regions exist. Look for the row
-  // selector and check it's NOT visible.
-  // (regions are populated async; a quick wait avoids flake)
-  await page.waitForTimeout(200);
+  // Regions row also hides for heartbeat (it runs nowhere; services ping us).
+  // Asserting on the hidden state replaces a previous waitForTimeout(200).
+  // The dialog populates region options async, but a hidden regions-row
+  // is the deterministic signal that the heartbeat-type swap has settled.
+  await expect(page.getByTestId('add-monitor-regions-row')).toBeHidden();
 
   await page.locator('#add-form input[name="name"]').fill(name);
   await page.locator('input[name="hb_period_seconds"]').fill('60');
