@@ -436,15 +436,21 @@ async function wireChannelBindings(
     monitorId: number,
     channelIds: number[],
   ): Promise<void> => {
-    if (channelIds.length === 0) return;
+    // Dedup: monitor_alert_channels has a composite PK on
+    // (monitorType, monitorId, channelId). A malformed bundle with a
+    // duplicate ref (e.g. channelRefs: [10, 10]) would hit the PK and
+    // throw out of the transaction callback — rolling back the WHOLE
+    // import. Accept redundant input rather than abort.
+    const unique = Array.from(new Set(channelIds));
+    if (unique.length === 0) return;
     await tx.insert(monitorAlertChannels).values(
-      channelIds.map((channelId) => ({
+      unique.map((channelId) => ({
         monitorType: type,
         monitorId,
         channelId,
       })),
     );
-    result.channelBindings += channelIds.length;
+    result.channelBindings += unique.length;
   };
   for (const b of bindings.url) {
     await wire('url', b.realId, resolveRefs(b.refs, `url ${b.name} channel binding`));
@@ -494,8 +500,19 @@ async function importStatusPages(
         result.skipped.push(`status_page ${sp.slug}: ${note}`);
       }
       if (resolved.length > 0) {
+        // Dedup: status_page_monitors has a composite PK on
+        // (statusPageId, monitorType, monitorId). Same risk as wire()
+        // above — a bundle with two refs to the same (type,id) would
+        // abort the whole import on PK violation.
+        const seen = new Set<string>();
+        const uniqueResolved = resolved.filter((r) => {
+          const k = `${r.monitorType}:${r.monitorId}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
         await tx.insert(statusPageMonitors).values(
-          resolved.map((r) => ({
+          uniqueResolved.map((r) => ({
             statusPageId: page.id,
             monitorType: r.monitorType,
             monitorId: r.monitorId,
