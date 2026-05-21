@@ -1611,13 +1611,16 @@ function buildApp(connection: Redis) {
   // ---------- Public heartbeat ingest (Roadmap 8) ----------
   // POST /heartbeat/:token — UNAUTHENTICATED. Services / cron jobs ping
   // this on each successful run; we update last_ping_at + flip status
-  // to UP. If the heartbeat was OVERDUE, fire a recovery alert.
-  // Accepts both POST and GET so cron environments without a POST flag
-  // (`curl URL` works as GET) still register a ping. Body is ignored.
-  const handlePing = async (
-    c: import('hono').Context,
-    method: 'GET' | 'POST',
-  ): Promise<Response> => {
+  // to UP. If the heartbeat was OVERDUE, fire a recovery alert. The
+  // repo debounces pings <1s apart so a leaked token can't flood the
+  // DB. Disabled heartbeats look identical to unknown tokens (404).
+  //
+  // GET /heartbeat/:token is read-only: returns current status without
+  // recording a ping. Previously GET also pinged "so curl-as-cron works",
+  // but the cost was that link-previewers (Slack/iMessage/Discord pre-fetch
+  // unfurled URLs) would silently trigger pings every time a token URL
+  // was pasted. Pings must be explicit POSTs.
+  app.post('/heartbeat/:token', async (c) => {
     const token = c.req.param('token');
     if (!token) return c.json({ error: 'token required' }, 400);
     const result = await heartbeatRepo.recordPing(token);
@@ -1632,13 +1635,15 @@ function buildApp(connection: Redis) {
         startTime: new Date().toISOString(),
       }).catch(() => {});
     }
-    return c.json(
-      { ok: true, status: row.status, lastPingAt: row.lastPingAt },
-      method === 'POST' ? 200 : 200,
-    );
-  };
-  app.post('/heartbeat/:token', (c) => handlePing(c, 'POST'));
-  app.get('/heartbeat/:token', (c) => handlePing(c, 'GET'));
+    return c.json({ ok: true, status: row.status, lastPingAt: row.lastPingAt }, 200);
+  });
+  app.get('/heartbeat/:token', async (c) => {
+    const token = c.req.param('token');
+    if (!token) return c.json({ error: 'token required' }, 400);
+    const row = await heartbeatRepo.findByPublicToken(token);
+    if (!row) return c.json({ error: 'unknown heartbeat' }, 404);
+    return c.json({ ok: true, status: row.status, lastPingAt: row.lastPingAt }, 200);
+  });
 
   app.get('/status/:slug', async (c) => {
     const slug = c.req.param('slug');
