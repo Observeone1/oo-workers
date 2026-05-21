@@ -43,9 +43,12 @@ test('clicking Download produces a real dump file', async ({ page, shot }) => {
   // v2: backup moved from a header dialog (#backup-btn → #backup-dialog)
   // into the Settings → Backup tab. Scope picker became a segmented
   // control (data-val=none|window|all) instead of radio inputs.
+  // v1.8.0: the artifacts checkbox defaults to checked → tar.gz envelope.
+  // This test asserts the *legacy* .oodump.gz path, so uncheck it first.
   await page.goto('/#/settings');
   await page.getByTestId('settings-tab-backup').click();
   await expect(page.getByTestId('backup-download-btn')).toBeVisible();
+  await page.getByTestId('backup-include-artifacts').uncheck();
   await page.getByTestId('backup-scope-none').click();
   await shot('backup_dialog');
 
@@ -329,20 +332,21 @@ async function listTarEntries(path: string): Promise<string[]> {
 }
 
 // Refuse to TRUNCATE if the legacy .oodump.gz isn't a sane v1.7.0 dump.
+// NDJSON shape: first line `{"manifest":{format,schemaHead,scope,...}}`,
+// subsequent lines `{"t":"<table>","r":{...row}}`.
 function preflightDbDump(path: string, keySnapshot: string | undefined) {
   try {
     const text = gunzipSync(readFileSync(path)).toString('utf8');
     const lines = text.split('\n').filter(Boolean);
-    const manifest = JSON.parse(lines[0]) as {
-      format?: number;
-      manifest?: { schemaHead?: string };
+    const top = JSON.parse(lines[0]) as {
+      manifest?: { format?: number; schemaHead?: string };
     };
-    const head = manifest.manifest?.schemaHead ?? '';
-    if (manifest.format !== 1 || head.length === 0) {
-      throw new Error(`bad manifest: format=${manifest.format} head="${head}"`);
+    const m = top.manifest ?? {};
+    if (m.format !== 1 || !m.schemaHead || m.schemaHead.length === 0) {
+      throw new Error(`bad manifest: format=${m.format} head="${m.schemaHead}"`);
     }
-    const haveUser = lines.some((l) => l.startsWith('{"table":"users"'));
-    const haveKey = lines.some((l) => l.startsWith('{"table":"api_keys"'));
+    const haveUser = lines.some((l) => l.startsWith('{"t":"users"'));
+    const haveKey = lines.some((l) => l.startsWith('{"t":"api_keys"'));
     if (!haveUser || !haveKey) {
       throw new Error(`auth tables missing in dump (users=${haveUser} api_keys=${haveKey})`);
     }
@@ -364,11 +368,11 @@ function preflightTarDump(path: string, keySnapshot: string | undefined) {
     if (inner.slice(257, 262).toString('ascii') !== 'ustar') {
       throw new Error('tar header missing in envelope');
     }
-    // Quick sanity: dump.ndjson must contain a users row somewhere.
-    if (!inner.includes(Buffer.from('"table":"users"'))) {
+    // Quick sanity: dump.ndjson rows use {"t":"<table>","r":{...}}.
+    if (!inner.includes(Buffer.from('"t":"users"'))) {
       throw new Error('users rows missing from tar envelope dump.ndjson');
     }
-    if (!inner.includes(Buffer.from('"table":"api_keys"'))) {
+    if (!inner.includes(Buffer.from('"t":"api_keys"'))) {
       throw new Error('api_keys rows missing from tar envelope dump.ndjson');
     }
   } catch (e) {
