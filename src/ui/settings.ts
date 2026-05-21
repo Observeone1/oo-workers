@@ -11,6 +11,7 @@ import {
   createKey,
   revokeKey,
   backupUrl,
+  backupEstimate,
   restoreBackup,
   type KeyLite,
   type KeyScope,
@@ -165,6 +166,13 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  const mb = n / (1024 * 1024);
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
 // ─── Profile ─────────────────────────────────────────────────────────────────
 
 function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
@@ -221,9 +229,9 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
           <div class="field">
             <label>Theme</label>
             <div class="seg-inline" id="set-theme">
-              <button data-val="system" class="${storedTheme === 'system' || storedTheme === '' ? 'on' : ''}">System</button>
-              <button data-val="light"  class="${storedTheme === 'light' ? 'on' : ''}">Light</button>
-              <button data-val="dark"   class="${storedTheme === 'dark' ? 'on' : ''}">Dark</button>
+              <button data-val="system" class="seg-btn${storedTheme === 'system' || storedTheme === '' ? ' on' : ''}">System</button>
+              <button data-val="light"  class="seg-btn${storedTheme === 'light' ? ' on' : ''}">Light</button>
+              <button data-val="dark"   class="seg-btn${storedTheme === 'dark' ? ' on' : ''}">Dark</button>
             </div>
           </div>
         </div>
@@ -232,7 +240,7 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
           <div class="set-swatches" id="set-accent">
             ${ACCENTS.map(
               (c) => `
-              <button class="sw${storedAccent === c ? ' on' : ''}" style="--sw:${c}" data-val="${c}" title="${c}"></button>
+              <button class="sw sw-btn${storedAccent === c ? ' on' : ''}" style="--sw:${c}" data-val="${c}" title="${c}"></button>
             `,
             ).join('')}
           </div>
@@ -735,10 +743,17 @@ function renderBackup(panel: HTMLElement) {
         <div class="field">
           <label>History window</label>
           <div class="seg-inline" id="s-scope-seg">
-            <button data-val="window" data-testid="backup-scope-window" class="on">Last 90 days</button>
-            <button data-val="all" data-testid="backup-scope-all">All history</button>
-            <button data-val="none" data-testid="backup-scope-none">Config only</button>
+            <button data-val="window" data-testid="backup-scope-window" class="seg-btn on">Last 90 days</button>
+            <button data-val="all" data-testid="backup-scope-all" class="seg-btn">All history</button>
+            <button data-val="none" data-testid="backup-scope-none" class="seg-btn">Config only</button>
           </div>
+        </div>
+        <div class="field" style="margin-top:var(--s-3)">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="s-include-artifacts" data-testid="backup-include-artifacts" checked />
+            <span>Include browser run artifacts <span id="s-artifacts-estimate" class="opt"></span></span>
+          </label>
+          <p class="help" style="margin-top:6px">QA test scripts and Playwright trace/screenshot files for failed browser runs. Without these, a restored host has dangling references.</p>
         </div>
         <div style="margin-top:var(--s-4);display:flex;justify-content:flex-end">
           <button class="btn primary" id="s-backup-download" data-testid="backup-download-btn">
@@ -777,12 +792,28 @@ function renderBackup(panel: HTMLElement) {
     });
   });
 
+  // Artifacts estimate — fetch once on mount; tag onto the checkbox label.
+  // No warning threshold: just show the count + size next to the label.
+  const estimateEl = panel.querySelector<HTMLElement>('#s-artifacts-estimate');
+  const artifactsBox = panel.querySelector<HTMLInputElement>('#s-include-artifacts');
+  if (estimateEl) {
+    void backupEstimate().then((est) => {
+      if (est.artifactCount === 0) {
+        estimateEl.textContent = '(no artifacts yet)';
+        return;
+      }
+      const size = formatBytes(est.artifactBytes);
+      estimateEl.textContent = `(~${est.artifactCount} object${est.artifactCount === 1 ? '' : 's'}, ${size})`;
+    });
+  }
+
   // Download
   panel.querySelector('#s-backup-download')?.addEventListener('click', () => {
     const scope =
       panel.querySelector<HTMLButtonElement>('#s-scope-seg button.on')?.dataset.val ?? 'window';
+    const includeArtifacts = artifactsBox?.checked ?? true;
     const a = document.createElement('a');
-    a.href = backupUrl(scope, 90);
+    a.href = backupUrl(scope, 90, includeArtifacts);
     a.click();
   });
 

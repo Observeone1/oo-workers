@@ -19,9 +19,21 @@ format.
   last 90 days by default.
 - QA Playwright **script bodies** ride along (they live in a DB column).
 
-Not included: sessions (transient — log in again after a restore), and
-object-storage artifacts (Playwright `trace.zip` / screenshots). The dump
-is the database only.
+Not included by default: sessions (transient — log in again after a
+restore) and object-storage artifacts (QA test scripts in S3, Playwright
+`trace.zip`, failure screenshots). The default dump is the database only.
+
+**Include artifacts.** Tick **Include browser run artifacts** in the
+Backup dialog (or pass `--include-artifacts` to the CLI) to bundle every
+object in the configured S3 bucket — QA scripts (`qa-projects/…/*.spec.ts`)
+and per-run artifacts (`qa-projects/…/runs/<id>/trace.zip`,
+`screenshot-*.png`) — into the dump. The download switches from
+`.oodump.gz` (raw NDJSON) to `.oodump.tar.gz` (tar envelope with
+`meta.json` + `dump.ndjson` + `artifacts/<key>`). Restore auto-detects
+either format; legacy v1.7.0 dumps stay restorable forever.
+
+Without this, a fresh-host restore leaves QA `script_url` pointers
+dangling (the suite is unrunnable) and per-run **Download trace** links 404. The toggle is on by default in the UI dialog for that reason.
 
 ## From the dashboard
 
@@ -40,23 +52,48 @@ once it finishes.
 Run inside the worker container (direct DB access, no HTTP):
 
 ```bash
-# Back up
+# Back up — DB only (legacy .oodump.gz)
 docker compose exec worker bun scripts/export.ts -o /tmp/backup.oodump.gz
 docker compose exec worker bun scripts/export.ts --scope all -o /tmp/full.oodump.gz
 docker compose exec worker bun scripts/export.ts --scope none -o /tmp/config.oodump.gz
 docker compose exec worker bun scripts/export.ts --since 30 -o /tmp/recent.oodump.gz
 
+# Back up DB + every object in the S3 bucket (.oodump.tar.gz envelope)
+docker compose exec worker bun scripts/export.ts --include-artifacts \
+  -o /tmp/full-with-artifacts.oodump.tar.gz
+
 # Back up split across one file per table (parallel; good for huge instances)
 docker compose exec worker bun scripts/export.ts --split /tmp/backup-dir/
 
-# Restore (target must be empty, or pass --force to wipe it first)
+# Restore (target must be empty, or pass --force to wipe it first).
+# import.ts auto-detects the format (raw NDJSON vs tar envelope).
 docker compose exec worker bun scripts/import.ts --from /tmp/backup.oodump.gz --force
+docker compose exec worker bun scripts/import.ts --from /tmp/full-with-artifacts.oodump.tar.gz --force
 docker compose exec worker bun scripts/import.ts --from /tmp/backup-dir/ --force
 ```
 
 `--scope`: `window` (default, last `--since` days), `all`, or `none`
 (config only). The single-file dump and a `--split` directory are
 interchangeable — `import.ts` reconstructs the same ordering from either.
+
+## Artifact restore semantics
+
+When you restore a tar envelope (`--include-artifacts` dump):
+
+1. The DB rows are applied first, in one transaction, exactly like the
+   DB-only path.
+2. After the transaction commits, each `artifacts/<key>` tar entry is
+   uploaded to the new host's S3 via `putObject` at the same key it had
+   on the source.
+3. The boot-time `storage-backfill` pass runs at the end so any pre-v1.0
+   inline-only `qa_generated_tests.script` rows get re-uploaded to S3 on
+   the new host.
+
+A partial S3 outage during step 2 logs a warning and continues — the DB
+is the durability anchor, and any missing-object 404s degrade gracefully
+the same way they do on a live instance. If the target stack has no
+`OO_OBJECT_STORAGE_*` configured, the artifacts in the tar are skipped
+with a single warning line and the DB is restored normally.
 
 ## Restore rules
 

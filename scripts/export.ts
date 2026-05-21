@@ -11,6 +11,7 @@
  *   bun scripts/export.ts --scope none -o config.oodump.gz   # config only
  *   bun scripts/export.ts --since 30 -o recent.oodump.gz
  *   bun scripts/export.ts --split ./backup-dir/   # one .ndjson.gz per table
+ *   bun scripts/export.ts --include-artifacts -o full.oodump.tar.gz   # DB + S3
  *
  * Run inside the worker container during normal operation:
  *   docker compose exec worker bun scripts/export.ts -o /tmp/backup.oodump.gz
@@ -32,6 +33,7 @@ interface Args {
   since: number;
   out: string | null;
   split: string | null;
+  includeArtifacts: boolean;
 }
 
 function parseArgs(): Args {
@@ -40,6 +42,7 @@ function parseArgs(): Args {
   let since = DEFAULT_SINCE_DAYS;
   let out: string | null = null;
   let split: string | null = null;
+  let includeArtifacts = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--scope') {
@@ -58,19 +61,25 @@ function parseArgs(): Args {
       scope = 'window';
     } else if (arg === '-o' || arg === '--out') out = argv[++i] ?? null;
     else if (arg === '--split') split = argv[++i] ?? null;
+    else if (arg === '--include-artifacts') includeArtifacts = true;
     else if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: bun scripts/export.ts [--scope none|window|all] [--since <days>] [-o <file> | --split <dir>]',
+        'Usage: bun scripts/export.ts [--scope none|window|all] [--since <days>]\n' +
+          '                            [-o <file> | --split <dir>] [--include-artifacts]',
       );
       process.exit(0);
     }
   }
-  return { scope, since, out, split };
+  if (includeArtifacts && split) {
+    console.error('--include-artifacts is not compatible with --split (use -o instead)');
+    process.exit(2);
+  }
+  return { scope, since, out, split, includeArtifacts };
 }
 
 async function main() {
-  const { scope, since, out, split } = parseArgs();
-  const opts = { scope, sinceDays: since };
+  const { scope, since, out, split, includeArtifacts } = parseArgs();
+  const opts = { scope, sinceDays: since, includeArtifacts };
 
   if (split) {
     await exportSplit(opts, split);
@@ -79,7 +88,10 @@ async function main() {
     const web = exportStream(opts);
     const dest = out ? createWriteStream(out) : process.stdout;
     await pipeline(Readable.fromWeb(web as Parameters<typeof Readable.fromWeb>[0]), dest);
-    if (out) console.error(`✅ backup written to ${out}`);
+    if (out) {
+      const suffix = includeArtifacts ? ' (with artifacts)' : '';
+      console.error(`✅ backup written to ${out}${suffix}`);
+    }
   }
   await sql.end();
 }

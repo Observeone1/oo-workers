@@ -1,6 +1,7 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # Run the full integration suite locally. Requires Postgres + Redis reachable.
 # Used by `bun run test:integration` and the Husky pre-push hook.
+# Uses bash for the /dev/tcp probe below (not available in POSIX sh / dash).
 set -e
 
 # Load .env if present so the hook works without manual env exports.
@@ -11,7 +12,50 @@ if [ -f .env ]; then
   set +a
 fi
 export DATABASE_URL="${DATABASE_URL:-postgres://${POSTGRES_USER:-oo}:${POSTGRES_PASSWORD:-oo}@localhost:${POSTGRES_PORT:-5442}/${POSTGRES_DB:-oo_workers}}"
-export REDIS_URL="${REDIS_URL:-redis://:${REDIS_PASSWORD:-}@localhost:${REDIS_PORT:-6379}}"
+# Test Redis runs on its own port (default 6479) under a dedicated container
+# name so it doesn't clash with other local stacks that already publish a
+# redis on 6379 (e.g. observeone-frontend). Override via REDIS_PORT in .env.
+export REDIS_URL="${REDIS_URL:-redis://:${REDIS_PASSWORD:-}@localhost:${REDIS_PORT:-6479}}"
+
+PG_PORT="${POSTGRES_PORT:-5442}"
+REDIS_PORT_PROBE="${REDIS_PORT:-6479}"
+probe() { (echo > "/dev/tcp/localhost/$1") 2>/dev/null; }
+
+# Postgres comes from the user's existing compose stack — if it's down,
+# fail with a clear message rather than starting one behind their back.
+if ! probe "$PG_PORT"; then
+  echo "[run-integration] Postgres not reachable on localhost:$PG_PORT." >&2
+  echo "                  Start your oo-workers postgres container, then re-run." >&2
+  exit 1
+fi
+
+# Redis: this script owns the test-redis container outright. If it's not
+# running, start a dedicated `oo-workers-test-redis` on REDIS_PORT (6479),
+# isolated from any other redis on the host. Idempotent: re-uses a stopped
+# container with the same name.
+if ! probe "$REDIS_PORT_PROBE"; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "[run-integration] Redis not reachable on localhost:$REDIS_PORT_PROBE and docker is unavailable." >&2
+    echo "                  Start a redis on that port manually, then re-run." >&2
+    exit 1
+  fi
+  REDIS_CTR="oo-workers-test-redis"
+  echo "[run-integration] Starting $REDIS_CTR on localhost:$REDIS_PORT_PROBE..."
+  if docker ps -a --format '{{.Names}}' | grep -qx "$REDIS_CTR"; then
+    docker start "$REDIS_CTR" >/dev/null
+  else
+    docker run -d --name "$REDIS_CTR" -p "$REDIS_PORT_PROBE:6379" redis:8-alpine >/dev/null
+  fi
+  for i in $(seq 1 30); do
+    probe "$REDIS_PORT_PROBE" && break
+    sleep 1
+  done
+  if ! probe "$REDIS_PORT_PROBE"; then
+    echo "[run-integration] $REDIS_CTR didn't accept connections within 30s." >&2
+    echo "                  Check 'docker logs $REDIS_CTR'." >&2
+    exit 1
+  fi
+fi
 
 bun src/db/migrate.ts
 

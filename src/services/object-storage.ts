@@ -449,3 +449,78 @@ export async function listObjects(prefix: string): Promise<string[]> {
   } while (continuationToken);
   return out;
 }
+
+/**
+ * Same paging as `listObjects` but also returns each object's size. Pairs
+ * Key + Size from the ListObjectsV2 XML response (S3 returns them adjacent
+ * inside a single `<Contents>` element, so a regex with the two captures
+ * in order is enough — no XML parser dependency).
+ */
+export async function listObjectsWithSize(
+  prefix: string,
+): Promise<{ key: string; size: number }[]> {
+  const cfg = requireConfig();
+  const out: { key: string; size: number }[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const url = new URL(cfg.endpoint);
+    url.pathname = `/${cfg.bucket}`;
+    url.searchParams.set('list-type', '2');
+    url.searchParams.set('prefix', prefix);
+    if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
+
+    const now = new Date();
+    const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
+    const dateStamp = amzDate.slice(0, 8);
+    const payloadHash = sha256Hex('');
+    const headers: Record<string, string> = {
+      host: url.host,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+    };
+    const sorted = Object.keys(headers).sort();
+    const canonicalHeaders = sorted.map((k) => `${k}:${headers[k]}\n`).join('');
+    const signedHeaders = sorted.join(';');
+    const qs = [...url.searchParams.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join('&');
+    const canonicalRequest = [
+      'GET',
+      url.pathname,
+      qs,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n');
+    const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      sha256Hex(canonicalRequest),
+    ].join('\n');
+    const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
+    const signature = hex(hmac(kSigning, stringToSign));
+    const authHeader =
+      `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    const res = await fetch(url.toString(), { headers: { ...headers, Authorization: authHeader } });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ObjectStorageError(
+        `LIST ${prefix} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+        res.status,
+      );
+    }
+    const xml = await res.text();
+    for (const m of xml.matchAll(
+      /<Key>([^<]+)<\/Key>\s*(?:<[^>]+>[^<]*<\/[^>]+>\s*)*<Size>(\d+)<\/Size>/g,
+    )) {
+      out.push({ key: m[1], size: Number(m[2]) });
+    }
+    const nextMatch = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+    continuationToken = nextMatch?.[1];
+  } while (continuationToken);
+  return out;
+}

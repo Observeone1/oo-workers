@@ -22,6 +22,7 @@ import { resolve } from 'node:path';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { createHash, randomBytes } from 'node:crypto';
 
 const REPO = resolve(import.meta.dir, '..');
 const SELF = import.meta.path;
@@ -395,6 +396,134 @@ async function main() {
         );
       } finally {
         await probe.end();
+      }
+
+      // 6a) --include-artifacts produces a tar.gz envelope (verify on-disk
+      //     shape) and restores cleanly — even with no S3 configured the
+      //     artifacts/ entries are absent, DB restore still runs.
+      //
+      //     Full S3 round-trip (object upload/download fidelity) requires
+      //     test-bucket infrastructure outside scope of this script; that
+      //     coverage lands separately. This subtest catches format
+      //     regressions and the "no-S3 fallback" path.
+      const tgz = resolve(tmp, 'art.oodump.tar.gz');
+      const art1 = await run(
+        ['bun', exp, '--scope', 'all', '--include-artifacts', '-o', tgz],
+        'oo_br_src',
+      );
+      const tarGzOk =
+        art1.code === 0 &&
+        (() => {
+          const buf = readFileSync(tgz);
+          // gzip magic: 1f 8b
+          if (buf[0] !== 0x1f || buf[1] !== 0x8b) return false;
+          // Decompress and check for "ustar" at offset 257 (tar header magic).
+          const inner = gunzipSync(buf);
+          return inner.slice(257, 262).toString('ascii') === 'ustar';
+        })();
+      check(
+        '--include-artifacts produces a valid tar.gz envelope',
+        tarGzOk,
+        art1.stderr.trim().split('\n').pop(),
+      );
+
+      // Restore the tar.gz envelope on a fresh sibling. With no S3
+      // configured the artifacts/ entries (if any) are skipped with a
+      // warning; the DB rows still round-trip identically.
+      await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_tar WITH (FORCE)`);
+      await admin.unsafe(`CREATE DATABASE oo_br_tar`);
+      const tarMig = await run(['bun', resolve(REPO, 'src/db/migrate.ts')], 'oo_br_tar');
+      if (tarMig.code === 0) {
+        const tarImp = await run(['bun', imp, '--from', tgz], 'oo_br_tar');
+        const tarCounts = await counts('oo_br_tar');
+        check(
+          'tar.gz envelope restores (DB rows round-trip; artifacts skipped if no S3)',
+          tarImp.code === 0 && eq(src, tarCounts),
+          tarImp.code !== 0 ? tarImp.stderr.trim().split('\n').pop() : diff(src, tarCounts),
+        );
+        await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_tar WITH (FORCE)`);
+      } else {
+        check('migrate oo_br_tar (for tar.gz restore subtest)', false, tarMig.stderr.trim());
+      }
+
+      // 6b) Real RustFS round-trip: seed real bytes, export with
+      //     --include-artifacts, wipe seeded keys, restore, byte-equal.
+      //     Gated on isStorageConfigured() — silent SKIP without S3 env.
+      const { isStorageConfigured, putObject, getObject, deleteObject } =
+        await import('../src/services/object-storage.ts');
+      if (!isStorageConfigured()) {
+        console.log('⏭️  SKIP   real-S3 round-trip — set OO_OBJECT_STORAGE_* to exercise');
+      } else {
+        const prefix = `e2e-backup-${randomBytes(4).toString('hex')}/`;
+        const objs = [
+          { key: `${prefix}script.spec.ts`, body: Buffer.from("test('hi',()=>{});\n", 'utf8') },
+          { key: `${prefix}trace.zip`, body: randomBytes(2048) },
+          { key: `${prefix}screenshot.png`, body: randomBytes(1024) },
+        ];
+        const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+        const seeded = objs.map((o) => ({ ...o, sha: sha(o.body) }));
+        try {
+          for (const o of seeded) await putObject(o.key, o.body, 'application/octet-stream');
+
+          const rtTgz = resolve(tmp, 'art-rt.oodump.tar.gz');
+          const rtExp = await run(
+            ['bun', exp, '--scope', 'all', '--include-artifacts', '-o', rtTgz],
+            'oo_br_src',
+          );
+          if (rtExp.code !== 0) {
+            check('real-S3 round-trip: export', false, rtExp.stderr.trim().split('\n').pop());
+          } else {
+            // Wipe ONLY the seeded prefix — never touch other keys (dev RustFS
+            // has live QA artifacts in the same bucket).
+            for (const o of seeded) await deleteObject(o.key).catch(() => {});
+
+            await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_art WITH (FORCE)`);
+            await admin.unsafe(`CREATE DATABASE oo_br_art`);
+            const artMig = await run(['bun', resolve(REPO, 'src/db/migrate.ts')], 'oo_br_art');
+            if (artMig.code !== 0) {
+              check('real-S3 round-trip: migrate', false, artMig.stderr.trim());
+            } else {
+              const rtImp = await run(['bun', imp, '--from', rtTgz], 'oo_br_art');
+              if (rtImp.code !== 0) {
+                check('real-S3 round-trip: restore', false, rtImp.stderr.trim().split('\n').pop());
+              } else {
+                let allEqual = true;
+                let detail = '';
+                for (const o of seeded) {
+                  try {
+                    const got = await getObject(o.key);
+                    const gotSha = createHash('sha256')
+                      .update(Buffer.from(got, 'utf8'))
+                      .digest('hex');
+                    // getObject returns utf8 text — for binary fixtures we re-fetch
+                    // raw via getObjectResponse for the canonical compare.
+                    const { getObjectResponse } = await import('../src/services/object-storage.ts');
+                    const res = await getObjectResponse(o.key);
+                    const buf = Buffer.from(await res.arrayBuffer());
+                    const rawSha = createHash('sha256').update(buf).digest('hex');
+                    if (rawSha !== o.sha) {
+                      allEqual = false;
+                      detail += ` ${o.key}: ${o.sha.slice(0, 8)}!=${rawSha.slice(0, 8)};`;
+                    }
+                    void gotSha;
+                  } catch (e) {
+                    allEqual = false;
+                    detail += ` ${o.key}: ${e instanceof Error ? e.message : e};`;
+                  }
+                }
+                check(
+                  'real-S3 round-trip: SHA-256 byte equality on 3 objects',
+                  allEqual,
+                  detail.trim(),
+                );
+              }
+            }
+            await admin.unsafe(`DROP DATABASE IF EXISTS oo_br_art WITH (FORCE)`);
+          }
+        } finally {
+          // Final cleanup of seeded prefix — even on failure.
+          for (const o of seeded) await deleteObject(o.key).catch(() => {});
+        }
       }
 
       // 6) schema-head guard rejects BEFORE truncate (split DB unchanged).
