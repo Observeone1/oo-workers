@@ -5,10 +5,7 @@
  * config, not per-channel).
  */
 import type { Hono } from 'hono';
-import {
-  alertChannelRepo,
-  type ChannelType,
-} from '../db/repositories/alert-channel.repo.ts';
+import { alertChannelRepo, type ChannelType } from '../db/repositories/alert-channel.repo.ts';
 import { sendToChannel } from '../services/alert-dispatch.ts';
 import { isLocalMailpit, findRecentTestMessage } from '../services/mailpit.ts';
 

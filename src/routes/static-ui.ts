@@ -20,9 +20,7 @@ function loadText(name: string): string | null {
 
 const serveCss = (name: string) => (c: Context) => {
   const body = loadText(name);
-  return body
-    ? c.body(body, 200, { 'content-type': 'text/css' })
-    : c.text('/* not built */', 404);
+  return body ? c.body(body, 200, { 'content-type': 'text/css' }) : c.text('/* not built */', 404);
 };
 
 export function registerStaticRoutes(app: Hono): void {
