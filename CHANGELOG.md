@@ -1,0 +1,100 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
+
+## [Unreleased]
+
+### Code-quality + correctness pass (audit cleanup, 2026-05-21)
+
+Three-pass audit recorded at `observeone-context/audit/2026-05-21-*.md`. Findings shipped across 14 PRs merged to main on the same day.
+
+#### Fixed
+
+- **`restoreTar` artifact memory** - multi-GB `.oodump.tar.gz` restores no longer OOM the worker. Artifacts now stream entry-by-entry: meta + dump buffered, then each artifact body uploaded to S3 and discarded before reading the next tar entry. Memory ceiling drops from `dump + sum(all artifacts)` to `max(dump, single largest artifact)`. ([#57])
+- **`/api/import` atomicity** - bulk import now runs inside a single `db.transaction`. A mid-import crash (process kill, OOM, dropped DB connection) rolls back cleanly; operators can re-run without manually unwinding partial state. ([#58])
+- **Heartbeat ingest hardening** - `POST /heartbeat/:token` debounces sub-second pings (a leaked token can no longer flood the DB with SELECT+UPDATE pairs), disabled heartbeats look identical to unknown tokens (no info disclosure), and `GET /heartbeat/:token` is read-only (Slack/iMessage/Discord pre-fetch no longer triggers pings). ([#56])
+- **`tcp-probe` banner accumulation** - multi-packet SMTP/IMAP banners no longer FAIL on the first chunk. The probe now waits until the buffer either contains the expected string, hits the 256B cap without matching, or the socket times out. ([#55])
+- **List query bounds** - `incidentRepo.listForPage`, `statusPageRepo.list`, and `apiKeyRepo.list` cap at 500 rows. A long-lived public status page that accumulates incidents no longer OOMs the listing endpoint. ([#59])
+- **Scheduler tick-failure surfacing** - a persistent DB or Redis outage used to log one error per tick and let operators discover hours later that no monitor had been dispatched. New per-tick counter + escalating `🚨 SCHEDULER STALLED` log at 3, 6, 12, ... consecutive failures, plus a recovery log on the first green tick. ([#61])
+- **Channel-ref dedup on import** - a malformed export bundle with duplicate `channelRefs` no longer aborts the whole `/api/import` transaction via composite-PK violation. ([#58])
+
+#### Changed
+
+- **`server.ts` split into per-resource routes** - 1769 lines → 150-line orchestrator + 14 `src/routes/*.ts` files (auth, api-keys, artifacts, monitors, import, backup, regions, channels, status-pages, incidents, heartbeat-public, status-public, agent, static-ui). Handlers moved verbatim. ([#64])
+- **`settings.ts` split into per-section** - 874 → 145-line rail + router + `src/ui/settings/{profile,security,api-keys,backup}.ts`. ([#65])
+- **`backup.ts` split into export/restore/shared** - 713 → 39-line re-export shim + `backup-shared.ts` (types + `TABLES`) + `backup-export.ts` (export streamers) + `backup-restore.ts` (restore reader). ([#66])
+- **`dialogs.ts` split** - 567 → 117-line primitives only + `dialogs/{add-monitor-dialog,import-dialog}.ts`. ([#67])
+- **`incidents.ts` split** - 529 → 73-line router + `incidents/{state,list,editor}.ts`. ([#68])
+- **`findAllWithLatest` factored** - 7 monitor repos (url, api, tcp, udp, db, tls, qa) now share `_with-latest.ts:projectLatest()` for the staleness-projected `latest` shape. The SQL stays inline per repo. ([#54])
+- **`/api/import` refactored** - extracted from a 320-line wall in `server.ts` to a per-type adapter layer in `services/import.ts`. ([#58])
+- **Test convention** - replaced `await page.waitForTimeout(200)` in `heartbeat.e2e.spec.ts` with a deterministic `getByTestId('add-monitor-regions-row').toBeHidden()` assertion. ([#63])
+
+#### Docs
+
+- README: added "QA scripts run with the worker's env" warning under Security & deployment. Operators should not accept QA test scripts from untrusted sources without a sandboxed runner - the script inherits the worker process's full env. ([#60])
+
+#### Hygiene
+
+- Em-dash sweep on operator-facing prose in `src/ui/settings.ts`, `regions.ts`, `detail.ts`. Single-char `'—'` placeholders for missing values were intentionally left. ([#62])
+
+[#54]: https://github.com/Observeone1/oo-workers/pull/54
+[#55]: https://github.com/Observeone1/oo-workers/pull/55
+[#56]: https://github.com/Observeone1/oo-workers/pull/56
+[#57]: https://github.com/Observeone1/oo-workers/pull/57
+[#58]: https://github.com/Observeone1/oo-workers/pull/58
+[#59]: https://github.com/Observeone1/oo-workers/pull/59
+[#60]: https://github.com/Observeone1/oo-workers/pull/60
+[#61]: https://github.com/Observeone1/oo-workers/pull/61
+[#62]: https://github.com/Observeone1/oo-workers/pull/62
+[#63]: https://github.com/Observeone1/oo-workers/pull/63
+[#64]: https://github.com/Observeone1/oo-workers/pull/64
+[#65]: https://github.com/Observeone1/oo-workers/pull/65
+[#66]: https://github.com/Observeone1/oo-workers/pull/66
+[#67]: https://github.com/Observeone1/oo-workers/pull/67
+[#68]: https://github.com/Observeone1/oo-workers/pull/68
+
+## [1.22.0] - 2026-05-21
+
+Heartbeat monitors now migrate from a SaaS export with their ping URL preserved. `/api/import` ingests a `heartbeats` block; the SaaS adapter maps `period` / `grace_period` / `ping_key` → `periodSeconds` / `graceSeconds` / `token`. A new live-server gating test (`scripts/import-heartbeat-e2e-test.ts`) covers the round-trip including a POST to the preserved ping URL.
+
+## [1.21.0] - 2026-05-21
+
+Backup with artifacts. The `.oodump.tar.gz` envelope bundles every object in the S3 bucket alongside the NDJSON dump; restore re-uploads artifacts and runs `runBackfill()` so QA suites are runnable end-to-end on a fresh host. UI Backup dialog gets an "Include browser run artifacts" checkbox (default on) + size estimate. Magic-byte dispatch keeps v1.7.0 legacy `.oodump.gz` restorable forever. CLI test + 9-case UI e2e (including a destructive round-trip with RustFS byte equality) gate the format.
+
+## [1.20.1] - 2026-05-20
+
+Heartbeat / DB / TLS hash routes - `#/heartbeat/<id>`, `#/db/<id>`, `#/tls/<id>` now resolve to the correct detail views. Plus a workers-landing screenshot tour (e2e capture used to refresh the marketing site images).
+
+## [1.20.0] - 2026-05-20
+
+Cookie-session realign across the v2 settings panel; faithful `enabled` state across every monitor type (the v2 redesign normalised the field); version-skew warning banner in the dashboard when an agent reports a different build than master.
+
+## [1.19.0] - 2026-05-20
+
+Heartbeat dashboard UI. Tile in the add-monitor dialog, detail view with the public ping URL + copy button + curl example + status / last-ping age, list-view tab with active vs OVERDUE counts. Backend shipped in v1.18.0.
+
+## [1.18.0] - 2026-05-20
+
+Heartbeat monitor type (Roadmap item 8). Inverted-direction: services POST to `/heartbeat/:token`, the scheduler sweeps for overdue rows. Schema migration `0019_heartbeats.sql`, repo + scheduler tick + alert dispatch, idempotent UP → OVERDUE transition so a single outage fires one alert.
+
+## [1.17.0] - 2026-05-20
+
+Import surrogate-id remap (Roadmap item 3.3). `/api/import` reconstructs monitor ↔ channel and status-page ↔ monitor bindings across SaaS / self-host id spaces using bundle-local id anchors from CLI v1.25.0+. Integration test exercises a v1.25.0 bundle, a pre-1.25.0 fallback, and a dangling-ref bundle.
+
+## [1.16.0] - 2026-05-20
+
+V2 dashboard redesign (PR #45). Fixed navbar, sectioned add-monitor dialog, slide-over create flows, Settings page (Profile / Security / API keys / Backup), docs TOC, incidents card list + editor, dashboard active-incidents widget + fleet-availability sparkline, brand-icon alert channels, login/setup reskin. Two follow-up PRs added a Settings nav link and an anti-vacuous auth-profile gating test.
+
+## Older
+
+Releases prior to v1.16.0 (the v2 dashboard cut) are summarised in `observeone-context/progress/2026-W21.md` and the per-tag git log. The notable predecessors:
+
+- **1.15.0** (2026-05-19) - Multi-region setup-friction leftovers: `OO_AGENT_TLS_INSECURE` opt-in for the agent → master link (loud warnings + hourly drift reminder), `scripts/agent-tls-test.ts` gating, agent-version reporting + master-side skew detection.
+- **1.14.0** (2026-05-19) - TLS chain/hostname assertions: opt-in `verify_chain`, `verify_hostname`, `expect_cn_regex` columns; save-time regex validation; new `tls-assertions.e2e` spec.
+- **1.13.0 / 1.13.1** (2026-05-19) - SaaS `alert_channels` import (secret-safe by construction) + live `obs.json` → `/api/import` e2e against Mailpit + webhook catch-all.
+- **1.12.0** (2026-05-19) - SaaS `suites[]` import → `qaProjects` (with inline scripts).
+- **1.10.0 / 1.11.0** - QA-monitor alerting; status-page incident timeline.
+- **1.7.0 / 1.7.1** (2026-05-18) - Full logical backup & restore (DB-only, the v1.21.0 base).
+- **1.3.0** (2026-05-17) - Email/password auth + first-visit setup wizard.
