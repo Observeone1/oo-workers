@@ -27,13 +27,9 @@ export { exportSplit, exportStream, estimateArtifacts } from './backup-export.ts
 
 export { restore, restoreFromDir } from './backup-restore.ts';
 
-export {
-  BACKUP_FORMAT,
-  DEFAULT_SINCE_DAYS,
-  RestoreError,
-  type BackupOptions,
-  type DataScope,
-  type Manifest,
-  type RestoreResult,
-  type TarMeta,
-} from './backup-shared.ts';
+export { DEFAULT_SINCE_DAYS, RestoreError, type DataScope } from './backup-shared.ts';
+
+// BACKUP_FORMAT, BackupOptions, Manifest, RestoreResult, TarMeta are not
+// re-exported here — they're internal to the three implementation files.
+// Anyone needing them (a test, a new caller) imports directly from
+// `backup-shared.ts`.
