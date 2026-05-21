@@ -2,7 +2,7 @@
 
 Self-hosted monitoring. HTTP uptime checks, API checks with JSONPath assertions, and full Playwright browser flows. Runs in one `docker compose up`. Apache-2.0.
 
-The open-source slice of [ObserveOne](https://observeone.com) — the engine, the scheduler, and a minimal admin UI.
+The open-source slice of [ObserveOne](https://observeone.com) - the engine, the scheduler, and a minimal admin UI.
 
 ---
 
@@ -26,7 +26,7 @@ docker compose exec worker bun scripts/create-api-key.ts --name ci
 # → copy the oo_… key; send it as `Authorization: Bearer oo_…`
 ```
 
-Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashboard), `postgres`, `redis`, `rustfs` (S3-compatible object storage for browser-check scripts). Schema migrations run automatically on first boot. The UI port binds to `127.0.0.1` by default — see _Security & deployment_ below before exposing publicly.
+Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashboard), `postgres`, `redis`, `rustfs` (S3-compatible object storage for browser-check scripts). Schema migrations run automatically on first boot. The UI port binds to `127.0.0.1` by default - see _Security & deployment_ below before exposing publicly.
 
 ## What you can monitor
 
@@ -34,34 +34,34 @@ Five containers boot: `worker` (queue consumers + scheduler), `ui` (HTTP + dashb
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **HTTP uptime** | Is the URL up? Expected status code.                                                                                                                                                                                                                                                                |
 | **API**         | Send any HTTP request, evaluate assertions on the response: status, response time, JSONPath into JSON, headers, text contents.                                                                                                                                                                      |
-| **Browser**     | Run a full Playwright `.spec.ts` script — log in, click, navigate, assert. Same code your team writes for e2e tests.                                                                                                                                                                                |
+| **Browser**     | Run a full Playwright `.spec.ts` script - log in, click, navigate, assert. Same code your team writes for e2e tests.                                                                                                                                                                                |
 | **TCP**         | Open a TCP socket to `host:port`, measure connect-latency. Optionally send a payload and assert on the response banner (SSH/SMTP/Redis/IMAP). See [docs/tcp-checks.md](docs/tcp-checks.md).                                                                                                         |
 | **UDP**         | Send a datagram (optional hex payload), optionally await a response within timeout. Use it for DNS queries, NTP probes, custom UDP services.                                                                                                                                                        |
-| **Database**    | Postgres / MySQL / Redis liveness — connects and confirms the server speaks the protocol (no credentials stored; "is it up?", not authenticated queries). See [docs/db-checks.md](docs/db-checks.md).                                                                                               |
+| **Database**    | Postgres / MySQL / Redis liveness - connects and confirms the server speaks the protocol (no credentials stored; "is it up?", not authenticated queries). See [docs/db-checks.md](docs/db-checks.md).                                                                                               |
 | **TLS cert**    | TLS handshake to `host:port`. FAIL on near-expiry (`warnDays`, default 30); opt in to chain-trust verification, hostname/SAN match, and a CN-or-SAN regex assertion. Self-signed-friendly when chain checks are off. See [docs/tls-checks.md](docs/tls-checks.md).                                  |
-| **Heartbeat**   | Inverted ping — your cron job or background worker POSTs to a token URL on every successful run; oo-workers flips the monitor to `OVERDUE` when the next ping doesn't arrive within `period + grace`. Recovery alerts fire when pings resume. No outbound check from the worker, no port to expose. |
+| **Heartbeat**   | Inverted ping - your cron job or background worker POSTs to a token URL on every successful run; oo-workers flips the monitor to `OVERDUE` when the next ping doesn't arrive within `period + grace`. Recovery alerts fire when pings resume. No outbound check from the worker, no port to expose. |
 
 Each monitor has an `interval_seconds` and an `enabled` toggle. The scheduler ticks every 5 seconds and enqueues whatever's due. Workers process jobs concurrently (tunable via env).
 
 ## Alerts and status pages
 
-When a monitor flips down or recovers, oo-workers can fire to a **webhook**, **Discord**, **Slack**, or **email** channel. Set up channels under `#/channels`, bind them per-monitor in the create dialog. Email needs SMTP configured once via `OO_SMTP_*` env (see [`.env.example`](.env.example)); the channel just stores the recipient. Trigger model is status _transition_ only: `SUCCESS → FAILED` fires outage, `FAILED → SUCCESS` fires recovery. Sustained failure stays quiet so flaky checks don't paginate you to death. Heartbeat monitors alert the same way — `UP → OVERDUE` is the outage edge, and the next ping fires recovery. QA browser monitors aggregate per run: one alert when a previously-passing run starts failing, one when it goes green again.
+When a monitor flips down or recovers, oo-workers can fire to a **webhook**, **Discord**, **Slack**, or **email** channel. Set up channels under `#/channels`, bind them per-monitor in the create dialog. Email needs SMTP configured once via `OO_SMTP_*` env (see [`.env.example`](.env.example)); the channel just stores the recipient. Trigger model is status _transition_ only: `SUCCESS → FAILED` fires outage, `FAILED → SUCCESS` fires recovery. Sustained failure stays quiet so flaky checks don't paginate you to death. Heartbeat monitors alert the same way - `UP → OVERDUE` is the outage edge, and the next ping fires recovery. QA browser monitors aggregate per run: one alert when a previously-passing run starts failing, one when it goes green again.
 
-Public status pages live at `/status/<slug>` — anonymous, server-rendered, auto-refresh every 60s. Headline banner, 90-day uptime bars per monitor, 24h uptime %. Operators curate which monitors appear (no auto-publish). On top of the live status, operators can author an **incident timeline** per status page — markdown-rendered (escape-first, XSS-safe), shown above the monitor list, useful for post-mortems and live updates during an outage. Admin under `#/status-pages`; see [docs/incidents.md](docs/incidents.md).
+Public status pages live at `/status/<slug>` - anonymous, server-rendered, auto-refresh every 60s. Headline banner, 90-day uptime bars per monitor, 24h uptime %. Operators curate which monitors appear (no auto-publish). On top of the live status, operators can author an **incident timeline** per status page - markdown-rendered (escape-first, XSS-safe), shown above the monitor list, useful for post-mortems and live updates during an outage. Admin under `#/status-pages`; see [docs/incidents.md](docs/incidents.md).
 
 ## Multi-region
 
 Run probes from more than one location by attaching regional **agents** to your master. Master schedules and aggregates; agents are stateless and only need outbound HTTPS. Set up a region from the dashboard's **Regions** page, paste the printed key into `docker-compose.agent.yml`'s `.env`, and bind monitors via the **+ Add monitor** dialog's "Run from" picker.
 
-Self-signed master? Set `OO_AGENT_TLS_INSECURE=1` on the agent side as an opt-in escape hatch (scoped to the agent→master link only, with loud startup warnings — see the multi-region doc for the threat model). The Regions page also surfaces a **version-skew banner** when an agent reports a build older than the master, so you know which containers to `docker compose pull` after an upgrade.
+Self-signed master? Set `OO_AGENT_TLS_INSECURE=1` on the agent side as an opt-in escape hatch (scoped to the agent→master link only, with loud startup warnings - see the multi-region doc for the threat model). The Regions page also surfaces a **version-skew banner** when an agent reports a build older than the master, so you know which containers to `docker compose pull` after an upgrade.
 
 → **Full walkthrough, architecture, and troubleshooting in [docs/multi-region.md](docs/multi-region.md).**
 
 ## Storage
 
-Browser-check scripts and **run artifacts** (Playwright `trace.zip` + screenshot, captured on failure) live in object storage. The default stack bundles **RustFS** (Apache-2.0, S3-compatible) — no setup, scripts upload on create, traces upload on failed runs. Browse the bucket at **http://localhost:9001** with the keys from your `.env`.
+Browser-check scripts and **run artifacts** (Playwright `trace.zip` + screenshot, captured on failure) live in object storage. The default stack bundles **RustFS** (Apache-2.0, S3-compatible) - no setup, scripts upload on create, traces upload on failed runs. Browse the bucket at **http://localhost:9001** with the keys from your `.env`.
 
-Keys follow `qa-projects/<projectId>-<slug>/...` — scripts at the root, run artifacts under `runs/<execId>/`. The monitor detail page shows trace + screenshot links per failed run; download the trace and open it with `npx playwright show-trace trace.zip`. Monitor delete cleans up its bucket objects; a boot-time orphan sweep handles anything that slips through.
+Keys follow `qa-projects/<projectId>-<slug>/...` - scripts at the root, run artifacts under `runs/<execId>/`. The monitor detail page shows trace + screenshot links per failed run; download the trace and open it with `npx playwright show-trace trace.zip`. Monitor delete cleans up its bucket objects; a boot-time orphan sweep handles anything that slips through.
 
 ### Why RustFS
 
@@ -82,11 +82,11 @@ OO_OBJECT_STORAGE_ACCESS_KEY=AKIA...
 OO_OBJECT_STORAGE_SECRET_KEY=...
 ```
 
-Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph — anything that speaks the S3 protocol. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
+Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph - anything that speaks the S3 protocol. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
 
 ## Backup & restore
 
-Take a full logical snapshot — config + execution history — from the
+Take a full logical snapshot - config + execution history - from the
 dashboard's **Backup** button or `bun scripts/export.ts`, and restore it on
 another instance. It's a portable, schema-versioned dump (not `pg_dump`),
 windowed to 90 days of history by default.
@@ -95,7 +95,7 @@ Browser run artifacts ride along by default: QA test scripts, Playwright
 `trace.zip`, and per-run screenshots stream from the configured S3 bucket
 into a `.oodump.tar.gz` envelope alongside the dump. Restore on a fresh
 host puts every object back at the same key, so the QA suite is runnable
-and "Download trace" links resolve out of the box — no dangling pointers.
+and "Download trace" links resolve out of the box - no dangling pointers.
 Untick **Include browser run artifacts** (or omit `--include-artifacts`)
 to fall back to the DB-only `.oodump.gz` format. Restore auto-detects
 either format; legacy dumps from earlier releases keep restoring forever.
@@ -107,8 +107,8 @@ Two defaults shipped on day one:
 
 Write endpoints (`POST/PATCH/DELETE` on `/api/monitors/*`, plus `/api/import` and `/run`) require auth; reads stay open. Two ways to authenticate:
 
-- **Dashboard** — email/password. First visit runs a setup wizard to create the admin account; the server keeps an HttpOnly session cookie after login. Sign out from the header.
-- **Programmatic** (CLI, agents, CI) — an API key sent as `Authorization: Bearer oo_…`. Manage keys in the dashboard under **Keys** (create with a one-time reveal, revoke anytime) or via the script below.
+- **Dashboard** - email/password. First visit runs a setup wizard to create the admin account; the server keeps an HttpOnly session cookie after login. Sign out from the header.
+- **Programmatic** (CLI, agents, CI) - an API key sent as `Authorization: Bearer oo_…`. Manage keys in the dashboard under **Keys** (create with a one-time reveal, revoke anytime) or via the script below.
 
 The UI port binds to `127.0.0.1`. Only your own machine reaches it until you change that.
 
@@ -118,7 +118,7 @@ In the dashboard: **Keys → Create a key** (copy it from the one-time panel). O
 
 ```bash
 docker compose exec worker bun scripts/create-api-key.ts --name ci
-# → oo_<43 chars>  (copy this — it won't be shown again)
+# → oo_<43 chars>  (copy this - it won't be shown again)
 ```
 
 Only the argon2id hash is stored. Make as many as you want with different names; revoke them individually later.
@@ -137,7 +137,7 @@ Caddy fetches a Let's Encrypt cert automatically, serves the UI over HTTPS on `:
 
 ### Known tradeoff
 
-An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. This is intentional — self-hosted monitoring is supposed to watch private services (your NAS, internal Grafana, staging APIs). Don't hand keys to people you wouldn't already trust with that access.
+An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. This is intentional - self-hosted monitoring is supposed to watch private services (your NAS, internal Grafana, staging APIs). Don't hand keys to people you wouldn't already trust with that access.
 
 ### QA scripts run with the worker's env
 
@@ -147,11 +147,11 @@ For a single-operator self-host where you write your own scripts, this is fine: 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), [TLS certificate checks](docs/tls-checks.md), [alerts](docs/alerts.md), and [status-page incidents](docs/incidents.md).
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) - [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), [TLS certificate checks](docs/tls-checks.md), [alerts](docs/alerts.md), and [status-page incidents](docs/incidents.md).
 
 ## Configuration
 
-Most settings live in `.env` — see [`.env.example`](.env.example) for the full list. The three you'll likely touch:
+Most settings live in `.env` - see [`.env.example`](.env.example) for the full list. The three you'll likely touch:
 
 | Var             | Default     | Purpose                                                              |
 | --------------- | ----------- | -------------------------------------------------------------------- |
@@ -161,7 +161,7 @@ Most settings live in `.env` — see [`.env.example`](.env.example) for the full
 
 ## Limitations
 
-Browser checks run against plain headless Chromium inside the container — no captcha bypass, no residential proxies, no clean-IP fingerprint rotation. That means:
+Browser checks run against plain headless Chromium inside the container - no captcha bypass, no residential proxies, no clean-IP fingerprint rotation. That means:
 
 - Scripts that target your own services (apps behind login, internal dashboards, public pages without bot walls) work great.
 - Scripts that target sites with strong bot detection (Google, Cloudflare-gated pages, anything behind hCaptcha/reCAPTCHA) will hit consent popups or captchas and fail. The only honest fix is paying for a managed browser service (E2B, Browserbase, Bright Data), which would break the "free self-host" promise.

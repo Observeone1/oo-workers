@@ -64,35 +64,56 @@ WORKER_PID=$!
 trap "kill $WORKER_PID 2>/dev/null || true" EXIT
 
 sleep 3
+
+# ── Pure scripts (no DB/Redis mutation) run in parallel ───────────────
+# Each spins up its own local fixture (a node:net or tls.createServer)
+# or runs against the integration Redis read-only. None touches the
+# integration Postgres, so they can race safely. Net wall-clock saving
+# on the full suite: ~60-90s vs the previous serial run.
+#
+# - import-from-saas-test: adapter-contract test, no DB/HTTP.
+# - tcp-banner-test: probes the integration Redis (PING→PONG only).
+# - tls-cert-test: openssl-generated certs against a throwaway local tls.createServer.
+# - agent-tls-test: OO_AGENT_TLS_INSECURE gate via a self-signed HTTPS master.
+# - incident-render-test: pure markdown→HTML XSS test, no I/O.
+echo "[run-integration] launching pure suites in parallel"
+PARALLEL_PIDS=()
+LOG_DIR=$(mktemp -d)
+for suite in import-from-saas-test tcp-banner-test tls-cert-test agent-tls-test incident-render-test; do
+  bun "scripts/$suite.ts" > "$LOG_DIR/$suite.log" 2>&1 &
+  PARALLEL_PIDS+=($!)
+done
+PARALLEL_OK=1
+for pid in "${PARALLEL_PIDS[@]}"; do
+  if ! wait "$pid"; then PARALLEL_OK=0; fi
+done
+for suite in import-from-saas-test tcp-banner-test tls-cert-test agent-tls-test incident-render-test; do
+  if [ "$PARALLEL_OK" -eq 0 ]; then
+    echo "─── $suite ──"
+    cat "$LOG_DIR/$suite.log"
+  else
+    # Just print the final summary line so the run log isn't noisy.
+    tail -1 "$LOG_DIR/$suite.log"
+  fi
+done
+rm -rf "$LOG_DIR"
+[ "$PARALLEL_OK" -eq 1 ] || { echo "[run-integration] one or more pure suites failed"; exit 1; }
+
+# ── DB-mutating scripts must run serially ──────────────────────────────
+# These share the integration Postgres; running them in parallel would
+# step on each other's seeded rows. Order matters: smoke + scheduler-test
+# first (they're the broadest sanity check), then the rest. Each script
+# cleans up its own prefix-namespaced rows in a finally block.
 bun scripts/smoke.ts
 bun scripts/scheduler-test.ts
-bun scripts/load.ts
 # Backup/restore round-trip — provisions its own oo_br_* sibling DBs from
 # DATABASE_URL and drops them; never touches the integration DB.
 bun scripts/backup-restore-test.ts
-# SaaS→self-host adapter contract — pure (no DB/server); guards the
-# snake_case/camelCase drift that silently imported zero rows.
-bun scripts/import-from-saas-test.ts
-# TCP banner/probe-read — probes the integration Redis (PING→PONG); pure
-# (no DB/HTTP), anti-vacuous (mismatch must FAIL).
-bun scripts/tcp-banner-test.ts
-# TLS cert-expiry — openssl-generated certs against a throwaway local
-# tls.createServer; pure (no DB/HTTP/egress), anti-vacuous (in-window
-# cert must FAIL).
-bun scripts/tls-cert-test.ts
-# OO_AGENT_TLS_INSECURE gate — real agent pollJob vs a self-signed
-# HTTPS master; pure, anti-vacuous by construction (off→reject MUST
-# throw, on→204 MUST succeed).
-bun scripts/agent-tls-test.ts
 # QA-project alerting — webhook channel bound to a throwaway QA project,
 # local catch-all server, full transition table; anti-vacuous (noop
 # rows must NOT alert, transition rows must). Mutates the integration
 # DB with unique names + finally cleanup.
 bun scripts/qa-alerting-test.ts
-# Incident markdown→HTML safety — the only path that emits operator text
-# onto the public unauthenticated status page; pure, anti-vacuous (XSS
-# corpus must be neutralised AND the safe subset must still work).
-bun scripts/incident-render-test.ts
 # Self-service account endpoints (profile / password change, v2 UI).
 # Boots the real Hono app, drives the routes over HTTP; anti-vacuous
 # (wrong-current-password negative control must reject AND leave the
@@ -117,3 +138,9 @@ bun scripts/heartbeat-test.ts
 # "generated" assertions guard against a handler that always picks one
 # branch.
 bun scripts/import-heartbeat-e2e-test.ts
+
+# Load test is opt-in. Originally ran in pre-push but it's a stress test,
+# not a correctness gate — pre-push wants quick signal. Run via
+# `bun run test:load` when stress-testing a release candidate or after
+# touching scheduler concurrency knobs.
+# bun scripts/load.ts
