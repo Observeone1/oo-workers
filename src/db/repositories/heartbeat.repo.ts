@@ -33,13 +33,18 @@ export const heartbeatRepo = {
     periodSeconds: number;
     graceSeconds?: number;
     enabled?: boolean;
+    // Optional pre-existing token. Used by the SaaS-import path to reuse
+    // the upstream ping_key so services pointed at the old /heartbeat/:token
+    // URL keep working after migration. Default behavior (no token passed)
+    // generates a fresh one, same as before.
+    token?: string;
   }) {
     return db
       .insert(heartbeatMonitors)
       .values({
         name: data.name,
         description: data.description ?? null,
-        token: generateToken(),
+        token: data.token ?? generateToken(),
         periodSeconds: data.periodSeconds,
         graceSeconds: data.graceSeconds ?? 60,
         enabled: data.enabled ?? true,

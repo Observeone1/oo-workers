@@ -52,14 +52,30 @@ Twilio `account_sid`/`auth_token`) are **never** read or written.
 
 ## What doesn't (yet)
 
-SaaS status pages, heartbeats, and incidents are **not** transferred —
-the script reports their counts as skipped so nothing is silently lost.
-Status pages are the next piece of work; heartbeats need a self-host
-heartbeat monitor type first; incidents are runtime state (the SaaS
-itself doesn't re-create them on apply). For now, recreate those on the
-self-host, or use [backup & restore](backup-restore.md) for
-instance→instance moves (a different job — that's a full DB snapshot,
-not a SaaS migration).
+**Incidents** are the only resource still skipped. They're runtime state
+(the SaaS itself doesn't re-create them on apply), so the script reports
+the count and moves on. Heartbeats and status pages now migrate (see
+below); use [backup & restore](backup-restore.md) for instance-to-instance
+moves of incidents and runtime data.
+
+### Heartbeats
+
+Heartbeats migrate as of CLI v1.26.0 + oo-workers v1.22.0. The CLI
+export now includes each heartbeat's `ping_key`, and the self-host
+import re-uses it as the heartbeat token. That means every service
+already posting to `/heartbeat/<token>` keeps working unchanged after
+the cut-over.
+
+Two follow-ups to be aware of:
+
+1. **Alert-channel routing on heartbeats is not in the bundle.** The
+   CLI export doesn't emit channel refs for heartbeats, so any alerts
+   wired up on the SaaS need to be re-bound on the self-host. The
+   import script prints an advisory after a successful import.
+2. **Older CLI exports (< v1.26.0) lack `ping_key`.** The import still
+   succeeds, but a fresh token is generated, so the ping URL changes.
+   The script prints a warning listing how many heartbeats were
+   imported tokenless; re-run `obs export` on v1.26.0+ to avoid this.
 
 ## Re-running
 

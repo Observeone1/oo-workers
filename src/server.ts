@@ -903,6 +903,7 @@ function buildApp(connection: Redis) {
       qa: 0,
       tcp: 0,
       udp: 0,
+      heartbeat: 0,
       channels: 0,
       // Two-pass remap (CLI v1.25.0+): bundle-local surrogate ids on
       // entities let us wire monitor↔channel and status-page↔monitor
@@ -1000,6 +1001,35 @@ function buildApp(connection: Redis) {
         created.tcp++;
       } catch (err) {
         created.skipped.push(`tcp ${t.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    for (const h of (body.heartbeats ?? []) as any[]) {
+      try {
+        const period = Number(h.periodSeconds);
+        if (!Number.isFinite(period) || period < 30) {
+          throw new Error('periodSeconds must be ≥ 30');
+        }
+        const grace = h.graceSeconds == null ? 60 : Number(h.graceSeconds);
+        if (!Number.isFinite(grace) || grace < 0) {
+          throw new Error('graceSeconds must be non-negative');
+        }
+        await heartbeatRepo.create({
+          name: h.name,
+          description: h.description ?? null,
+          periodSeconds: period,
+          graceSeconds: grace,
+          enabled: h.enabled ?? true,
+          // Reuse the SaaS ping_key as the self-host token so existing
+          // services keep pinging the same URL. Adapter has already
+          // mapped CLI ping_key → token; tolerate either field name
+          // here in case a hand-written bundle uses ping_key directly.
+          ...(typeof (h.token ?? h.ping_key) === 'string' ? { token: h.token ?? h.ping_key } : {}),
+        });
+        created.heartbeat++;
+      } catch (err) {
+        created.skipped.push(
+          `heartbeat ${h.name}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     for (const u of (body.udpMonitors ?? []) as any[]) {

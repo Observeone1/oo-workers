@@ -16,10 +16,11 @@
  * mint one with scripts/create-api-key.ts). Not needed for --dry-run.
  *
  * Carries across: HTTP monitors, API checks, QA suites (with inline
- * scripts), and alert channels of a supported type. Whatever can't be
- * brought across — status pages, heartbeats, incidents (no self-host
- * import yet), plus scriptless suites and unsupported/invalid channels
- * — is reported with a count, never silently dropped.
+ * scripts), alert channels of a supported type, status pages, and
+ * heartbeats (with their ping URL preserved via CLI v1.26.0 ping_key).
+ * Whatever can't be brought across (incidents, plus scriptless suites
+ * and unsupported/invalid channels) is reported with a count, never
+ * silently dropped.
  *
  * Re-running is NOT idempotent and NOT an upsert. There is no unique
  * constraint on names, so /api/import happily creates duplicates on a
@@ -138,11 +139,15 @@ async function main() {
     const have = new Set([
       ...(existing.url ?? []).map((m) => `url:${m.name}`),
       ...(existing.api ?? []).map((m) => `api:${m.name}`),
+      ...(existing.heartbeat ?? []).map((m) => `heartbeat:${m.name}`),
       ...existingChannels.map((ch) => `channel:${ch.name}`),
     ]);
     const collisions = [
       ...payload.urlMonitors.filter((m) => have.has(`url:${m.name}`)).map((m) => `url ${m.name}`),
       ...payload.apiChecks.filter((m) => have.has(`api:${m.name}`)).map((m) => `api ${m.name}`),
+      ...(payload.heartbeats ?? [])
+        .filter((h) => have.has(`heartbeat:${h.name}`))
+        .map((h) => `heartbeat ${h.name}`),
       ...payload.channels
         .filter((ch) => have.has(`channel:${ch.name}`))
         .map((ch) => `channel ${ch.name}`),
@@ -181,12 +186,13 @@ async function main() {
     qa: number;
     tcp: number;
     udp: number;
+    heartbeat?: number;
     channels: number;
     skipped?: string[];
     warnings?: string[];
   };
   console.log(
-    `imported: url=${result.url} api=${result.api} qa=${result.qa} channels=${result.channels}`,
+    `imported: url=${result.url} api=${result.api} qa=${result.qa} heartbeat=${result.heartbeat ?? 0} channels=${result.channels}`,
   );
   // Server-side advisories (path-independent — also shown in the UI
   // import dialog). Distinct from the adapter `warnings` above.

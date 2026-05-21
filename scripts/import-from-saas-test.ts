@@ -36,7 +36,21 @@ const SAAS = {
       assertions: [{ type: 'status', operator: 'equals', value: '200', path: '$.ok' }],
     },
   ],
-  heartbeats: [{ a: 1 }],
+  // Mix: one well-formed v1.26.0 heartbeat (ping_key present), one v1.25.x
+  // heartbeat (no ping_key — adapter generates a token, warns operator),
+  // and one malformed (period below the 30s floor — silently dropped).
+  heartbeats: [
+    {
+      name: 'web-cron',
+      description: 'nightly batch',
+      period: 3600,
+      grace_period: 300,
+      ping_key: 'kept-from-saas-EXISTING-TOKEN',
+      alert_on_failure: true,
+    },
+    { name: 'legacy-cron', period: 600, grace_period: 60 },
+    { name: 'too-fast', period: 5, grace_period: 0 },
+  ],
   suites: [
     // Mappable: has suite_name + target_url + inline scripts.
     {
@@ -132,14 +146,46 @@ check(
 // 4. Still-skipped SaaS-only resources are reported, not silently
 //    dropped. `suites` now means "suites NOT brought across" — here the
 //    1 no-scripts suite (the 'checkout' one IS mapped, below).
+//    Heartbeats: 2 valid (web-cron, legacy-cron), 1 malformed (too-fast).
 check(
   'skipped counts surfaced',
-  skipped.heartbeats === 1 &&
+  skipped.heartbeats_malformed === 1 &&
     skipped.suites === 1 &&
     // 4 not brought across: telegram, sms, bad email, bad webhook url.
     skipped.alert_channels === 4 &&
     skipped.incidents === 1,
   JSON.stringify(skipped),
+);
+
+// 4b. Heartbeats: ping_key carries through as `token` (preserves URL),
+//     missing ping_key (legacy CLI) imports without a token + warns.
+const hb = payload.heartbeats ?? [];
+const wc = hb.find((h) => h.name === 'web-cron');
+const lc = hb.find((h) => h.name === 'legacy-cron');
+check(
+  'heartbeat: ping_key carried through as token',
+  !!wc &&
+    wc.token === 'kept-from-saas-EXISTING-TOKEN' &&
+    wc.periodSeconds === 3600 &&
+    wc.graceSeconds === 300 &&
+    wc.description === 'nightly batch',
+  JSON.stringify(wc),
+);
+check(
+  'heartbeat: legacy CLI export (no ping_key) imports without token',
+  !!lc && lc.token === undefined && lc.periodSeconds === 600 && lc.graceSeconds === 60,
+  JSON.stringify(lc),
+);
+check('heartbeat: too-fast (< 30s) dropped', hb.find((h) => h.name === 'too-fast') === undefined);
+check(
+  'heartbeat: tokenless export emits a "rotate ping URL" warning',
+  warnings.some((w) => /ping_key/i.test(w) && /ping URL/i.test(w)),
+  warnings.join(' | '),
+);
+check(
+  'heartbeat: alert-channel routing advisory present',
+  warnings.some((w) => /alert.channel routing/i.test(w)),
+  warnings.join(' | '),
 );
 
 // 5. suites→qaProjects (3.1): only the scripted suite maps, with the
@@ -239,13 +285,16 @@ check(
 //    live here — the monitor→channel binding advisory is emitted
 //    SERVER-side by /api/import (path-independent), NOT by the adapter.
 check(
-  'exactly one adapter warning — the imported suite uses unmigrated secrets',
-  warnings.length === 1 && warnings[0].includes('checkout') && warnings[0].includes('STRIPE_KEY'),
+  'adapter emits the suite-secrets warning',
+  warnings.some((w) => w.includes('checkout') && w.includes('STRIPE_KEY')),
   JSON.stringify(warnings),
 );
 check(
-  'adapter does NOT emit the binding advisory (that is server-side)',
-  !warnings.some((w) => /alert-channel|routing|bind/i.test(w)),
+  'adapter does NOT emit the monitor→channel binding advisory (that is server-side)',
+  // The monitor→channel binding advisory has specific wording; the
+  // heartbeat-routing advisory above is a different concept (heartbeats
+  // can't carry channel refs at all) and is fine to emit here.
+  !warnings.some((w) => /monitor.+channel|channel_ids|channelRefs/i.test(w)),
   JSON.stringify(warnings),
 );
 // Anti-vacuous: a mapped suite with NO secret_keys → no warning.

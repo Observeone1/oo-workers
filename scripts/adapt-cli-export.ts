@@ -21,8 +21,7 @@
 // {url:config.webhook_url}. SaaS-only channel types with no oo-workers
 // equivalent (teams, telegram, sms) and channels with a missing/invalid
 // endpoint are counted in `skipped.alert_channels`, never half-created.
-// Still skipped (no self-host target yet): heartbeats, status_pages,
-// incidents.
+// Still skipped (no self-host target yet): incidents.
 
 // `id` fields throughout are CLI v1.25.0 bundle-local surrogate ids.
 // They are NOT real DB ids on the target — the import handler uses them
@@ -76,6 +75,17 @@ export interface ImportPayload {
     title: string;
     description: string | null;
     monitors: Array<{ ref: number; type: 'url' | 'api' }>;
+  }>;
+  // CLI v1.26.0 heartbeats. `token` here is the SaaS `ping_key`, carried
+  // across so existing services keep pinging the same public URL after
+  // migration. periodSeconds/graceSeconds are oo-workers's field names
+  // (CLI uses `period`/`grace_period`, both in seconds).
+  heartbeats?: Array<{
+    name: string;
+    description?: string | null;
+    periodSeconds: number;
+    graceSeconds: number;
+    token?: string;
   }>;
 }
 
@@ -338,6 +348,42 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
     });
   }
 
+  // heartbeats: CLI v1.26.0+ emits ping_key + alert_on_failure; older
+  // exports lack those fields. Without ping_key the import generates a
+  // fresh token (services lose their ping URL) — we still import, but
+  // warn so the operator knows to rotate URLs. alert_on_failure routing
+  // is informational only — the CLI export never emits channel refs on
+  // heartbeats, so it can't be wired up regardless.
+  const heartbeats: NonNullable<ImportPayload['heartbeats']> = [];
+  let heartbeatsTokenless = 0;
+  for (const h of (src.heartbeats ?? []) as Array<Record<string, unknown>>) {
+    if (typeof h.name !== 'string') continue;
+    const period = typeof h.period === 'number' ? h.period : null;
+    const grace = typeof h.grace_period === 'number' ? h.grace_period : 60;
+    if (period === null || !Number.isFinite(period) || period < 30) continue;
+    const token = typeof h.ping_key === 'string' ? h.ping_key : undefined;
+    if (token === undefined) heartbeatsTokenless++;
+    heartbeats.push({
+      name: h.name,
+      ...(typeof h.description === 'string' ? { description: h.description } : {}),
+      periodSeconds: period,
+      graceSeconds: grace,
+      ...(token !== undefined && { token }),
+    });
+  }
+  if (heartbeatsTokenless > 0) {
+    warnings.push(
+      `${heartbeatsTokenless} heartbeat(s) imported without ping_key (CLI < v1.26.0). ` +
+        `New ping URLs were generated; update the services posting to them.`,
+    );
+  }
+  if (heartbeats.length > 0) {
+    warnings.push(
+      'Heartbeat alert-channel routing is not in the export bundle. ' +
+        'Rewire alert channels on the self-host side after import.',
+    );
+  }
+
   // NOTE: the monitor→alert-channel "routing not migrated" advisory is
   // emitted SERVER-side by /api/import (path-independent — it must also
   // reach the UI import dialog, which never runs this adapter). Keeping
@@ -351,13 +397,17 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       apiChecks,
       qaProjects,
       channels,
-      // Only emit statusPages when there's at least one — keeps the
-      // payload trivially back-compatible with older /api/import builds
-      // that don't know about the field.
+      // Only emit statusPages/heartbeats when non-empty so the payload stays
+      // trivially back-compatible with older /api/import builds that don't
+      // know about the field.
       ...(statusPages.length > 0 && { statusPages }),
+      ...(heartbeats.length > 0 && { heartbeats }),
     },
     skipped: {
-      heartbeats: src.heartbeats?.length ?? 0,
+      // Heartbeats are no longer skipped wholesale. The few that are
+      // dropped (no name / period < 30s) are mis-shaped exports, not a
+      // gap in the migration path — count them as malformed instead.
+      heartbeats_malformed: (src.heartbeats?.length ?? 0) - heartbeats.length,
       // suites NOT brought across (no inline scripts / malformed) — a
       // re-export with `obs export --include-scripts` recovers them.
       suites: suitesSkipped,
