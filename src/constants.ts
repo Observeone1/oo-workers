@@ -15,4 +15,10 @@ export const DEFAULTS = {
   SCHEDULER_TICK_MS: 5_000,
   UI_POLL_MS: 5_000,
   RESPONSE_BODY_TRUNCATE_CHARS: 5_000,
+  // Hard cap on list-endpoint responses (incidents, status pages, API
+  // keys). Listings used to return ALL rows unbounded — a long-lived
+  // status page accumulating incidents would eventually OOM the worker.
+  // 500 is generous for normal operator use; operators wanting more
+  // should request pagination as a feature.
+  LIST_DEFAULT_LIMIT: 500,
 } as const;

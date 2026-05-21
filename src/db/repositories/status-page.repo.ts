@@ -1,5 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { DEFAULTS } from '../../constants.ts';
 import { statusPageMonitors, statusPages } from '../schema.ts';
 
 export type StatusPageRow = typeof statusPages.$inferSelect;
@@ -39,7 +40,8 @@ export const statusPageRepo = {
         createdAt: statusPages.createdAt,
       })
       .from(statusPages)
-      .orderBy(desc(statusPages.createdAt));
+      .orderBy(desc(statusPages.createdAt))
+      .limit(DEFAULTS.LIST_DEFAULT_LIMIT);
   },
 
   update(id: number, data: { title?: string; description?: string | null }) {

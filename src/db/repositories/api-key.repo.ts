@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { DEFAULTS } from '../../constants.ts';
 import { apiKeys } from '../schema.ts';
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
@@ -58,6 +59,7 @@ export const apiKeyRepo = {
         createdAt: apiKeys.createdAt,
       })
       .from(apiKeys)
-      .orderBy(desc(apiKeys.createdAt));
+      .orderBy(desc(apiKeys.createdAt))
+      .limit(DEFAULTS.LIST_DEFAULT_LIMIT);
   },
 };
