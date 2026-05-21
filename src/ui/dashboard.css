@@ -4380,7 +4380,9 @@ dialog.v2 .dialog-shell {
   background: var(--panel);
   color: var(--text);
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    var(--shadow-sm);
   font-weight: var(--fw-semibold);
 }
 
