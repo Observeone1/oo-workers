@@ -229,9 +229,9 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
           <div class="field">
             <label>Theme</label>
             <div class="seg-inline" id="set-theme">
-              <button data-val="system" class="${storedTheme === 'system' || storedTheme === '' ? 'on' : ''}">System</button>
-              <button data-val="light"  class="${storedTheme === 'light' ? 'on' : ''}">Light</button>
-              <button data-val="dark"   class="${storedTheme === 'dark' ? 'on' : ''}">Dark</button>
+              <button data-val="system" class="seg-btn${storedTheme === 'system' || storedTheme === '' ? ' on' : ''}">System</button>
+              <button data-val="light"  class="seg-btn${storedTheme === 'light' ? ' on' : ''}">Light</button>
+              <button data-val="dark"   class="seg-btn${storedTheme === 'dark' ? ' on' : ''}">Dark</button>
             </div>
           </div>
         </div>
@@ -240,7 +240,7 @@ function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
           <div class="set-swatches" id="set-accent">
             ${ACCENTS.map(
               (c) => `
-              <button class="sw${storedAccent === c ? ' on' : ''}" style="--sw:${c}" data-val="${c}" title="${c}"></button>
+              <button class="sw sw-btn${storedAccent === c ? ' on' : ''}" style="--sw:${c}" data-val="${c}" title="${c}"></button>
             `,
             ).join('')}
           </div>
@@ -743,9 +743,9 @@ function renderBackup(panel: HTMLElement) {
         <div class="field">
           <label>History window</label>
           <div class="seg-inline" id="s-scope-seg">
-            <button data-val="window" data-testid="backup-scope-window" class="on">Last 90 days</button>
-            <button data-val="all" data-testid="backup-scope-all">All history</button>
-            <button data-val="none" data-testid="backup-scope-none">Config only</button>
+            <button data-val="window" data-testid="backup-scope-window" class="seg-btn on">Last 90 days</button>
+            <button data-val="all" data-testid="backup-scope-all" class="seg-btn">All history</button>
+            <button data-val="none" data-testid="backup-scope-none" class="seg-btn">Config only</button>
           </div>
         </div>
         <div class="field" style="margin-top:var(--s-3)">
@@ -799,7 +799,7 @@ function renderBackup(panel: HTMLElement) {
   if (estimateEl) {
     void backupEstimate().then((est) => {
       if (est.artifactCount === 0) {
-        estimateEl.textContent = '';
+        estimateEl.textContent = '(no artifacts yet)';
         return;
       }
       const size = formatBytes(est.artifactBytes);
