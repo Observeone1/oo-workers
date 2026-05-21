@@ -6,14 +6,16 @@ import { pipeline } from 'node:stream/promises';
 import tar from 'tar-stream';
 import { test, expect, uniqueSuffix, ensureSessionAccount } from './fixtures';
 
-// Backup/restore UI coverage. The download + auth + schema-guard + dialog
+// Backup/restore UI coverage. Download + auth + schema-guard + dialog
 // markup + format checks are NON-destructive and safe against the live dev
-// stack. The full UI round-trip cases (DB-only and artifacts) TRUNCATE
-// everything — per `feedback_dont_auto_merge_prs`-style explicit approval,
-// they now run by default on the configured stack (no env-flag gate). Each
-// destructive case does a pre-flight integrity check on the downloaded
-// backup before any wipe, and snapshots OO_E2E_API_KEY so a mid-test crash
-// doesn't lock the operator out.
+// stack. The destructive case (one — the full artifacts round-trip)
+// TRUNCATES everything; runs by default on the configured stack since dev
+// data is throwaway, and pre-flights the downloaded tar.gz before the wipe
+// to refuse on an empty/auth-missing snapshot. OO_E2E_API_KEY is captured
+// into a local snapshot so a mid-test crash can't lock the operator out.
+//
+// No separate DB-only restore case: every restore test must exercise the
+// full path (DB + S3 artifacts together).
 
 function manifestOf(src: string | Buffer): { format: number; schemaHead: string; scope: string } {
   const bytes = typeof src === 'string' ? readFileSync(src) : src;
@@ -118,52 +120,10 @@ test('schema-head guard rejects before truncate (live DB untouched)', async ({ r
   expect(count(after)).toBe(count(before));
 });
 
-// Full UI round-trip — destructive (TRUNCATEs every table). Runs by default
-// on the configured stack: dev data is throwaway. Auth-data safety: a
-// pre-flight integrity check on the downloaded dump fails the test fast
-// before any DELETE/TRUNCATE if the snapshot is empty or auth tables are
-// missing, so a mid-test crash can never leave the stack unrecoverable.
-test('full restore round-trip through the dashboard', async ({ page, request, baseURL, shot }) => {
-  // Snapshot the bearer so afterAll can log it if login breaks post-restore.
-  const apiKeySnapshot = process.env.OO_E2E_API_KEY;
-
-  const name = `e2e-backup-${uniqueSuffix()}`;
-  const created = await request.post(`${baseURL}/api/monitors/url`, {
-    data: { name, url: 'https://example.com', intervalSeconds: 60, timeoutMs: 5000 },
-  });
-  const { id } = (await created.json()) as { id: number };
-
-  await page.goto('/#/settings');
-  await page.getByTestId('settings-tab-backup').click();
-  // Uncheck artifacts — DB-only round-trip path for this test.
-  await page.getByTestId('backup-include-artifacts').uncheck();
-  await page.getByTestId('backup-scope-all').click();
-  const dl = page.waitForEvent('download');
-  await page.getByTestId('backup-download-btn').click();
-  const backup = await (await dl).path();
-
-  // Pre-flight: integrity + auth-table presence. Refuse to TRUNCATE the
-  // stack if the snapshot is suspect.
-  preflightDbDump(backup, apiKeySnapshot);
-
-  // Drop the monitor so the restore visibly brings it back.
-  await request.delete(`${baseURL}/api/monitors/url/${id}`);
-
-  await page.locator('#s-backup-file').setInputFiles(backup);
-  await page.locator('#s-backup-restore').click();
-  await expect(page.locator('#confirm-dialog')).toBeVisible();
-  await shot('restore_confirm');
-  await page.getByTestId('confirm-ok').click();
-  await expect(page.locator('#alert-dialog')).toContainText(/restored/i, { timeout: 30_000 });
-  await shot('restore_done');
-
-  const list = (await (await request.get(`${baseURL}/api/monitors`)).json()) as {
-    url: { name: string }[];
-  };
-  expect(list.url.some((m) => m.name === name)).toBeTruthy();
-});
-
 // ---------- v1.8.0 --include-artifacts dialog + format coverage ----------
+// (The destructive UI restore is the artifacts round-trip below — there's
+// no separate DB-only restore case. Per project convention: every restore
+// test must exercise DB + S3 artifacts together.)
 
 test('Backup dialog renders the include-artifacts checkbox + estimate', async ({ page, shot }) => {
   await page.goto('/#/settings');
@@ -331,34 +291,10 @@ async function listTarEntries(path: string): Promise<string[]> {
   return names;
 }
 
-// Refuse to TRUNCATE if the legacy .oodump.gz isn't a sane v1.7.0 dump.
-// NDJSON shape: first line `{"manifest":{format,schemaHead,scope,...}}`,
-// subsequent lines `{"t":"<table>","r":{...row}}`.
-function preflightDbDump(path: string, keySnapshot: string | undefined) {
-  try {
-    const text = gunzipSync(readFileSync(path)).toString('utf8');
-    const lines = text.split('\n').filter(Boolean);
-    const top = JSON.parse(lines[0]) as {
-      manifest?: { format?: number; schemaHead?: string };
-    };
-    const m = top.manifest ?? {};
-    if (m.format !== 1 || !m.schemaHead || m.schemaHead.length === 0) {
-      throw new Error(`bad manifest: format=${m.format} head="${m.schemaHead}"`);
-    }
-    const haveUser = lines.some((l) => l.startsWith('{"t":"users"'));
-    const haveKey = lines.some((l) => l.startsWith('{"t":"api_keys"'));
-    if (!haveUser || !haveKey) {
-      throw new Error(`auth tables missing in dump (users=${haveUser} api_keys=${haveKey})`);
-    }
-  } catch (e) {
-    if (keySnapshot) {
-      console.error(`[backup-e2e] pre-flight FAILED — auth bearer snapshot: ${keySnapshot}`);
-    }
-    throw e;
-  }
-}
-
-// Same idea but for the tar.gz envelope: peek meta.json + dump.ndjson head.
+// Auth-data safety on the destructive round-trip: peek inside the tar.gz
+// envelope before any TRUNCATE, fail fast if the snapshot is empty or
+// auth tables are missing. Mid-test crash → operator can recover via the
+// captured OO_E2E_API_KEY logged on failure.
 function preflightTarDump(path: string, keySnapshot: string | undefined) {
   try {
     const buf = readFileSync(path);

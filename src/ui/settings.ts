@@ -166,6 +166,13 @@ function getInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  const mb = n / (1024 * 1024);
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
 // ─── Profile ─────────────────────────────────────────────────────────────────
 
 function renderProfile(panel: HTMLElement, meRes: MeRes, initials: string) {
@@ -795,8 +802,7 @@ function renderBackup(panel: HTMLElement) {
         estimateEl.textContent = '';
         return;
       }
-      const mb = est.artifactBytes / (1024 * 1024);
-      const size = mb < 1 ? `${Math.round(est.artifactBytes / 1024)} KB` : `${mb.toFixed(1)} MB`;
+      const size = formatBytes(est.artifactBytes);
       estimateEl.textContent = `(~${est.artifactCount} object${est.artifactCount === 1 ? '' : 's'}, ${size})`;
     });
   }
