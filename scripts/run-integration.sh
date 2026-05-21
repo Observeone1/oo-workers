@@ -111,3 +111,9 @@ bun scripts/import-remap-test.ts
 # Anti-vacuous: idempotent OVERDUE transition prevents double-alerts;
 # wasOverdue=true ONLY on recovery (proven by negative I-check).
 bun scripts/heartbeat-test.ts
+# /api/import heartbeat round-trip (Roadmap 8 follow-up). Proves CLI v1.26.0
+# ping_key carries through as the self-host token so public ping URLs
+# survive a SaaS→self-host migration. Anti-vacuous: separate "supplied" vs
+# "generated" assertions guard against a handler that always picks one
+# branch.
+bun scripts/import-heartbeat-e2e-test.ts
