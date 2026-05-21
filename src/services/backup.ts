@@ -577,86 +577,119 @@ async function* linesFromStream(s: Readable): AsyncGenerator<string> {
 }
 
 /**
- * Restore from a tar (already-gunzipped) stream. Reads meta.json + dump.ndjson
- * into memory (small), applies the DB restore through the existing path, then
- * streams each `artifacts/<key>` tar entry to S3 via `putObject`. Finally
- * triggers `runBackfill()` so any pre-v1.0 inline `qa_generated_tests.script`
- * rows get re-uploaded on the new host.
+ * Restore from a tar (already-gunzipped) stream. The tar pack order is
+ * deterministic — `meta.json`, then `dump.ndjson`, then `artifacts/*` —
+ * so we exploit it: buffer meta + dump, kick off the DB transaction the
+ * moment we hit the first artifact entry (or after the loop if none),
+ * then stream each artifact body straight to `putObject` and discard
+ * before reading the next entry.
  *
- * DB is the durability anchor: artifact upload failures are logged and
- * continued so partial-S3-outage doesn't roll back the DB. Missing-object
- * 404s on browser-run trace links degrade gracefully — same behavior as
- * today.
+ * Memory ceiling = max(`dump.ndjson`, single largest artifact) instead
+ * of the previous `dump + sum(all artifacts)` which OOMed multi-GB
+ * dumps. DB-first ordering is preserved: artifact uploads `await`
+ * the DB-restore promise on the first artifact iteration, so a DB
+ * restore failure aborts before any S3 write.
+ *
+ * DB is still the durability anchor: artifact upload failures are
+ * logged and continued so partial-S3-outage doesn't roll back the DB.
+ * Missing-object 404s on browser-run trace links degrade gracefully —
+ * same behavior as today.
  */
 async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promise<RestoreResult> {
   const extract = tar.extract();
   let meta: TarMeta | undefined;
   let dumpBuf: Buffer | undefined;
-  const artifactQueue: { key: string; body: Buffer; contentType: string }[] = [];
+  let dbRestore: Promise<RestoreResult> | null = null;
+  let uploaded = 0;
+  let failed = 0;
+  let seenArtifact = false;
 
-  const extractDone = (async () => {
-    for await (const entry of extract as AsyncIterable<
-      {
-        header: { name: string };
-        [Symbol.asyncIterator](): AsyncIterator<Buffer>;
-      } & NodeJS.ReadableStream
-    >) {
-      const name = entry.header.name;
+  const startDbRestore = (): Promise<RestoreResult> => {
+    if (dbRestore) return dbRestore;
+    if (!meta) throw new RestoreError('tar dump missing meta.json');
+    if (meta.format !== BACKUP_FORMAT) {
+      throw new RestoreError(`unsupported backup format ${meta.format}`);
+    }
+    if (!dumpBuf) throw new RestoreError('tar dump missing dump.ndjson');
+    // Synthesize an NDJSON line iterator over the buffered dump.
+    async function* lines(): AsyncGenerator<string> {
+      let buf = dumpBuf!.toString('utf8');
+      let nl = buf.indexOf('\n');
+      while (nl >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        if (line) yield line;
+        nl = buf.indexOf('\n');
+      }
+      if (buf.trim()) yield buf;
+    }
+    dbRestore = restoreLines(lines(), opts);
+    return dbRestore;
+  };
+
+  gunzipped.pipe(extract);
+
+  for await (const entry of extract as AsyncIterable<
+    {
+      header: { name: string };
+      [Symbol.asyncIterator](): AsyncIterator<Buffer>;
+    } & NodeJS.ReadableStream
+  >) {
+    const name = entry.header.name;
+
+    if (name === 'meta.json' || name === 'dump.ndjson') {
+      // Small, buffer fully.
       const chunks: Buffer[] = [];
       for await (const c of entry) chunks.push(c as Buffer);
       const body = Buffer.concat(chunks);
-
       if (name === 'meta.json') {
         meta = JSON.parse(body.toString('utf8')) as TarMeta;
-      } else if (name === 'dump.ndjson') {
+      } else {
         dumpBuf = body;
-      } else if (name.startsWith('artifacts/')) {
-        const key = name.slice('artifacts/'.length);
-        const contentType = guessContentType(key);
-        artifactQueue.push({ key, body, contentType });
       }
+      continue;
     }
-  })();
 
-  gunzipped.pipe(extract);
-  await extractDone;
-
-  if (!meta) throw new RestoreError('tar dump missing meta.json');
-  if (meta.format !== BACKUP_FORMAT) {
-    throw new RestoreError(`unsupported backup format ${meta.format}`);
-  }
-  if (!dumpBuf) throw new RestoreError('tar dump missing dump.ndjson');
-
-  // DB restore reuses the single-file path: synthesize an NDJSON line iterator
-  // over the buffered dump and feed it into the existing transactional loader.
-  async function* lines(): AsyncGenerator<string> {
-    let buf = dumpBuf!.toString('utf8');
-    let nl = buf.indexOf('\n');
-    while (nl >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      if (line) yield line;
-      nl = buf.indexOf('\n');
-    }
-    if (buf.trim()) yield buf;
-  }
-  const result = await restoreLines(lines(), opts);
-
-  // Artifacts: best-effort uploads after the DB transaction commits.
-  if (isStorageConfigured()) {
-    let uploaded = 0;
-    let failed = 0;
-    for (const a of artifactQueue) {
-      try {
-        await putObject(a.key, a.body, a.contentType);
-        uploaded += 1;
-      } catch (err) {
-        failed += 1;
-        logger.warn(
-          `restore: artifact upload failed for ${a.key}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    if (!name.startsWith('artifacts/')) {
+      // Drain unknown entries so the tar stream keeps flowing.
+      for await (const _ of entry) {
+        void _;
       }
+      continue;
     }
+
+    // First artifact entry — DB restore must finish before any S3 write.
+    // Subsequent iterations no-op on the await (already-resolved promise).
+    seenArtifact = true;
+    if (!isStorageConfigured()) {
+      // Drain the entry to keep the tar stream flowing; nothing to upload.
+      for await (const _ of entry) {
+        void _;
+      }
+      continue;
+    }
+    await startDbRestore();
+
+    const key = name.slice('artifacts/'.length);
+    const contentType = guessContentType(key);
+    const chunks: Buffer[] = [];
+    for await (const c of entry) chunks.push(c as Buffer);
+    const body = Buffer.concat(chunks);
+    try {
+      await putObject(key, body, contentType);
+      uploaded += 1;
+    } catch (err) {
+      failed += 1;
+      logger.warn(
+        `restore: artifact upload failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // No artifacts — DB restore never started above, so do it now.
+  const result = await startDbRestore();
+
+  if (seenArtifact && isStorageConfigured()) {
     logger.info(`restore: artifacts uploaded=${uploaded} failed=${failed}`);
 
     // Re-upload any pre-v1.0 inline-only script rows on the new host.
@@ -668,9 +701,9 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
         `restore: post-restore backfill failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  } else if (artifactQueue.length > 0) {
+  } else if (seenArtifact && !isStorageConfigured()) {
     logger.warn(
-      `restore: ${artifactQueue.length} artifact(s) in dump but OO_OBJECT_STORAGE_* not configured — skipped`,
+      `restore: artifacts present in dump but OO_OBJECT_STORAGE_* not configured — skipped`,
     );
   }
 

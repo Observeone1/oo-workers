@@ -141,9 +141,30 @@ try {
   check('C. ping flipped status PENDING → UP', pingBody.status === 'UP', JSON.stringify(pingBody));
   check('C. lastPingAt set', typeof pingBody.lastPingAt === 'string', JSON.stringify(pingBody));
 
-  // ---- D: GET also works (cron `curl URL` idiom) ----
+  // ---- D: GET /heartbeat/:token is READ-ONLY — returns status without
+  //         pinging. (Old behavior pinged on GET too, but Slack/iMessage
+  //         link-previewers would silently fire it. Pings are POST-only.)
+  const beforeGet = await db
+    .select({ lastPingAt: heartbeatMonitors.lastPingAt })
+    .from(heartbeatMonitors)
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  const beforeMs = beforeGet[0].lastPingAt?.getTime() ?? 0;
+  // Sleep >1s so a debounced GET-pings-too regression couldn't be hidden.
+  await new Promise((r) => setTimeout(r, 1100));
   const getRes = await fetch(`${base}/heartbeat/${created.token}`);
+  const getBody = (await getRes.json()) as { ok: boolean; status: string; lastPingAt: string };
   check('D. GET /heartbeat/:token → 200', getRes.status === 200);
+  check('D. GET returns current status', getBody.status === 'UP', JSON.stringify(getBody));
+  const afterGet = await db
+    .select({ lastPingAt: heartbeatMonitors.lastPingAt })
+    .from(heartbeatMonitors)
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  const afterMs = afterGet[0].lastPingAt?.getTime() ?? 0;
+  check(
+    'D. GET did NOT bump lastPingAt (read-only)',
+    afterMs === beforeMs,
+    `before=${beforeMs} after=${afterMs}`,
+  );
 
   // ---- E: unknown token → 404 ----
   const badToken = await fetch(`${base}/heartbeat/totally-not-a-real-token`, { method: 'POST' });
@@ -215,6 +236,73 @@ try {
       listBody.heartbeat.some((h) => h.id === createdHeartbeatId),
     JSON.stringify(listBody.heartbeat),
   );
+
+  // ---- M: rapid-fire pings are debounced (1s lookback) ----
+  //         A leaked token shouldn't let an attacker hammer the DB
+  //         with SELECT+UPDATE pairs. The repo skips the UPDATE when
+  //         the last ping was <1s ago.
+  const beforeBurst = await db
+    .select({ lastPingAt: heartbeatMonitors.lastPingAt })
+    .from(heartbeatMonitors)
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  const beforeBurstMs = beforeBurst[0].lastPingAt?.getTime() ?? 0;
+  // Sleep >1s so the first ping in the burst is NOT itself debounced.
+  await new Promise((r) => setTimeout(r, 1100));
+  // 10 pings as fast as fetch can issue them.
+  const burst = await Promise.all(
+    Array.from({ length: 10 }).map(() =>
+      fetch(`${base}/heartbeat/${created.token}`, { method: 'POST' }),
+    ),
+  );
+  check(
+    'M. all 10 burst pings returned 200 (no error responses)',
+    burst.every((r) => r.status === 200),
+    burst.map((r) => r.status).join(','),
+  );
+  const afterBurst = await db
+    .select({ lastPingAt: heartbeatMonitors.lastPingAt })
+    .from(heartbeatMonitors)
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  const afterBurstMs = afterBurst[0].lastPingAt?.getTime() ?? 0;
+  // Exactly one ping should have bumped lastPingAt (the first); the
+  // others all hit the debounce. The bump must be greater than the
+  // pre-burst value but the burst must NOT have produced 10 different
+  // bumps (we can't distinguish 10 vs 1 from afterBurst alone, but the
+  // debounce means a *future* ping <1s later still no-ops, which we
+  // assert next).
+  check(
+    'M. lastPingAt bumped after burst',
+    afterBurstMs > beforeBurstMs,
+    `before=${beforeBurstMs} after=${afterBurstMs}`,
+  );
+  // The strict anti-vacuous check: an 11th ping within the debounce window
+  // must NOT bump lastPingAt again.
+  await fetch(`${base}/heartbeat/${created.token}`, { method: 'POST' });
+  const afterDebounce = await db
+    .select({ lastPingAt: heartbeatMonitors.lastPingAt })
+    .from(heartbeatMonitors)
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  check(
+    'M. 11th ping inside 1s window is debounced (lastPingAt unchanged)',
+    (afterDebounce[0].lastPingAt?.getTime() ?? 0) === afterBurstMs,
+    `after-burst=${afterBurstMs} after-11th=${afterDebounce[0].lastPingAt?.getTime() ?? 0}`,
+  );
+
+  // ---- N: disabled heartbeat looks like a missing one ----
+  //        POST → 404 (no DB write), GET → 404 (no status disclosure).
+  await db
+    .update(heartbeatMonitors)
+    .set({ enabled: false })
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
+  const disabledPost = await fetch(`${base}/heartbeat/${created.token}`, { method: 'POST' });
+  check('N. POST to disabled heartbeat → 404', disabledPost.status === 404);
+  const disabledGet = await fetch(`${base}/heartbeat/${created.token}`);
+  check('N. GET on disabled heartbeat → 404', disabledGet.status === 404);
+  // Re-enable so case L's DELETE-cleanup path remains identical.
+  await db
+    .update(heartbeatMonitors)
+    .set({ enabled: true })
+    .where(eq(heartbeatMonitors.id, createdHeartbeatId));
 
   // ---- L: DELETE works ----
   const delRes = await fetch(`${base}/api/monitors/heartbeat/${createdHeartbeatId}`, {

@@ -91,7 +91,7 @@ export async function renderRegions() {
   const skewBanner =
     skewedRegions.length > 0 && masterVersion
       ? `<div class="banner warn" data-testid="version-skew-banner" style="margin-bottom: 12px">
-          <strong>Version skew detected</strong> —
+          <strong>Version skew detected.</strong>
           ${skewedRegions.length} ${skewedRegions.length === 1 ? 'agent is' : 'agents are'} running
           ${skewedRegions.length === 1 ? 'a different version than' : 'different versions than'}
           the master (<code>${esc(masterVersion)}</code>):
@@ -103,7 +103,7 @@ export async function renderRegions() {
                 )}</code></span>`,
             )
             .join('')}
-          Upgrade the agent containers to match — see the Regions docs.
+          Upgrade the agent containers to match. See the Regions docs.
         </div>`
       : '';
 
@@ -175,7 +175,7 @@ export async function renderRegions() {
     <div class="page-head">
       <div>
         <h2 data-testid="page-title">Regions</h2>
-        <div class="sub">Multi-region probing — each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
+        <div class="sub">Multi-region probing: each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
       </div>
       <button class="btn primary" id="add-region-btn" data-testid="regions-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
@@ -211,7 +211,7 @@ function renderOneTimeKey(otk: OneTimeKey): string {
     <div class="reveal" data-testid="region-key-panel" style="margin-bottom:var(--s-5)">
       <h4>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        Region '${esc(otk.slug)}' ${verb} — copy the key now
+        Region '${esc(otk.slug)}' ${verb}. Copy the key now.
       </h4>
       <p class="warning">This is the only time the key is shown. Paste it into the agent env as <code>OO_AGENT_KEY</code> alongside <code>OO_REGION_SLUG=${esc(otk.slug)}</code>.</p>
       <div class="key-box">

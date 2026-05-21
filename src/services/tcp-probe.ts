@@ -76,25 +76,47 @@ export function tcpProbe(opts: TcpProbeOptions): Promise<TcpProbeResult> {
         received += Math.min(d.length, room);
       }
       const banner = Buffer.concat(chunks).toString('utf8');
-      if (expectBanner && !banner.includes(expectBanner)) {
-        finish({
-          ok: false,
-          latencyMs: Date.now() - start,
-          banner,
-          errorMessage: `Banner did not contain expected text (${host}:${port})`,
-        });
+
+      if (expectBanner) {
+        // Match? Done.
+        if (banner.includes(expectBanner)) {
+          finish({ ok: true, latencyMs: Date.now() - start, banner });
+          return;
+        }
+        // Out of room — buffer hit the cap without matching. Real FAIL.
+        if (received >= BANNER_CAP) {
+          finish({
+            ok: false,
+            latencyMs: Date.now() - start,
+            banner,
+            errorMessage: `Banner did not contain expected text (${host}:${port})`,
+          });
+          return;
+        }
+        // Banner may still arrive in a later packet (SMTP/IMAP greetings
+        // sometimes split across writes). Keep waiting — `timeout` is the
+        // backstop. The previous behavior of failing on the first chunk
+        // was a real bug against multi-packet servers.
         return;
       }
+
+      // No expected text — capturing-only mode. First data chunk is enough.
       finish({ ok: true, latencyMs: Date.now() - start, banner });
     });
 
     socket.once('timeout', () => {
+      const banner = chunks.length > 0 ? Buffer.concat(chunks).toString('utf8') : undefined;
+      const errorMessage =
+        expectBanner && banner !== undefined
+          ? `Banner did not contain expected text within ${timeoutMs}ms (${host}:${port})`
+          : wantBanner
+            ? `No banner within ${timeoutMs}ms (${host}:${port})`
+            : `Connection timed out after ${timeoutMs}ms (${host}:${port})`;
       finish({
         ok: false,
         latencyMs: Date.now() - start,
-        errorMessage: wantBanner
-          ? `No banner within ${timeoutMs}ms (${host}:${port})`
-          : `Connection timed out after ${timeoutMs}ms (${host}:${port})`,
+        ...(banner !== undefined ? { banner } : {}),
+        errorMessage,
       });
     });
 

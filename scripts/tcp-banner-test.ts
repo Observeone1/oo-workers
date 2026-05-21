@@ -8,6 +8,7 @@
  * Also a stage in scripts/run-integration.sh (pre-push + CI).
  */
 
+import { createServer, type Server } from 'node:net';
 import { tcpProbe } from '../src/services/tcp-probe.ts';
 
 // run-integration.sh exports REDIS_URL=redis://[:pw@]host:port
@@ -54,6 +55,34 @@ check('bare TCP unchanged (no banner)', bare.ok === true && !bare.banner, JSON.s
 // 4. unreachable port → FAILED, never hangs (timer backstop).
 const dead = await tcpProbe({ host, port: 1, timeoutMs: 2000, expectBanner: 'x' });
 check('closed/again port FAILS cleanly', dead.ok === false && !!dead.errorMessage);
+
+// 5. Multi-packet banner: server writes "220-server" then sleeps 50ms then
+//    writes ".example.com ESMTP\r\n". The probe expects `ESMTP`. The old
+//    behavior was to FAIL on the first chunk (no match yet) — the fix lets
+//    the buffer keep filling until match OR cap OR timeout.
+const splitServer: Server = await new Promise((resolve) => {
+  const s = createServer((sock) => {
+    sock.write('220-server');
+    setTimeout(() => {
+      sock.write('.example.com ESMTP\r\n');
+      sock.end();
+    }, 50);
+  });
+  s.listen(0, '127.0.0.1', () => resolve(s));
+});
+const splitPort = (splitServer.address() as { port: number }).port;
+const split = await tcpProbe({
+  host: '127.0.0.1',
+  port: splitPort,
+  timeoutMs: 3000,
+  expectBanner: 'ESMTP',
+});
+check(
+  'multi-packet banner: match survives split write',
+  split.ok === true && (split.banner ?? '').includes('ESMTP'),
+  JSON.stringify(split),
+);
+await new Promise<void>((r) => splitServer.close(() => r()));
 
 console.log(failed ? '\ntcp-banner-test: FAILED' : '\ntcp-banner-test: all checks passed');
 process.exit(failed ? 1 : 0);

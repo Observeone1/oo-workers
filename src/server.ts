@@ -41,6 +41,7 @@ import {
   type ChannelType,
 } from './db/repositories/alert-channel.repo.ts';
 import { dispatchAlert, sendToChannel } from './services/alert-dispatch.ts';
+import { ImportVersionError, runImport } from './services/import.ts';
 import { packageVersion } from './utils/version.ts';
 import { isLocalMailpit, findRecentTestMessage } from './services/mailpit.ts';
 import { statusPageMonitorRepo, statusPageRepo } from './db/repositories/status-page.repo.ts';
@@ -894,326 +895,22 @@ function buildApp(connection: Redis) {
   });
 
   // ---------- API: bulk import ----------
+  // Per-row work + binding wiring + the bundle-local surrogate-id remap
+  // all live in `src/services/import.ts`, which wraps the whole load in
+  // a single db.transaction so a mid-import crash rolls back cleanly.
+  // The handler here is the auth gate + JSON envelope + 400 mapping.
   app.post('/api/import', async (c) => {
-    const body = await c.req.json();
-    if (body.version !== 1) return c.json({ error: 'unsupported import version' }, 400);
-    const created = {
-      url: 0,
-      api: 0,
-      qa: 0,
-      tcp: 0,
-      udp: 0,
-      heartbeat: 0,
-      channels: 0,
-      // Two-pass remap (CLI v1.25.0+): bundle-local surrogate ids on
-      // entities let us wire monitor↔channel and status-page↔monitor
-      // bindings AFTER all entities exist. Each row collected below
-      // is a (real-id, channelRefs) tuple for the binding pass.
-      statusPages: 0,
-      channelBindings: 0,
-      skipped: [] as string[],
-      // Advisories: imported, but won't fully work without operator
-      // follow-up. Path-independent (UI import dialog + CLI wrapper both
-      // surface this) — NOT counted as skipped, the rows ARE created.
-      warnings: [] as string[],
-    };
-
-    // Surrogate id (CLI v1.25.0 bundle-local) → real DB id, populated as
-    // we create each entity. Used in the second pass to wire bindings.
-    // For pre-1.25.0 exports the entries simply don't carry an id field
-    // and these maps stay empty — same behavior as before.
-    const urlMonitorIdMap = new Map<number, number>();
-    const apiCheckIdMap = new Map<number, number>();
-    const channelIdMap = new Map<number, number>();
-    // Per-monitor refs collected during the create pass so we don't have
-    // to re-scan the input later. `channelRefs` (if present) are bundle
-    // surrogate ids; resolved in the binding pass.
-    const urlChannelBindings: Array<{ realId: number; refs: number[]; name: string }> = [];
-    const apiChannelBindings: Array<{ realId: number; refs: number[]; name: string }> = [];
-
-    for (const u of (body.urlMonitors ?? []) as any[]) {
-      try {
-        const [m] = await urlMonitorRepo.create({
-          name: u.name,
-          url: u.url,
-          timeoutMs: u.timeoutMs ?? DEFAULTS.URL_TIMEOUT_MS,
-          intervalSeconds: u.intervalSeconds ?? 60,
-          enabled: u.enabled ?? true,
-        });
-        await urlMonitorRepo.createAssertions(
-          m.id,
-          (u.assertions ?? []).map((a: any) => ({
-            operator: a.operator,
-            statusCode: a.statusCode,
-          })),
-        );
-        if (typeof u.id === 'number') urlMonitorIdMap.set(u.id, m.id);
-        if (Array.isArray(u.channelRefs) && u.channelRefs.length > 0) {
-          urlChannelBindings.push({ realId: m.id, refs: u.channelRefs, name: u.name });
-        }
-        created.url++;
-      } catch (err) {
-        created.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
+    const body = (await c.req.json()) as { version?: number; [k: string]: unknown };
+    try {
+      const result = await runImport(body);
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof ImportVersionError) {
+        return c.json({ error: err.message }, 400);
       }
+      logger.error(`import failed: ${err instanceof Error ? err.message : String(err)}`);
+      return c.json({ error: 'import failed' }, 500);
     }
-    for (const a of (body.apiChecks ?? []) as any[]) {
-      try {
-        const [m] = await apiCheckRepo.create({
-          name: a.name,
-          url: a.url,
-          method: a.method ?? 'GET',
-          headers: a.headers ?? {},
-          body: a.body ?? null,
-          timeoutMs: a.timeoutMs ?? DEFAULTS.API_TIMEOUT_IMPORT_DEFAULT_MS,
-          intervalSeconds: a.intervalSeconds ?? 60,
-          enabled: a.enabled ?? true,
-        });
-        await apiCheckRepo.createAssertions(
-          m.id,
-          (a.assertions ?? []).map((ass: any) => ({
-            type: ass.type,
-            operator: ass.operator,
-            path: ass.path ?? null,
-            value: ass.value ?? null,
-          })),
-        );
-        if (typeof a.id === 'number') apiCheckIdMap.set(a.id, m.id);
-        if (Array.isArray(a.channelRefs) && a.channelRefs.length > 0) {
-          apiChannelBindings.push({ realId: m.id, refs: a.channelRefs, name: a.name });
-        }
-        created.api++;
-      } catch (err) {
-        created.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    for (const t of (body.tcpMonitors ?? []) as any[]) {
-      try {
-        await tcpMonitorRepo.create({
-          name: t.name,
-          host: t.host,
-          port: Number(t.port),
-          payloadHex: t.payloadHex ?? null,
-          expectBanner: t.expectBanner ?? null,
-          timeoutMs: t.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
-          intervalSeconds: t.intervalSeconds ?? 60,
-          enabled: t.enabled ?? true,
-        });
-        created.tcp++;
-      } catch (err) {
-        created.skipped.push(`tcp ${t.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    for (const h of (body.heartbeats ?? []) as any[]) {
-      try {
-        const period = Number(h.periodSeconds);
-        if (!Number.isFinite(period) || period < 30) {
-          throw new Error('periodSeconds must be ≥ 30');
-        }
-        const grace = h.graceSeconds == null ? 60 : Number(h.graceSeconds);
-        if (!Number.isFinite(grace) || grace < 0) {
-          throw new Error('graceSeconds must be non-negative');
-        }
-        await heartbeatRepo.create({
-          name: h.name,
-          description: h.description ?? null,
-          periodSeconds: period,
-          graceSeconds: grace,
-          enabled: h.enabled ?? true,
-          // Reuse the SaaS ping_key as the self-host token so existing
-          // services keep pinging the same URL. Adapter has already
-          // mapped CLI ping_key → token; tolerate either field name
-          // here in case a hand-written bundle uses ping_key directly.
-          ...(typeof (h.token ?? h.ping_key) === 'string' ? { token: h.token ?? h.ping_key } : {}),
-        });
-        created.heartbeat++;
-      } catch (err) {
-        created.skipped.push(
-          `heartbeat ${h.name}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-    for (const u of (body.udpMonitors ?? []) as any[]) {
-      try {
-        if (u.payloadHex) parseHexPayload(u.payloadHex);
-        await udpMonitorRepo.create({
-          name: u.name,
-          host: u.host,
-          port: Number(u.port),
-          payloadHex: u.payloadHex ?? null,
-          expectResponse: u.expectResponse ?? false,
-          timeoutMs: u.timeoutMs ?? DEFAULTS.UDP_TIMEOUT_MS,
-          intervalSeconds: u.intervalSeconds ?? 60,
-          enabled: u.enabled ?? true,
-        });
-        created.udp++;
-      } catch (err) {
-        created.skipped.push(`udp ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    for (const q of (body.qaProjects ?? []) as any[]) {
-      try {
-        const [m] = await qaProjectRepo.create({
-          name: q.name,
-          targetUrl: q.targetUrl,
-          credentials: q.credentials ?? null,
-          config: q.config ?? {},
-          intervalSeconds: q.intervalSeconds ?? DEFAULTS.QA_INTERVAL_SECONDS,
-          enabled: q.enabled ?? true,
-          status: 'active',
-        });
-        await qaProjectRepo.createTests(
-          m.id,
-          (q.tests ?? []).map((t: any) => ({
-            testName: t.name,
-            testType: 'browser',
-            script: t.script,
-            description: t.description ?? null,
-          })),
-        );
-        created.qa++;
-      } catch (err) {
-        created.skipped.push(`qa ${q.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    // Alert channels. The adapter already type-narrows + shapes config,
-    // but anything POSTing here directly (hand-crafted payload) must
-    // pass the same invariants the POST /api/channels endpoint enforces
-    // — mirror them rather than trust the caller.
-    for (const ch of (body.channels ?? []) as any[]) {
-      try {
-        const name = typeof ch.name === 'string' ? ch.name.trim() : '';
-        const type = ch.type as ChannelType;
-        const cfg = (ch.config ?? {}) as Record<string, unknown>;
-        if (!name) throw new Error('name is required');
-        if (!VALID_CHANNEL_TYPES.includes(type)) {
-          throw new Error(`type must be one of ${VALID_CHANNEL_TYPES.join(', ')}`);
-        }
-        let createdChannel: { id: number } | undefined;
-        if (type === 'email') {
-          const to = typeof cfg.to === 'string' ? cfg.to.trim() : '';
-          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
-            throw new Error('email channel needs a valid config.to address');
-          }
-          [createdChannel] = await alertChannelRepo.create({ name, type, config: { to } });
-        } else {
-          const url = typeof cfg.url === 'string' ? cfg.url.trim() : '';
-          if (!/^https?:\/\//i.test(url)) {
-            throw new Error('channel needs an http(s) config.url');
-          }
-          [createdChannel] = await alertChannelRepo.create({ name, type, config: { url } });
-        }
-        if (createdChannel && typeof ch.id === 'number') {
-          channelIdMap.set(ch.id, createdChannel.id);
-        }
-        created.channels++;
-      } catch (err) {
-        created.skipped.push(
-          `channel ${ch?.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-
-    // ── Second pass: wire bindings using the surrogate→real id maps. ──
-    // CLI v1.25.0+ adapter packs `channelRefs` and `statusPages[].monitors`
-    // with bundle-local ids that resolve here. Refs that don't resolve
-    // (e.g. binding to a channel that itself got skipped at creation)
-    // are reported in `skipped` rather than silently dropped.
-    const resolveChannelRefs = (refs: number[], context: string): number[] => {
-      const resolved: number[] = [];
-      for (const r of refs) {
-        const real = channelIdMap.get(r);
-        if (real !== undefined) {
-          resolved.push(real);
-        } else {
-          created.skipped.push(
-            `${context}: channel ref ${r} did not resolve (channel may have been skipped or absent from bundle)`,
-          );
-        }
-      }
-      return resolved;
-    };
-    for (const b of urlChannelBindings) {
-      const ids = resolveChannelRefs(b.refs, `url ${b.name} channel binding`);
-      if (ids.length > 0) {
-        await monitorAlertChannelRepo.set('url', b.realId, ids);
-        created.channelBindings += ids.length;
-      }
-    }
-    for (const b of apiChannelBindings) {
-      const ids = resolveChannelRefs(b.refs, `api ${b.name} channel binding`);
-      if (ids.length > 0) {
-        await monitorAlertChannelRepo.set('api', b.realId, ids);
-        created.channelBindings += ids.length;
-      }
-    }
-
-    // Status pages — CLI v1.25.0+ ships `body.statusPages[]`. Each has a
-    // `monitors[]` of `{ ref, type }`; resolve refs against the
-    // url/api maps (qa/tcp/udp not yet supported as status-page targets
-    // in the CLI export schema). A page whose monitors all fail to
-    // resolve is created with zero bindings — still useful as a shell.
-    for (const sp of (body.statusPages ?? []) as Array<{
-      slug: string;
-      title: string;
-      description: string | null;
-      monitors: Array<{ ref: number; type: 'url' | 'api' }>;
-    }>) {
-      try {
-        // Pre-flight: resolve all refs before creating the page. If the
-        // bundle declared monitor refs but NONE resolved (pre-1.25.0
-        // export, or a partial bundle), creating an empty status page
-        // wouldn't be useful — skip and surface why. Partial resolution
-        // (some refs work, some don't) still creates the page with the
-        // good bindings + per-ref skip notes.
-        const bindings: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
-        const danglingNotes: string[] = [];
-        for (const m of sp.monitors ?? []) {
-          const map = m.type === 'url' ? urlMonitorIdMap : apiCheckIdMap;
-          const real = map.get(m.ref);
-          if (real !== undefined) {
-            bindings.push({ monitorType: m.type, monitorId: real });
-          } else {
-            danglingNotes.push(`${m.type} ref ${m.ref} did not resolve`);
-          }
-        }
-        if ((sp.monitors?.length ?? 0) > 0 && bindings.length === 0) {
-          // All refs dangled. Don't create a hollow shell.
-          created.skipped.push(
-            `status_page ${sp.slug}: all monitor refs dangling (${danglingNotes.join(', ')})`,
-          );
-          continue;
-        }
-        const [page] = await statusPageRepo.create({
-          slug: sp.slug,
-          title: sp.title,
-          description: sp.description,
-        });
-        for (const note of danglingNotes) {
-          created.skipped.push(`status_page ${sp.slug}: ${note}`);
-        }
-        if (bindings.length > 0) await statusPageMonitorRepo.set(page.id, bindings);
-        created.statusPages++;
-      } catch (err) {
-        created.skipped.push(
-          `status_page ${sp.slug}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-
-    // Monitor→alert-channel routing advisory: only when bindings were
-    // NOT supplied. If at least one binding was wired through from the
-    // bundle, the export is "new-style" (CLI v1.25.0+) — no warning.
-    // Pre-1.25.0 imports still get the loud "go bind your channels"
-    // nudge so a half-migrated stack doesn't fly blind.
-    const monitorsCreated = created.url + created.api + created.qa + created.tcp + created.udp;
-    if (monitorsCreated > 0 && created.channelBindings === 0) {
-      created.warnings.push(
-        `${monitorsCreated} monitor(s) imported with no alert-channel bindings — ` +
-          `they will not alert anyone until you bind a channel to each ` +
-          `(Monitors → a monitor → Alert channels).`,
-      );
-    }
-    return c.json(created);
   });
 
   // ---------- API: full logical backup & restore ----------
@@ -1611,13 +1308,16 @@ function buildApp(connection: Redis) {
   // ---------- Public heartbeat ingest (Roadmap 8) ----------
   // POST /heartbeat/:token — UNAUTHENTICATED. Services / cron jobs ping
   // this on each successful run; we update last_ping_at + flip status
-  // to UP. If the heartbeat was OVERDUE, fire a recovery alert.
-  // Accepts both POST and GET so cron environments without a POST flag
-  // (`curl URL` works as GET) still register a ping. Body is ignored.
-  const handlePing = async (
-    c: import('hono').Context,
-    method: 'GET' | 'POST',
-  ): Promise<Response> => {
+  // to UP. If the heartbeat was OVERDUE, fire a recovery alert. The
+  // repo debounces pings <1s apart so a leaked token can't flood the
+  // DB. Disabled heartbeats look identical to unknown tokens (404).
+  //
+  // GET /heartbeat/:token is read-only: returns current status without
+  // recording a ping. Previously GET also pinged "so curl-as-cron works",
+  // but the cost was that link-previewers (Slack/iMessage/Discord pre-fetch
+  // unfurled URLs) would silently trigger pings every time a token URL
+  // was pasted. Pings must be explicit POSTs.
+  app.post('/heartbeat/:token', async (c) => {
     const token = c.req.param('token');
     if (!token) return c.json({ error: 'token required' }, 400);
     const result = await heartbeatRepo.recordPing(token);
@@ -1632,13 +1332,15 @@ function buildApp(connection: Redis) {
         startTime: new Date().toISOString(),
       }).catch(() => {});
     }
-    return c.json(
-      { ok: true, status: row.status, lastPingAt: row.lastPingAt },
-      method === 'POST' ? 200 : 200,
-    );
-  };
-  app.post('/heartbeat/:token', (c) => handlePing(c, 'POST'));
-  app.get('/heartbeat/:token', (c) => handlePing(c, 'GET'));
+    return c.json({ ok: true, status: row.status, lastPingAt: row.lastPingAt }, 200);
+  });
+  app.get('/heartbeat/:token', async (c) => {
+    const token = c.req.param('token');
+    if (!token) return c.json({ error: 'token required' }, 400);
+    const row = await heartbeatRepo.findByPublicToken(token);
+    if (!row) return c.json({ error: 'unknown heartbeat' }, 404);
+    return c.json({ ok: true, status: row.status, lastPingAt: row.lastPingAt }, 200);
+  });
 
   app.get('/status/:slug', async (c) => {
     const slug = c.req.param('slug');
