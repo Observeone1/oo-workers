@@ -120,6 +120,16 @@ export function startScheduler(connection: Redis) {
 
   logger.info(`🕒 scheduler starting (tick every ${TICK_MS / 1000}s)`);
 
+  // Consecutive-failure escalation. A persistent DB outage used to log
+  // one error per tick and let operators discover hours later that no
+  // monitor had been dispatched. Now: after CRITICAL_FAILURE_THRESHOLD
+  // consecutive failed ticks we log a louder, more specific message
+  // every escalation step (3, 6, 12, 24, ...). The catch still keeps
+  // the loop alive on transient blips.
+  const CRITICAL_FAILURE_THRESHOLD = 3;
+  let consecutiveFailures = 0;
+  let lastEscalation = 0;
+
   const tick = async () => {
     try {
       await Promise.all([
@@ -135,8 +145,31 @@ export function startScheduler(connection: Redis) {
         // outage alerts via the existing channel system.
         tickHeartbeats(),
       ]);
+      if (consecutiveFailures > 0) {
+        logger.info(`scheduler recovered after ${consecutiveFailures} consecutive failure(s)`);
+        consecutiveFailures = 0;
+        lastEscalation = 0;
+      }
     } catch (err) {
-      logger.error(`scheduler tick failed: ${err instanceof Error ? err.message : String(err)}`);
+      consecutiveFailures++;
+      const msg = err instanceof Error ? err.message : String(err);
+      // First few failures: standard error log. Past the threshold:
+      // also log at every doubling so operators can't miss it.
+      logger.error(`scheduler tick failed (#${consecutiveFailures}): ${msg}`);
+      if (consecutiveFailures >= CRITICAL_FAILURE_THRESHOLD) {
+        // Escalate at 3, 6, 12, 24, 48... (each doubling past the
+        // threshold). Keeps the noise floor low for ongoing outages
+        // while keeping the signal high enough to page an operator
+        // watching tail-N logs.
+        if (consecutiveFailures === lastEscalation * 2 || lastEscalation === 0) {
+          logger.error(
+            `🚨 SCHEDULER STALLED: ${consecutiveFailures} consecutive failed ticks ` +
+              `(~${Math.round((consecutiveFailures * TICK_MS) / 1000)}s of zero dispatch). ` +
+              `Investigate Postgres/Redis health — no monitors are being scheduled.`,
+          );
+          lastEscalation = consecutiveFailures;
+        }
+      }
     }
   };
 

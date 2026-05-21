@@ -2,6 +2,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import { dbExecutions, dbMonitors } from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
+import { projectLatest } from './_with-latest.ts';
 
 export const dbMonitorRepo = {
   async findAllWithLatest() {
@@ -28,23 +29,13 @@ export const dbMonitorRepo = {
     return rows.map(({ db_monitors: m, latest: l }) => ({
       ...m,
       type: 'db' as const,
-      latest:
-        l && l.id !== null
-          ? (() => {
-              const projected = projectStalled(
-                { status: l.status, regionId: l.regionId, errorMessage: l.errorMessage },
-                l.startTime,
-                m.intervalSeconds,
-              );
-              return {
-                id: l.id,
-                status: projected.status,
-                responseTimeMs: l.latencyMs,
-                errorMessage: projected.errorMessage,
-                startTime: l.startTime,
-              };
-            })()
-          : null,
+      latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
+        id: l.id as number,
+        status: p.status,
+        responseTimeMs: l.latencyMs,
+        errorMessage: p.errorMessage,
+        startTime: l.startTime,
+      })),
     }));
   },
 

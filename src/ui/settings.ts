@@ -559,7 +559,7 @@ async function loadKeys(panel: HTMLElement) {
         <div class="reveal" style="margin-bottom:var(--s-4)">
           <h4>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            Key '${esc(oneTimeKey.name)}' created — copy it now
+            Key '${esc(oneTimeKey.name)}' created. Copy it now.
           </h4>
           <p class="warning">This is the only time the key is shown. After you leave this page it's gone.</p>
           <div class="key-box"><code>${esc(oneTimeKey.cleartextKey)}</code></div>

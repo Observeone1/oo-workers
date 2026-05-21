@@ -139,6 +139,12 @@ Caddy fetches a Let's Encrypt cert automatically, serves the UI over HTTPS on `:
 
 An authenticated caller can ask the worker to probe any host:port it can reach, including your internal network. This is intentional — self-hosted monitoring is supposed to watch private services (your NAS, internal Grafana, staging APIs). Don't hand keys to people you wouldn't already trust with that access.
 
+### QA scripts run with the worker's env
+
+Browser-check scripts (the `qa` monitor type) execute as `npx playwright test <your-script.spec.ts>` inside the worker process. The child process inherits the worker's full environment, including `OO_OBJECT_STORAGE_SECRET_KEY`, `OO_SMTP_PASS`, `POSTGRES_PASSWORD`, and any other secrets you set in `.env`. A script can read those via `process.env` and write them to the run log, the trace, or any URL it visits.
+
+For a single-operator self-host where you write your own scripts, this is fine: you already control the secrets. **Don't accept QA scripts from people you wouldn't hand `.env` to.** Sandboxing the runner (separate container, env allowlist) is on the roadmap if/when multi-operator support is wanted.
+
 ## Documentation
 
 The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) — [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), [TLS certificate checks](docs/tls-checks.md), [alerts](docs/alerts.md), and [status-page incidents](docs/incidents.md).

@@ -74,29 +74,56 @@ export const heartbeatRepo = {
   },
 
   /** Public-path ingest. Bumps last_ping_at, transitions
-   *  PENDING/OVERDUE → UP, and returns { row, wasOverdue } so the
+   *  PENDING/OVERDUE → UP, and returns `{ row, wasOverdue }` so the
    *  caller can fire a recovery alert when a ping resurrects an
-   *  OVERDUE heartbeat. Returns null on unknown token. The 1-query
-   *  race window (status read on a stale row) is acceptable —
-   *  worst case is a missed recovery alert, no data loss. */
+   *  OVERDUE heartbeat.
+   *
+   *  Returns null on unknown token OR disabled row (caller treats
+   *  both as 404 — disabled rows shouldn't leak existence).
+   *
+   *  Debounces rapid-fire pings: if the last ping arrived <1s ago,
+   *  skips the UPDATE and returns the existing row with
+   *  wasOverdue=false. Prevents a leaked token from flooding the
+   *  DB with SELECT+UPDATE pairs. The 1s window is far below any
+   *  legitimate cadence (real heartbeats fire every 30s+).
+   *
+   *  Race: the peek-then-update pattern is the same as before.
+   *  Worst case (scheduler ticks the row OVERDUE between our peek
+   *  and update) is a missed recovery alert — acceptable, no data
+   *  loss. */
   async recordPing(token: string): Promise<{ row: HeartbeatRow; wasOverdue: boolean } | null> {
     const [prior] = await db
-      .select({ status: heartbeatMonitors.status })
+      .select()
       .from(heartbeatMonitors)
-      .where(eq(heartbeatMonitors.token, token))
+      .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
       .limit(1);
     if (!prior) return null;
+
+    // Debounce: <1s since last ping → no-op, return existing row.
+    if (prior.lastPingAt && Date.now() - prior.lastPingAt.getTime() < 1000) {
+      return { row: prior, wasOverdue: false };
+    }
+
     const rows = await db
       .update(heartbeatMonitors)
-      .set({
-        lastPingAt: new Date(),
-        status: 'UP',
-        updatedAt: new Date(),
-      })
-      .where(eq(heartbeatMonitors.token, token))
+      .set({ lastPingAt: new Date(), status: 'UP', updatedAt: new Date() })
+      .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
       .returning();
     if (rows.length === 0) return null;
     return { row: rows[0], wasOverdue: prior.status === 'OVERDUE' };
+  },
+
+  /** Read-only lookup used by GET /heartbeat/:token. Same
+   *  unknown-or-disabled-equals-null posture as recordPing — GETs
+   *  on a disabled or non-existent heartbeat return 404 the same
+   *  way, so a curious requester can't distinguish them. */
+  async findByPublicToken(token: string): Promise<HeartbeatRow | null> {
+    const [row] = await db
+      .select()
+      .from(heartbeatMonitors)
+      .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
+      .limit(1);
+    return row ?? null;
   },
 
   /** Scheduler tick query: enabled UP heartbeats whose deadline has

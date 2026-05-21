@@ -10,6 +10,7 @@ import {
   qaScriptKey,
 } from '../../services/object-storage.ts';
 import { logger } from '../../utils/logger.ts';
+import { projectLatest } from './_with-latest.ts';
 
 export const qaProjectRepo = {
   async findAllWithLatest() {
@@ -47,23 +48,13 @@ export const qaProjectRepo = {
       ...p,
       type: 'qa' as const,
       testCount: tc?.count ?? 0,
-      latest:
-        l && l.id !== null
-          ? (() => {
-              const projected = projectStalled(
-                { status: l.status, regionId: l.regionId, errorMessage: l.errorMessage },
-                l.startTime,
-                p.intervalSeconds,
-              );
-              return {
-                id: l.id,
-                status: projected.status,
-                durationMs: l.durationMs,
-                errorMessage: projected.errorMessage,
-                startTime: l.startTime,
-              };
-            })()
-          : null,
+      latest: projectLatest(l, p.intervalSeconds, (l, proj) => ({
+        id: l.id as number,
+        status: proj.status,
+        durationMs: l.durationMs,
+        errorMessage: proj.errorMessage,
+        startTime: l.startTime,
+      })),
     }));
   },
 
