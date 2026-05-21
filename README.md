@@ -89,8 +89,17 @@ Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph — anything 
 Take a full logical snapshot — config + execution history — from the
 dashboard's **Backup** button or `bun scripts/export.ts`, and restore it on
 another instance. It's a portable, schema-versioned dump (not `pg_dump`),
-windowed to 90 days of history by default. See
-[docs/backup-restore.md](docs/backup-restore.md).
+windowed to 90 days of history by default.
+
+Browser run artifacts ride along by default: QA test scripts, Playwright
+`trace.zip`, and per-run screenshots stream from the configured S3 bucket
+into a `.oodump.tar.gz` envelope alongside the dump. Restore on a fresh
+host puts every object back at the same key, so the QA suite is runnable
+and "Download trace" links resolve out of the box — no dangling pointers.
+Untick **Include browser run artifacts** (or omit `--include-artifacts`)
+to fall back to the DB-only `.oodump.gz` format. Restore auto-detects
+either format; legacy dumps from earlier releases keep restoring forever.
+See [docs/backup-restore.md](docs/backup-restore.md).
 
 ## Security & deployment
 
