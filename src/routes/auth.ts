@@ -3,7 +3,7 @@
  * me, profile, password change. All but setup-status check or mutate
  * session state.
  */
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { extractKey, validateKey } from '../middleware/auth.ts';
 import { authService, SESSION_COOKIE } from '../services/auth.service.ts';
 
@@ -11,6 +11,51 @@ const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 function cookieHeader(token: string): string {
   return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${MAX_AGE}`;
+}
+
+// In-memory login rate limiter. Per-IP and per-email buckets,
+// counter-and-reset so brute-force attempts above LOGIN_LIMIT_MAX in
+// LOGIN_LIMIT_WINDOW_MS get 429 until the window expires. argon2id
+// is already slow (~100ms) so this isn't the only line of defense,
+// but it caps a parallel multi-IP attack against one account, and
+// catches single-IP enumeration trying lots of addresses.
+const LOGIN_LIMIT_MAX = 10;
+const LOGIN_LIMIT_WINDOW_MS = 60_000;
+const LOGIN_LIMIT_CACHE_MAX = 2048;
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+const ipBuckets = new Map<string, RateBucket>();
+const emailBuckets = new Map<string, RateBucket>();
+
+function clientIp(c: Context): string {
+  // Trust X-Forwarded-For if the operator is behind a proxy (Caddy /
+  // Traefik / Tailscale). Otherwise fall back to the connecting peer.
+  const xff = c.req.header('x-forwarded-for');
+  if (xff) {
+    const first = xff.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  return c.req.header('x-real-ip') ?? 'unknown';
+}
+
+function rateAllow(bucket: Map<string, RateBucket>, key: string): boolean {
+  const now = Date.now();
+  const b = bucket.get(key);
+  if (!b || b.resetAt < now) {
+    if (bucket.size >= LOGIN_LIMIT_CACHE_MAX) {
+      const oldest = bucket.keys().next().value;
+      if (oldest) bucket.delete(oldest);
+    }
+    bucket.set(key, { count: 1, resetAt: now + LOGIN_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (b.count >= LOGIN_LIMIT_MAX) return false;
+  b.count++;
+  return true;
 }
 
 export function registerAuthRoutes(app: Hono): void {
@@ -58,6 +103,18 @@ export function registerAuthRoutes(app: Hono): void {
     const email = typeof body.email === 'string' ? body.email.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
     if (!email || !password) return c.json({ error: 'email and password required' }, 400);
+
+    // Rate limit: per-IP first, then per-email. Both buckets must accept
+    // or the request gets 429. Don't increment the email bucket on an
+    // IP-rejected request (that would let a banned IP poison the email
+    // counter and lock out the legitimate user).
+    const ip = clientIp(c);
+    if (!rateAllow(ipBuckets, ip)) {
+      return c.json({ error: 'too many login attempts; try again in a minute' }, 429);
+    }
+    if (!rateAllow(emailBuckets, email.toLowerCase())) {
+      return c.json({ error: 'too many login attempts; try again in a minute' }, 429);
+    }
 
     const result = await authService.login(email, password);
     if (!result) return c.json({ error: 'invalid email or password' }, 401);
