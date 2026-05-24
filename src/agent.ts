@@ -373,9 +373,13 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
 // ---- QA (browser) jobs — local Playwright + master-mediated artifact upload ----
 
 // One-time Playwright availability check. Light image returns false here;
-// QA image returns true. Cached on first call.
+// QA image returns true. Cached on first call. OO_AGENT_FORCE_LIGHT=1
+// forces the rejection branch — used by the integration test, doubles as
+// an operator escape hatch to disable QA on a known-capable agent without
+// rebuilding the image.
 let _playwrightDetected: boolean | null = null;
 async function isPlaywrightAvailable(): Promise<boolean> {
+  if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
   try {
     await execAsync('npx playwright --version', { timeout: 5000 });

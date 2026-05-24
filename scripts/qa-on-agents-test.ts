@@ -46,6 +46,7 @@ import {
   qaTestExecutions,
 } from '../src/db/schema.ts';
 import { createRegionWithKey, deleteRegion } from '../src/services/region-admin.ts';
+import { popJobForRegion } from '../src/services/agent-dispatch.ts';
 import { getObject, isStorageConfigured } from '../src/services/object-storage.ts';
 
 let failed = false;
@@ -138,7 +139,7 @@ test('intentionally fails to produce trace + screenshot artifacts', async ({ pag
     .insert(qaGeneratedTests)
     .values({
       projectId,
-      name: TEST_NAME,
+      testName: TEST_NAME,
       script: failingScript,
     } as never)
     .returning();
@@ -228,6 +229,176 @@ test('intentionally fails to produce trace + screenshot artifacts', async ({ pag
         err instanceof Error ? err.message : String(err),
       );
     }
+  }
+
+  // ============================================================
+  // G–J: Passing test → SUCCESS, no PUT, null artifact columns.
+  // ============================================================
+  const passingScript = `
+import { test, expect } from '@playwright/test';
+test('passing run produces no artifacts', async ({ page }) => {
+  await page.goto('${targetUrl}');
+  await expect(page.locator('h1')).toBeVisible();
+});
+`.trim();
+  const [passingRow] = await db
+    .insert(qaGeneratedTests)
+    .values({ projectId, testName: `passing-${ts}`, script: passingScript } as never)
+    .returning();
+  const passingTestId = passingRow.id;
+
+  await handleQaJob(
+    {
+      masterUrl,
+      agentKey: region.cleartextKey,
+      regionSlug: REGION_SLUG,
+      pollWaitSec: 1,
+      tlsInsecure: false,
+    },
+    {
+      jobId: `qa-test-pass:${projectId}:${ts}`,
+      type: 'qa',
+      executionId: 0,
+      regionId: region.region.id,
+      projectId,
+      targetUrl,
+      tests: [{ id: passingTestId, name: `passing-${ts}`, script: passingScript }],
+    },
+  );
+
+  const passRows = await db
+    .select()
+    .from(qaTestExecutions)
+    .where(
+      and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, passingTestId)),
+    );
+  check('G. passing test creates exactly one exec row', passRows.length === 1);
+  const passExec = passRows[0];
+  check(
+    'H. passing test status SUCCESS',
+    passExec?.status === 'SUCCESS',
+    `got ${passExec?.status}`,
+  );
+  check('I. passing test trace_url is null', passExec?.traceUrl === null);
+  check('J. passing test screenshot_urls is null', passExec?.screenshotUrls === null);
+
+  // ============================================================
+  // K–M: Light-image rejection — OO_AGENT_FORCE_LIGHT=1 makes
+  // isPlaywrightAvailable() return false, so the agent posts a
+  // single ERROR result with the redeploy message.
+  // ============================================================
+  const [lightRow] = await db
+    .insert(qaGeneratedTests)
+    .values({ projectId, testName: `light-${ts}`, script: failingScript } as never)
+    .returning();
+  const lightTestId = lightRow.id;
+
+  process.env.OO_AGENT_FORCE_LIGHT = '1';
+  try {
+    await handleQaJob(
+      {
+        masterUrl,
+        agentKey: region.cleartextKey,
+        regionSlug: REGION_SLUG,
+        pollWaitSec: 1,
+        tlsInsecure: false,
+      },
+      {
+        jobId: `qa-test-light:${projectId}:${ts}`,
+        type: 'qa',
+        executionId: 0,
+        regionId: region.region.id,
+        projectId,
+        targetUrl,
+        tests: [{ id: lightTestId, name: `light-${ts}`, script: failingScript }],
+      },
+    );
+  } finally {
+    delete process.env.OO_AGENT_FORCE_LIGHT;
+  }
+
+  const lightRows = await db
+    .select()
+    .from(qaTestExecutions)
+    .where(
+      and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, lightTestId)),
+    );
+  check(
+    'K. light image creates exactly one exec row (first test only, not all)',
+    lightRows.length === 1,
+  );
+  const lightExec = lightRows[0];
+  check(
+    'L. light image exec status ERROR',
+    lightExec?.status === 'ERROR',
+    `got ${lightExec?.status}`,
+  );
+  check(
+    'M. light image error message mentions observeone/oo-agent:qa',
+    !!lightExec?.errorMessage?.includes('observeone/oo-agent:qa'),
+    String(lightExec?.errorMessage),
+  );
+
+  // ============================================================
+  // N–O: Dispatcher round-trip — LPUSH onto the regional Redis
+  // queue, BRPOP via popJobForRegion, then handleQaJob. Proves
+  // the full scheduler→Redis→agent pipe end-to-end (the existing
+  // cases skip the queue and call handleQaJob directly).
+  // ============================================================
+  const [dispatchRow] = await db
+    .insert(qaGeneratedTests)
+    .values({ projectId, testName: `dispatch-${ts}`, script: failingScript } as never)
+    .returning();
+  const dispatchTestId = dispatchRow.id;
+
+  // Drain anything the in-process master scheduler may have queued during
+  // the earlier cases — otherwise BRPOP returns the scheduler's payload
+  // (oldest first) instead of ours. The test owns this region exclusively
+  // so a full drain is safe.
+  await connection.del(`oo:jobs:${REGION_SLUG}`);
+
+  const dispatchPayload = {
+    jobId: `qa-test-dispatch:${projectId}:${ts}`,
+    type: 'qa' as const,
+    executionId: 0,
+    regionId: region.region.id,
+    kind: 'qa-project-run',
+    projectId,
+    targetUrl,
+    tests: [{ id: dispatchTestId, name: `dispatch-${ts}`, script: failingScript }],
+    triggeredAt: new Date().toISOString(),
+  };
+  await connection.lpush(`oo:jobs:${REGION_SLUG}`, JSON.stringify(dispatchPayload));
+
+  const popped = await popJobForRegion(connection, REGION_SLUG, 2);
+  check(
+    'N. job round-trips through Redis (lpush → popJobForRegion)',
+    popped !== null && (popped as { projectId?: number }).projectId === projectId,
+    popped ? `popped projectId=${(popped as { projectId?: number }).projectId}` : 'null',
+  );
+
+  if (popped) {
+    await handleQaJob(
+      {
+        masterUrl,
+        agentKey: region.cleartextKey,
+        regionSlug: REGION_SLUG,
+        pollWaitSec: 1,
+        tlsInsecure: false,
+      },
+      popped as unknown as JobPayload,
+    );
+    const dispatchRows = await db
+      .select()
+      .from(qaTestExecutions)
+      .where(
+        and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, dispatchTestId)),
+      );
+    check(
+      'O. dispatched job produced exactly one exec row attributed to the region',
+      dispatchRows.length === 1 && dispatchRows[0]?.regionId === region.region.id,
+      `rows=${dispatchRows.length} regionId=${dispatchRows[0]?.regionId}`,
+    );
   }
 } catch (err) {
   console.error(
