@@ -24,8 +24,8 @@
  *                                        with RustFS and AWS; some R2 setups want '0')
  */
 
-import { createHash, createHmac } from 'node:crypto';
 import { logger } from '../utils/logger.ts';
+import { signedFetchRaw } from './object-storage-signing.ts';
 
 interface Config {
   endpoint: string;
@@ -66,25 +66,23 @@ export function isStorageConfigured(): boolean {
   return readConfig() !== null;
 }
 
-// ---------------- AWS Signature V4 ----------------
+// ---------------- Internal helpers ----------------
 
-function hex(buf: Buffer): string {
-  return buf.toString('hex');
+class ObjectStorageError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
 }
 
-function sha256Hex(data: string | Buffer): string {
-  return createHash('sha256').update(data).digest('hex');
-}
-
-function hmac(key: string | Buffer, data: string): Buffer {
-  return createHmac('sha256', key).update(data).digest();
-}
-
-function signingKey(secret: string, date: string, region: string, service: string): Buffer {
-  const kDate = hmac('AWS4' + secret, date);
-  const kRegion = hmac(kDate, region);
-  const kService = hmac(kRegion, service);
-  return hmac(kService, 'aws4_request');
+function requireConfig(): Config {
+  const cfg = readConfig();
+  if (!cfg) {
+    throw new ObjectStorageError('object storage is not configured (set OO_OBJECT_STORAGE_*)', 500);
+  }
+  return cfg;
 }
 
 function buildUrl(cfg: Config, key: string): URL {
@@ -112,92 +110,17 @@ function encodeKey(key: string): string {
     .join('/');
 }
 
-async function signedFetch(
+function sign(
   cfg: Config,
   method: 'GET' | 'PUT' | 'HEAD' | 'DELETE',
-  key: string,
+  url: URL,
   body: Buffer | null,
-  extraHeaders: Record<string, string> = {},
+  extra: Record<string, string> = {},
 ): Promise<Response> {
-  const url = buildUrl(cfg, key);
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-
-  const payloadBuf = body ?? Buffer.alloc(0);
-  const payloadHash = sha256Hex(payloadBuf);
-
-  const baseHeaders: Record<string, string> = {
-    host: url.host,
-    'x-amz-content-sha256': payloadHash,
-    'x-amz-date': amzDate,
-    ...extraHeaders,
-  };
-
-  const sortedKeys = Object.keys(baseHeaders)
-    .map((k) => k.toLowerCase())
-    .sort();
-  const canonicalHeaders = sortedKeys
-    .map((k) => {
-      const orig = Object.keys(baseHeaders).find((h) => h.toLowerCase() === k)!;
-      return `${k}:${String(baseHeaders[orig]).trim().replace(/\s+/g, ' ')}\n`;
-    })
-    .join('');
-  const signedHeaders = sortedKeys.join(';');
-
-  const canonicalRequest = [
-    method,
-    url.pathname,
-    '', // query
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n');
-
-  const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    sha256Hex(canonicalRequest),
-  ].join('\n');
-
-  const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
-  const signature = hex(hmac(kSigning, stringToSign));
-
-  const authHeader =
-    `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
-    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  // Bun's fetch accepts a Blob / ArrayBuffer cleanly; coerce Buffer through
-  // its underlying bytes to keep TS happy across all overloads.
-  const fetchBody =
-    method === 'PUT' && body ? new Blob([new Uint8Array(body).buffer as ArrayBuffer]) : undefined;
-  return fetch(url.toString(), {
-    method,
-    headers: { ...baseHeaders, Authorization: authHeader },
-    body: fetchBody,
-  });
+  return signedFetchRaw(method, url, body, cfg.accessKey, cfg.secretKey, cfg.region, extra);
 }
 
 // ---------------- Public API ----------------
-
-class ObjectStorageError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-  ) {
-    super(message);
-  }
-}
-
-function requireConfig(): Config {
-  const cfg = readConfig();
-  if (!cfg) {
-    throw new ObjectStorageError('object storage is not configured (set OO_OBJECT_STORAGE_*)', 500);
-  }
-  return cfg;
-}
 
 export async function putObject(
   key: string,
@@ -206,7 +129,7 @@ export async function putObject(
 ): Promise<string> {
   const cfg = requireConfig();
   const buf = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
-  const res = await signedFetch(cfg, 'PUT', key, buf, {
+  const res = await sign(cfg, 'PUT', buildUrl(cfg, key), buf, {
     'content-type': contentType,
     'content-length': String(buf.length),
   });
@@ -222,7 +145,7 @@ export async function putObject(
 
 export async function getObject(key: string): Promise<string> {
   const cfg = requireConfig();
-  const res = await signedFetch(cfg, 'GET', key, null);
+  const res = await sign(cfg, 'GET', buildUrl(cfg, key), null);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ObjectStorageError(
@@ -240,7 +163,7 @@ export async function getObject(key: string): Promise<string> {
  */
 export async function getObjectResponse(key: string): Promise<Response> {
   const cfg = requireConfig();
-  const res = await signedFetch(cfg, 'GET', key, null);
+  const res = await sign(cfg, 'GET', buildUrl(cfg, key), null);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ObjectStorageError(
@@ -254,54 +177,16 @@ export async function getObjectResponse(key: string): Promise<Response> {
 /**
  * Idempotently create the configured bucket. Safe to call on every boot:
  * a 409 BucketAlreadyOwnedByYou (or 200 from re-create) is treated as success.
- * Some implementations return 409 on second create, others 200; both are OK.
  */
 export async function ensureBucket(): Promise<void> {
   const cfg = requireConfig();
-  // Issue a bucket-level PUT to the endpoint root + bucket name.
-  const ep = new URL(cfg.endpoint);
-  ep.pathname = `/${cfg.bucket}`;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
-  const dateStamp = amzDate.slice(0, 8);
-  const payloadHash = sha256Hex('');
-  const headers: Record<string, string> = {
-    host: ep.host,
-    'x-amz-content-sha256': payloadHash,
-    'x-amz-date': amzDate,
-  };
-  const sorted = Object.keys(headers).sort();
-  const canonicalHeaders = sorted.map((k) => `${k}:${headers[k]}\n`).join('');
-  const signedHeaders = sorted.join(';');
-  const canonicalRequest = [
-    'PUT',
-    ep.pathname,
-    '',
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n');
-  const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
-  const stringToSign = [
-    'AWS4-HMAC-SHA256',
-    amzDate,
-    credentialScope,
-    sha256Hex(canonicalRequest),
-  ].join('\n');
-  const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
-  const signature = hex(hmac(kSigning, stringToSign));
-  const authHeader =
-    `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
-    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-  const res = await fetch(ep.toString(), {
-    method: 'PUT',
-    headers: { ...headers, Authorization: authHeader },
-  });
+  const url = new URL(cfg.endpoint);
+  url.pathname = `/${cfg.bucket}`;
+  const res = await sign(cfg, 'PUT', url, null);
   if (res.status === 200 || res.status === 409) {
     logger.info(`object storage: bucket '${cfg.bucket}' ready (HTTP ${res.status})`);
     return;
   }
-  // RustFS may return 200 with a BucketAlreadyOwnedByYou body — treat as ready.
   const text = await res.text().catch(() => '');
   if (text.includes('BucketAlreadyOwnedByYou') || text.includes('BucketAlreadyExists')) {
     logger.info(`object storage: bucket '${cfg.bucket}' already exists`);
@@ -373,7 +258,7 @@ export async function moveObject(oldKey: string, newKey: string): Promise<void> 
 /** Best-effort DELETE — used by the boot-time migration and the QA delete path. */
 export async function deleteObject(key: string): Promise<void> {
   const cfg = requireConfig();
-  const res = await signedFetch(cfg, 'DELETE', key, null);
+  const res = await sign(cfg, 'DELETE', buildUrl(cfg, key), null);
   if (!res.ok && res.status !== 404) {
     const text = await res.text().catch(() => '');
     throw new ObjectStorageError(
@@ -397,44 +282,14 @@ export async function listObjects(prefix: string): Promise<string[]> {
     url.searchParams.set('list-type', '2');
     url.searchParams.set('prefix', prefix);
     if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-
-    const now = new Date();
-    const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
-    const dateStamp = amzDate.slice(0, 8);
-    const payloadHash = sha256Hex('');
-    const headers: Record<string, string> = {
-      host: url.host,
-      'x-amz-content-sha256': payloadHash,
-      'x-amz-date': amzDate,
-    };
-    const sorted = Object.keys(headers).sort();
-    const canonicalHeaders = sorted.map((k) => `${k}:${headers[k]}\n`).join('');
-    const signedHeaders = sorted.join(';');
-    const qs = [...url.searchParams.entries()]
+    // searchParams serializes in insertion order; S3 requires canonical (sorted) query string
+    const sorted = new URL(url.toString());
+    sorted.search = [...url.searchParams.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
-    const canonicalRequest = [
-      'GET',
-      url.pathname,
-      qs,
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join('\n');
-    const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
-    const stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      sha256Hex(canonicalRequest),
-    ].join('\n');
-    const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
-    const signature = hex(hmac(kSigning, stringToSign));
-    const authHeader =
-      `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
-      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-    const res = await fetch(url.toString(), { headers: { ...headers, Authorization: authHeader } });
+
+    const res = await sign(cfg, 'GET', sorted, null);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new ObjectStorageError(
@@ -468,44 +323,13 @@ export async function listObjectsWithSize(
     url.searchParams.set('list-type', '2');
     url.searchParams.set('prefix', prefix);
     if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-
-    const now = new Date();
-    const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
-    const dateStamp = amzDate.slice(0, 8);
-    const payloadHash = sha256Hex('');
-    const headers: Record<string, string> = {
-      host: url.host,
-      'x-amz-content-sha256': payloadHash,
-      'x-amz-date': amzDate,
-    };
-    const sorted = Object.keys(headers).sort();
-    const canonicalHeaders = sorted.map((k) => `${k}:${headers[k]}\n`).join('');
-    const signedHeaders = sorted.join(';');
-    const qs = [...url.searchParams.entries()]
+    const sorted = new URL(url.toString());
+    sorted.search = [...url.searchParams.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
-    const canonicalRequest = [
-      'GET',
-      url.pathname,
-      qs,
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join('\n');
-    const credentialScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
-    const stringToSign = [
-      'AWS4-HMAC-SHA256',
-      amzDate,
-      credentialScope,
-      sha256Hex(canonicalRequest),
-    ].join('\n');
-    const kSigning = signingKey(cfg.secretKey, dateStamp, cfg.region, 's3');
-    const signature = hex(hmac(kSigning, stringToSign));
-    const authHeader =
-      `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credentialScope}, ` +
-      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-    const res = await fetch(url.toString(), { headers: { ...headers, Authorization: authHeader } });
+
+    const res = await sign(cfg, 'GET', sorted, null);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new ObjectStorageError(
