@@ -1,6 +1,6 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
-import { qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
+import { monitorRegions, qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
 import {
   deleteObject,
@@ -187,6 +187,66 @@ export const qaProjectRepo = {
     regionId: number | null = null,
   ) {
     return db.insert(qaTestExecutions).values({ testId, projectId, status, regionId }).returning();
+  },
+
+  /**
+   * True iff the given QA project has a `monitor_regions` row pinning it
+   * to `regionId`. Used by the agent-side `POST /api/agent/qa/executions`
+   * to reject create requests for projects not bound to the caller's region.
+   */
+  async isProjectBoundToRegion(projectId: number, regionId: number): Promise<boolean> {
+    const rows = await db
+      .select({ id: monitorRegions.regionId })
+      .from(monitorRegions)
+      .where(
+        and(
+          eq(monitorRegions.monitorType, 'qa'),
+          eq(monitorRegions.monitorId, projectId),
+          eq(monitorRegions.regionId, regionId),
+        ),
+      )
+      .limit(1);
+    return rows.length === 1;
+  },
+
+  /**
+   * Look up the (testId, projectId) pairs for the given test IDs, scoped
+   * to a single project. Used by the agent create-executions endpoint to
+   * validate the request before issuing INSERTs.
+   */
+  async findTestsByIds(projectId: number, testIds: number[]) {
+    if (testIds.length === 0) return [];
+    return db
+      .select({ id: qaGeneratedTests.id })
+      .from(qaGeneratedTests)
+      .where(and(eq(qaGeneratedTests.projectId, projectId), inArray(qaGeneratedTests.id, testIds)));
+  },
+
+  /**
+   * Look up `(id, projectId)` for a single exec row. Used by the agent
+   * artifact-upload endpoint to verify the execution belongs to a project
+   * bound to the caller's region before streaming to RustFS.
+   */
+  async findExecutionById(executionId: number) {
+    const rows = await db
+      .select({
+        id: qaTestExecutions.id,
+        projectId: qaTestExecutions.projectId,
+        regionId: qaTestExecutions.regionId,
+      })
+      .from(qaTestExecutions)
+      .where(eq(qaTestExecutions.id, executionId))
+      .limit(1);
+    return rows[0] ?? null;
+  },
+
+  async findProjectNameById(projectId: number): Promise<string | null> {
+    const rows = await db
+      .select({ name: qaProjects.name })
+      .from(qaProjects)
+      .where(eq(qaProjects.id, projectId))
+      .limit(1);
+    return rows[0]?.name ?? null;
   },
 
   updateExecution(id: number, data: Partial<typeof qaTestExecutions.$inferInsert>) {

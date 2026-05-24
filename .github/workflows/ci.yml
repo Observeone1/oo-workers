@@ -1,7 +1,8 @@
 name: CI
 
-# Verification only. Docker publish lives in cd.yml and triggers on
-# version-tag pushes — the tag is a separate manual gate after CI is green.
+# Static checks only (typecheck, format, lint, knip).
+# Integration suite runs locally via `bun run test:integration`.
+# Docker publish lives in cd.yml and triggers on version-tag pushes.
 
 on:
   push:
@@ -50,66 +51,3 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run knip
-
-  integration:
-    # Runs on push to main and manual dispatch. Skipped on PR builds
-    # — fast feedback loop. Trigger manually from the Actions tab
-    # before merging anything risky.
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: oo
-          POSTGRES_PASSWORD: oo
-          POSTGRES_DB: oo_workers
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd="pg_isready -U oo -d oo_workers"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-      redis:
-        image: redis:8-alpine
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-
-    env:
-      DATABASE_URL: postgres://oo:oo@localhost:5432/oo_workers
-      REDIS_URL: redis://localhost:6379
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run migrations
-        run: bun src/db/migrate.ts
-
-      - name: Start worker (background)
-        run: bun src/index.ts &
-        env:
-          LOG_LEVEL: info
-
-      - name: Wait for worker to be ready
-        run: sleep 3
-
-      - name: Smoke test
-        run: bun scripts/smoke.ts
-
-      - name: Scheduler test
-        run: bun scripts/scheduler-test.ts
-
-      - name: Load test
-        run: bun scripts/load.ts

@@ -23,10 +23,18 @@ import { dbProbe, type DbProtocol } from './services/db-probe.ts';
 import { tlsProbe } from './services/tls-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
+import { executePlaywrightTest } from './services/playwright.service.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
 import { logger } from './utils/logger.ts';
 import { packageVersion } from './utils/version.ts';
 import type { AgentResultBody } from './services/agent-dispatch.ts';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+
+const execAsync = promisify(exec);
 
 export interface AgentConfig {
   masterUrl: string;
@@ -53,7 +61,7 @@ function masterFetchInit(cfg: AgentConfig, init: RequestInit): RequestInit {
   };
 }
 
-interface JobPayload {
+export interface JobPayload {
   jobId: string;
   type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
   executionId: number;
@@ -81,6 +89,12 @@ interface JobPayload {
     timeoutMs: number;
   };
   assertions?: unknown[];
+  // qa-specific (only set when type === 'qa')
+  projectId?: number;
+  targetUrl?: string;
+  credentials?: Record<string, string>;
+  config?: Record<string, unknown>;
+  tests?: { id: number; name: string; script: string }[];
 }
 
 // Exported for scripts/agent-tls-test.ts — the OO_AGENT_TLS_INSECURE
@@ -348,17 +362,245 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
     case 'tls':
       return probeTls(job);
     case 'qa':
-      return {
-        type: 'qa',
-        executionId: job.executionId,
-        status: 'ERROR',
-        errorMessage:
-          "QA (browser) monitors are not yet supported on agents. To run them from master only, delete the matching row from monitor_regions where monitor_type='qa'.",
-      };
+      throw new Error('runProbe(qa) is not callable — QA jobs go through handleQaJob');
     default: {
       const _exhaustive: never = job.type;
       throw new Error(`unhandled monitor type: ${_exhaustive}`);
     }
+  }
+}
+
+// ---- QA (browser) jobs — local Playwright + master-mediated artifact upload ----
+
+// One-time Playwright availability check. Light image returns false here;
+// QA image returns true. Cached on first call. OO_AGENT_FORCE_LIGHT=1
+// forces the rejection branch — used by the integration test, doubles as
+// an operator escape hatch to disable QA on a known-capable agent without
+// rebuilding the image.
+let _playwrightDetected: boolean | null = null;
+async function isPlaywrightAvailable(): Promise<boolean> {
+  if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
+  if (_playwrightDetected !== null) return _playwrightDetected;
+  try {
+    await execAsync('npx playwright --version', { timeout: 5000 });
+    _playwrightDetected = true;
+  } catch {
+    _playwrightDetected = false;
+  }
+  return _playwrightDetected;
+}
+
+async function createQaExecutions(
+  cfg: AgentConfig,
+  projectId: number,
+  testIds: number[],
+): Promise<Map<number, number>> {
+  const res = await fetch(
+    `${cfg.masterUrl}/api/agent/qa/executions`,
+    masterFetchInit(cfg, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.agentKey}`,
+        'content-type': 'application/json',
+        Connection: 'close',
+        'X-Agent-Version': packageVersion(),
+      },
+      body: JSON.stringify({ projectId, testIds }),
+      signal: AbortSignal.timeout(15_000),
+    }),
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`master returned ${res.status} on /api/agent/qa/executions: ${text}`);
+  }
+  const data = (await res.json()) as { executions: { testId: number; executionId: number }[] };
+  return new Map(data.executions.map((e) => [e.testId, e.executionId]));
+}
+
+async function uploadArtifact(
+  cfg: AgentConfig,
+  executionId: number,
+  kind: string,
+  filePath: string,
+  size: number,
+  contentType: string,
+): Promise<string | null> {
+  // One retry with short backoff. Two consecutive failures → drop the artifact,
+  // result is still posted (traceUrl null).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const file = Bun.file(filePath);
+      const stream = file.stream();
+      const res = await fetch(
+        `${cfg.masterUrl}/api/agent/qa/artifacts/${executionId}/${kind}`,
+        masterFetchInit(cfg, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${cfg.agentKey}`,
+            'content-type': contentType,
+            'content-length': String(size),
+            Connection: 'close',
+            'X-Agent-Version': packageVersion(),
+          },
+          body: stream,
+          // @ts-expect-error duplex required by WHATWG fetch spec for streaming bodies
+          duplex: 'half',
+          signal: AbortSignal.timeout(120_000),
+        }),
+      );
+      if (res.ok) {
+        const { key } = (await res.json()) as { key: string };
+        return key;
+      }
+      const text = await res.text().catch(() => '');
+      logger.warn(
+        `qa artifact upload attempt ${attempt + 1} got ${res.status}: ${text.slice(0, 200)}`,
+      );
+    } catch (err) {
+      logger.warn(
+        `qa artifact upload attempt ${attempt + 1} threw: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
+
+export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
+  const tests = job.tests ?? [];
+  const projectId = job.projectId;
+  if (!projectId || tests.length === 0) {
+    logger.warn(`qa job ${job.jobId} missing projectId or tests; skipping`);
+    return;
+  }
+
+  if (!(await isPlaywrightAvailable())) {
+    // Light image — surface the misconfiguration as a single FAILED test
+    // so it shows in the dashboard with a clear message. The operator
+    // redeploys with `observeone/oo-agent:qa` and the next tick succeeds.
+    const firstTest = tests[0]!;
+    let execMap: Map<number, number>;
+    try {
+      execMap = await createQaExecutions(cfg, projectId, [firstTest.id]);
+    } catch (err) {
+      logger.error(
+        `qa job ${job.jobId} (light image): create-executions failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
+    const executionId = execMap.get(firstTest.id);
+    if (!executionId) return;
+    await postResult(cfg, {
+      type: 'qa',
+      executionId,
+      status: 'ERROR',
+      errorMessage:
+        'This agent is the light variant — redeploy with `observeone/oo-agent:qa` to handle QA jobs.',
+    });
+    logger.error(
+      `qa job ${job.jobId}: light image cannot run Playwright; reported ERROR on test ${firstTest.id}`,
+    );
+    return;
+  }
+
+  // QA image — create per-test exec rows, run, upload artifacts, post results.
+  let execMap: Map<number, number>;
+  try {
+    execMap = await createQaExecutions(
+      cfg,
+      projectId,
+      tests.map((t) => t.id),
+    );
+  } catch (err) {
+    logger.error(
+      `qa job ${job.jobId}: create-executions failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return;
+  }
+
+  // Per-run dir inside the repo's tests/ tree so playwright.config.ts's
+  // `testDir: './tests'` + `screenshot: 'only-on-failure'` apply. Mirrors
+  // master's qa-project.processor.ts. Each run gets a unique subdir so
+  // multiple concurrent agent jobs don't collide.
+  const runDir = path.resolve(
+    import.meta.dir,
+    '..',
+    'tests',
+    `agent-qa-${projectId}-${Date.now()}`,
+  );
+  await fs.mkdir(runDir, { recursive: true });
+
+  try {
+    await Promise.all(
+      tests.map(async (test) => {
+        const executionId = execMap.get(test.id);
+        if (!executionId) {
+          logger.warn(`qa job ${job.jobId}: no exec id for test ${test.id}; skipping`);
+          return;
+        }
+        const safeName = test.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const scriptPath = path.join(runDir, `${safeName}.spec.ts`);
+        const outputDir = path.join(runDir, `out-${test.id}`);
+        await fs.writeFile(scriptPath, test.script);
+
+        const result = await executePlaywrightTest(
+          scriptPath,
+          job.targetUrl ?? '',
+          job.credentials,
+          {
+            outputDir,
+          },
+        );
+
+        let traceUrl: string | null = null;
+        const screenshotUrls: string[] = [];
+        if (!result.success) {
+          let screenshotIdx = 0;
+          for (const art of result.artifacts) {
+            try {
+              const stat = await fs.stat(art.path);
+              const kind = art.name === 'trace' ? 'trace' : `screenshot-${++screenshotIdx}`;
+              const key = await uploadArtifact(
+                cfg,
+                executionId,
+                kind,
+                art.path,
+                stat.size,
+                art.contentType,
+              );
+              if (key) {
+                if (art.name === 'trace') traceUrl = key;
+                else screenshotUrls.push(key);
+              }
+            } catch (err) {
+              logger.warn(
+                `qa artifact stat/upload failed for exec ${executionId}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          }
+        }
+
+        await postResult(cfg, {
+          type: 'qa',
+          executionId,
+          status: result.success ? 'SUCCESS' : 'FAILED',
+          latencyMs: result.duration_ms,
+          errorMessage: result.error ?? null,
+          traceUrl,
+          screenshotUrls: screenshotUrls.length > 0 ? screenshotUrls : null,
+        });
+      }),
+    );
+  } finally {
+    await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -407,6 +649,14 @@ export async function runAgent(cfg: AgentConfig): Promise<void> {
       backoffMs = 1000;
       if (!job) continue;
       logger.info(`agent picked up exec=${job.executionId} type=${job.type} (jobId=${job.jobId})`);
+      if (job.type === 'qa') {
+        // QA jobs spawn N per-test execs + N per-test result posts; handleQaJob
+        // creates the rows, runs Playwright, uploads artifacts, and posts each
+        // result inline. No single "result" to log here.
+        await handleQaJob(cfg, job);
+        logger.info(`agent finished qa job=${job.jobId} (${job.tests?.length ?? 0} tests)`);
+        continue;
+      }
       const result = await runProbe(job);
       await postResult(cfg, result);
       logger.info(

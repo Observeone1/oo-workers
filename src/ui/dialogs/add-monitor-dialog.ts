@@ -114,8 +114,6 @@ export function initAddDialog(): void {
       tile.classList.add('active');
       activeAddType = (tile.dataset.type ?? 'url') as MonType;
       syncFields(activeAddType);
-      // QA-guard: hide the regions picker for type=qa (browser checks
-      // run on master only, never on regional agents).
       syncRegionsRow();
     });
   });
@@ -371,14 +369,12 @@ async function refreshRegionsPicker(): Promise<void> {
   syncRegionsRow();
 }
 
-// QA/browser checks run on the master only — binding one to a region just
-// yields ERROR exec rows. Hide the "Run from" picker for type=qa so it
-// can't be set in the first place (also hidden when there are no regions).
+// Heartbeats hide regions — they run nowhere (the SERVICE pings us).
+// QA used to hide the picker too, but agents can now run browser checks
+// (PRs #74/#75 + the playwright-baked agent image).
 function syncRegionsRow(): void {
   const row = document.getElementById('regions-row') as HTMLElement;
-  // Heartbeats also hide regions — they run nowhere (the SERVICE pings us).
-  row.hidden =
-    cachedRegions.length === 0 || activeAddType === 'qa' || activeAddType === 'heartbeat';
+  row.hidden = cachedRegions.length === 0 || activeAddType === 'heartbeat';
 }
 
 function collectSelectedRegionIds(): number[] {

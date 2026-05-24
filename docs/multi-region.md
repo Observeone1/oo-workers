@@ -117,6 +117,49 @@ curl -X PUT https://master.example.com/api/monitors/url/42/regions \
 
 Browser (Playwright) monitors need a heavy Chromium runtime; we haven't yet shipped that on agents. If you bind a QA monitor to a region, the agent will report each run as `ERROR` with a clear message. To run it on master only, delete the matching row from `monitor_regions` (or uncheck the region in the dialog).
 
+## Verifying QA-on-agents end-to-end
+
+Two operator-facing smoke flows for the QA-on-agents path. Run once when first enabling it, and during release smoke.
+
+### Real Docker agent + UI flow
+
+1. Boot the dev stack: `bash scripts/dev/start.sh`. Master at `http://localhost:3010`.
+2. Bootstrap the admin account in the UI. Open **Regions**, create a region (slug `local`, label "Local"). Copy the cleartext agent key shown in the reveal panel.
+3. In a separate terminal, run an agent container against the local master:
+
+   ```bash
+   docker run --rm \
+     -e OO_WORKER_ROLE=agent \
+     -e OO_MASTER_URL=http://host.docker.internal:3010 \
+     -e OO_AGENT_KEY=oo_<paste-cleartext-here> \
+     -e OO_REGION_SLUG=local \
+     observeone/oo-workers:latest
+   ```
+
+4. In the UI: **+ Add monitor → Browser**. Name it `smoke-qa-agent`, target URL `https://example.com`, paste a failing script:
+
+   ```ts
+   await page.goto(targetUrl);
+   await page.locator('#does-not-exist').click({ timeout: 2000 });
+   ```
+
+5. In the **Run from** section, check the `local` region box. Create.
+6. Within ~5 s (next scheduler tick), the agent log shows `agent picked up exec=0 type=qa` then `agent finished qa job=...`. The monitor detail page shows a FAILED execution with the region pill, a "trace" link, and screenshot thumbnails.
+7. Click the trace link → a non-empty `trace.zip` downloads through the master's `/api/artifacts` proxy.
+
+### Upload-failure degradation smoke
+
+Proves the agent's retry-once-then-drop pattern is real, not just code. With the setup from above:
+
+1. Stop RustFS mid-tick: `docker stop oo-rustfs`.
+2. Wait for the next QA tick (~the monitor's `intervalSeconds`).
+3. The agent log shows `qa artifact upload attempt 1 got 502`, then `qa artifact upload attempt 2 got 502` after the backoff, then a FAILED result is posted with `trace_url: null`. The monitor detail page renders the FAILED row with no trace link.
+4. Restart RustFS: `docker start oo-rustfs`. The next tick recovers — trace + screenshots appear again.
+
+### Forcing the light-image rejection path (for testing only)
+
+Set `OO_AGENT_FORCE_LIGHT=1` on an agent that has Playwright installed. The agent reports any dispatched QA job as a single ERROR result with the message _"This agent is the light variant — redeploy with `observeone/oo-agent:qa` to handle QA jobs."_ Useful for verifying the error surfaces correctly in the UI before shipping a real light image, or for deliberately routing QA off a known-capable agent without rebuilding.
+
 ## Multiple agents per region
 
 Running more than one agent for the same region is safe. Redis `BRPOP` guarantees only one agent receives each job, and master's result write is idempotent on `executionId`. You get parallel probe throughput for free.

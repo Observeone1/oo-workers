@@ -70,6 +70,9 @@ export interface AgentResultBody {
   daysRemaining?: number | null;
   validTo?: string | null;
   certSummary?: string | null;
+  // qa-specific (agent-uploaded via /api/agent/qa/artifacts; only present on failure)
+  traceUrl?: string | null;
+  screenshotUrls?: string[] | null;
 }
 
 export interface WriteResultOutcome {
@@ -239,9 +242,10 @@ export async function writeAgentResult(
       return { updated: true };
     }
     case 'qa': {
-      // QA project runs create exec rows per-test inside the processor; the
-      // agent reports per-test results identified by executionId (the
-      // qa_test_executions row id).
+      // QA project runs create exec rows per-test inside the processor (master-run)
+      // or via POST /api/agent/qa/executions (agent-run); the agent reports
+      // per-test results identified by executionId (the qa_test_executions row id).
+      // traceUrl + screenshotUrls are agent-uploaded artifact keys; null on pass.
       const rows = await db
         .update(qaTestExecutions)
         .set({
@@ -249,6 +253,8 @@ export async function writeAgentResult(
           durationMs: body.latencyMs ?? null,
           errorMessage: errorMessage ?? null,
           completedAt: endTime,
+          traceUrl: body.traceUrl ?? null,
+          screenshotUrls: body.screenshotUrls ?? null,
         })
         .where(
           and(eq(qaTestExecutions.id, executionId), eq(qaTestExecutions.regionId, agentRegionId)),

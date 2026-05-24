@@ -5,19 +5,19 @@
 
 import { createHash, createHmac } from 'node:crypto';
 
-export function hex(buf: Buffer): string {
+function hex(buf: Buffer): string {
   return buf.toString('hex');
 }
 
-export function sha256Hex(data: string | Buffer): string {
+function sha256Hex(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-export function hmac(key: string | Buffer, data: string): Buffer {
+function hmac(key: string | Buffer, data: string): Buffer {
   return createHmac('sha256', key).update(data).digest();
 }
 
-export function signingKey(secret: string, date: string, region: string, service: string): Buffer {
+function signingKey(secret: string, date: string, region: string, service: string): Buffer {
   const kDate = hmac('AWS4' + secret, date);
   const kRegion = hmac(kDate, region);
   const kService = hmac(kRegion, service);
@@ -26,24 +26,28 @@ export function signingKey(secret: string, date: string, region: string, service
 
 /**
  * Sign + execute any S3 request given a pre-built URL.
- * Callers that need query-string support (ListObjectsV2, bucket PUT)
- * build the URL themselves; signedFetch (key-based) does the same.
+ * - `body: Buffer | null` → standard signed PUT/GET/DELETE.
+ * - `body: ReadableStream` → streaming PUT with UNSIGNED-PAYLOAD content-sha,
+ *   so we don't buffer the whole body to compute its hash. Required for the
+ *   agent→master→RustFS artifact proxy where bodies can be 50+ MB.
  */
 export async function signedFetchRaw(
   method: 'GET' | 'PUT' | 'HEAD' | 'DELETE',
   url: URL,
-  body: Buffer | null,
+  body: Buffer | ReadableStream<Uint8Array> | null,
   accessKey: string,
   secretKey: string,
   region: string,
   extraHeaders: Record<string, string> = {},
 ): Promise<Response> {
+  const isStream = body !== null && typeof (body as ReadableStream).getReader === 'function';
   const now = new Date();
   const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
 
-  const payloadBuf = body ?? Buffer.alloc(0);
-  const payloadHash = sha256Hex(payloadBuf);
+  const payloadHash = isStream
+    ? 'UNSIGNED-PAYLOAD'
+    : sha256Hex((body as Buffer | null) ?? Buffer.alloc(0));
 
   const baseHeaders: Record<string, string> = {
     host: url.host,
@@ -92,12 +96,28 @@ export async function signedFetchRaw(
     `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  const fetchBody =
-    method === 'PUT' && body ? new Blob([new Uint8Array(body).buffer as ArrayBuffer]) : undefined;
+  if (method !== 'PUT' || body === null) {
+    return fetch(url.toString(), {
+      method,
+      headers: { ...baseHeaders, Authorization: authHeader },
+    });
+  }
 
+  if (isStream) {
+    // Bun's fetch requires duplex:'half' to accept a ReadableStream body.
+    return fetch(url.toString(), {
+      method,
+      headers: { ...baseHeaders, Authorization: authHeader },
+      body: body as ReadableStream<Uint8Array>,
+      // @ts-expect-error — duplex is in the WHATWG fetch spec but not in lib.dom.d.ts yet
+      duplex: 'half',
+    });
+  }
+
+  const buf = body as Buffer;
   return fetch(url.toString(), {
     method,
     headers: { ...baseHeaders, Authorization: authHeader },
-    body: fetchBody,
+    body: new Blob([new Uint8Array(buf).buffer as ArrayBuffer]),
   });
 }
