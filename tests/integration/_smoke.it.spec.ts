@@ -124,7 +124,6 @@ describe('url-monitor worker round-trip', () => {
 
     await sql.end();
 
-    expect(finalStatus).not.toBeNull();
-    expect(finalStatus).not.toBe('PENDING');
+    expect(finalStatus).toBe('SUCCESS');
   }, 35_000);
 });
