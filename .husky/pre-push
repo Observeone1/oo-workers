@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Fast pre-push gate: typecheck + lint only (~10s).
-# The full integration suite runs in CI on push to main (.github/workflows/ci.yml).
-# To run the integration suite locally, use `bun run test:integration` directly.
+# To run the integration suite locally: `bun run test:integration`.
 set -e
 
 bunx tsc --noEmit

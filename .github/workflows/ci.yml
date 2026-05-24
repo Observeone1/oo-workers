@@ -1,7 +1,8 @@
 name: CI
 
-# Verification only. Docker publish lives in cd.yml and triggers on
-# version-tag pushes — the tag is a separate manual gate after CI is green.
+# Static checks only (typecheck, format, lint, knip).
+# Integration suite runs locally via `bun run test:integration`.
+# Docker publish lives in cd.yml and triggers on version-tag pushes.
 
 on:
   push:
@@ -50,68 +51,3 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run knip
-
-  integration:
-    # Full integration suite on every PR + push to main. Pre-push hook is
-    # intentionally lightweight (typecheck + lint only) — this is the
-    # full coverage gate.
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_USER: oo
-          POSTGRES_PASSWORD: oo
-          POSTGRES_DB: oo_workers
-        ports: ['5442:5432']
-        options: >-
-          --health-cmd="pg_isready -U oo -d oo_workers"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-      redis:
-        image: redis:8-alpine
-        ports: ['6479:6379']
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-      rustfs:
-        image: rustfs/rustfs:latest
-        env:
-          RUSTFS_VOLUMES: /data
-          RUSTFS_ADDRESS: 0.0.0.0:9000
-          RUSTFS_ACCESS_KEY: oo-workers-access
-          RUSTFS_SECRET_KEY: oo-workers-secret-change-me
-        ports: ['9000:9000']
-
-    env:
-      # Match what scripts/run-integration.sh expects via its env-fallback
-      # defaults (POSTGRES_PORT=5442, REDIS_PORT=6479).
-      POSTGRES_USER: oo
-      POSTGRES_PASSWORD: oo
-      POSTGRES_DB: oo_workers
-      POSTGRES_PORT: '5442'
-      REDIS_PORT: '6479'
-      DATABASE_URL: postgres://oo:oo@localhost:5442/oo_workers
-      REDIS_URL: redis://localhost:6479
-      OO_OBJECT_STORAGE_ENDPOINT: http://localhost:9000
-      OO_OBJECT_STORAGE_REGION: us-east-1
-      OO_OBJECT_STORAGE_BUCKET: oo-workers
-      OO_OBJECT_STORAGE_ACCESS_KEY: oo-workers-access
-      OO_OBJECT_STORAGE_SECRET_KEY: oo-workers-secret-change-me
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run full integration suite (scripts/run-integration.sh)
-        run: bun run test:integration
