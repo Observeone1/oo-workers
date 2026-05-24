@@ -59,6 +59,21 @@ export function extractKey(c: Context): string | null {
 }
 
 /**
+ * Remove a specific key from the validated-key cache by its DB id.
+ * Call this immediately after revoking a key so the next request with
+ * that key hits the DB and gets a 401 instead of sailing through on the
+ * stale cache entry.
+ */
+export function evictFromKeyCache(keyId: number): void {
+  for (const [hash, entry] of VALIDATE_KEY_CACHE.entries()) {
+    if (entry.row.id === keyId) {
+      VALIDATE_KEY_CACHE.delete(hash);
+      break;
+    }
+  }
+}
+
+/**
  * Validate a cleartext key against the DB. Returns the matching active
  * row or null. Used by both the auth middleware and the login endpoint.
  *

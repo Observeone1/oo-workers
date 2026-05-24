@@ -12,11 +12,16 @@ import {
 // and revoking it must take effect immediately. The keyed request context
 // carries NO session cookie, so a post-revoke 401 can't be masked by the
 // session fallback in requireAuth.
+//
+// v2 (post-settings split): API keys live under Settings → API keys,
+// reached via the header gear button. Create flow uses a slideover, not
+// an inline form.
 
 test('create a key in the UI, use it, revoke it, and confirm it 401s', async ({
   browser,
   request,
 }) => {
+  test.setTimeout(90_000);
   const ok = await ensureSessionAccount(request);
   test.skip(
     !ok,
@@ -26,22 +31,27 @@ test('create a key in the UI, use it, revoke it, and confirm it 401s', async ({
   const ctx = await browser.newContext({ extraHTTPHeaders: {} });
   const page = await ctx.newPage();
 
-  // Sign in (cookie session), then open the Keys page.
+  // Sign in (cookie session), then navigate to Settings → API keys.
   await page.goto('/');
   await page.getByTestId('login-card').locator('input[name="email"]').fill(E2E_USER.email);
   await page.getByTestId('login-card').locator('input[name="password"]').fill(E2E_USER.password);
   await page.getByTestId('login-submit').click();
   await waitForList(page);
 
-  await page.locator('#keys-link').click();
-  await expect(page.locator('#key-create-form')).toBeVisible();
+  await page.goto('/#/settings');
+  await page.getByTestId('settings-tab-keys').click();
+  await expect(page.getByTestId('keys-add-btn')).toBeVisible();
 
-  // Create a write key via the form (write scope checked by default).
+  // Create a write key via the slideover.
   const name = `e2e-key-${uniqueSuffix()}`;
-  await page.locator('#key-create-form input[name="name"]').fill(name);
-  await page.locator('#key-create-form button[type="submit"]').click();
+  await page.getByTestId('keys-add-btn').click();
+  await expect(page.getByTestId('slideover')).toBeVisible();
+  await page.getByTestId('keys-name-input').fill(name);
+  // Write scope is checked by default — leave it.
+  await page.getByTestId('slideover-primary').click();
 
-  const keyValue = page.locator('.one-time-key-value code');
+  // One-time reveal panel shows the freshly created cleartext key.
+  const keyValue = page.getByTestId('key-cleartext');
   await expect(keyValue).toBeVisible();
   const cleartext = (await keyValue.textContent())?.trim() ?? '';
   expect(cleartext.startsWith('oo_')).toBe(true);
@@ -66,13 +76,13 @@ test('create a key in the UI, use it, revoke it, and confirm it 401s', async ({
   expect(createRes.ok(), `fresh key write must succeed (got ${createRes.status()})`).toBe(true);
   const created = (await createRes.json()) as { id: number };
 
-  // Revoke via the UI, dismiss the one-time panel first.
-  await page.locator('#dismiss-key-btn').click();
-  const row = page.locator(`.region-row[data-name="${name}"]`);
-  await row.locator('.key-revoke').click();
-  await page.locator('#confirm-dialog .confirm-ok').click();
+  // Dismiss the one-time reveal, then revoke via the row action.
+  await page.getByTestId('keys-dismiss-btn').click();
+  const row = page.locator(`tr[data-name="${name}"]`);
+  await row.getByTestId('key-revoke-btn').click();
+  await page.getByTestId('confirm-ok').click();
   await expect(row).toHaveClass(/revoked/);
-  await expect(row.locator('.key-revoke')).toHaveCount(0);
+  await expect(row.getByTestId('key-revoke-btn')).toHaveCount(0);
 
   // Same key, same write — now rejected.
   const afterRevoke = await keyApi.post('/api/monitors/url', {

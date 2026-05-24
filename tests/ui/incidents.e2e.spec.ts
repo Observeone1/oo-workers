@@ -43,10 +43,14 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
   try {
     // --- Create the incident through the operator UI ---
     await page.goto('/#/incidents');
-    // v2: create form lives inside a slide-in panel; open it first.
+    // Select the target status page first (while panel is closed) so the
+    // re-render fires and wires the create-form submit handler before we
+    // open the panel. Selecting after opening triggers a re-render-skip
+    // (createPanelOpen=true) and leaves the form unwired.
+    await page.locator('#inc-page').selectOption(String(pageId));
+    // v2: create form lives inside a slide-in panel; open it after page select.
     await page.getByTestId('incidents-create-btn').click();
     await page.waitForSelector('#incident-create-form', { state: 'visible', timeout: 8000 });
-    await page.locator('#inc-page').selectOption(String(pageId));
     await page.locator('#incident-create-form input[name="title"]').fill(title);
     await page
       .locator('#incident-create-form select[name="severity"]')
@@ -55,7 +59,7 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
     await page
       .locator('#incident-create-form textarea[name="body"]')
       .fill(`We are **investigating**. ${XSS}`);
-    await page.locator('#incident-create-form button[type="submit"]').click();
+    await page.getByTestId('incident-create-submit').click();
 
     // Lands in the editor; capture the new id from the hash.
     await page.waitForFunction(() => /#\/incidents\/\d+$/.test(location.hash), { timeout: 8000 });
@@ -86,7 +90,7 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
     await page
       .locator('#incident-update-form textarea[name="body"]')
       .fill('Root cause fixed. Back to normal.');
-    await page.locator('#incident-update-form button[type="submit"]').click();
+    await page.getByTestId('incident-update-submit').click();
     await expect(page.getByTestId('banner-ok')).toContainText('resolved', { timeout: 8000 });
 
     // Resolved-within-24h still shows on the public page, now resolved.

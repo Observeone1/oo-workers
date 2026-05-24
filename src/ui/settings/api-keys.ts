@@ -23,7 +23,7 @@ export async function renderKeys(panel: HTMLElement): Promise<void> {
         <h3>API keys</h3>
         <p class="sub">Programmatic access to the oo-workers API.</p>
       </div>
-      <button class="btn primary" id="s-add-key">
+      <button class="btn primary" id="s-add-key" data-testid="keys-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         New key
       </button>
@@ -80,10 +80,10 @@ async function loadKeys(panel: HTMLElement): Promise<void> {
             Key '${esc(oneTimeKey.name)}' created. Copy it now.
           </h4>
           <p class="warning">This is the only time the key is shown. After you leave this page it's gone.</p>
-          <div class="key-box"><code>${esc(oneTimeKey.cleartextKey)}</code></div>
+          <div class="key-box"><code data-testid="key-cleartext">${esc(oneTimeKey.cleartextKey)}</code></div>
           <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
             <button class="btn" id="s-copy-key">Copy to clipboard</button>
-            <button class="btn primary" id="s-dismiss-key">I've copied it</button>
+            <button class="btn primary" id="s-dismiss-key" data-testid="keys-dismiss-btn">I've copied it</button>
           </div>
         </div>
       `;
@@ -140,7 +140,7 @@ function openNewKeySlide(panel: HTMLElement): void {
         <div class="sec-head"><span class="ttl">Identification</span></div>
         <div class="field">
           <label>Name</label>
-          <input id="so-key-name" placeholder="ci-deploy-bot" required />
+          <input id="so-key-name" data-testid="keys-name-input" placeholder="ci-deploy-bot" required />
           <div class="help">Used in the UI only.</div>
         </div>
       </div>
@@ -214,7 +214,7 @@ function renderKeyRow(k: KeyLite): string {
       </td>
       <td>${status}</td>
       <td class="col-actions">
-        ${revoked ? '' : `<button class="btn sm danger key-revoke" data-key-id="${k.id}">Revoke</button>`}
+        ${revoked ? '' : `<button class="btn sm danger key-revoke" data-key-id="${k.id}" data-testid="key-revoke-btn">Revoke</button>`}
       </td>
     </tr>
   `;

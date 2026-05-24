@@ -92,7 +92,7 @@ export async function renderList(): Promise<void> {
       </div>
 
       <!-- Create panel -->
-      <aside class="inc-create-panel" id="inc-create-panel" hidden>
+      <aside class="inc-create-panel" id="inc-create-panel" ${state.createPanelOpen ? '' : 'hidden'}>
         <div class="set-card" style="padding:20px 24px">
           <div class="set-section-head" style="margin-bottom:16px">
             <span class="h">New incident</span>
@@ -117,7 +117,7 @@ export async function renderList(): Promise<void> {
             </div>
             <p id="incident-create-error" class="banner err" hidden style="margin-top:8px"></p>
             <div style="display:flex;justify-content:flex-end;margin-top:12px">
-              <button type="submit" class="btn primary">Create incident</button>
+              <button type="submit" class="btn primary" data-testid="incident-create-submit">Create incident</button>
             </div>
           </form>
         </div>
@@ -127,10 +127,12 @@ export async function renderList(): Promise<void> {
 
   state.lastBanner = null;
 
-  // Page selector
+  // Page selector — skip full re-render when the create panel is open
+  // to avoid wiping in-progress form fields; submit handler reads
+  // state.selectedPageId directly so just updating state is enough.
   ($('#inc-page') as HTMLSelectElement).addEventListener('change', (e) => {
     state.selectedPageId = Number((e.target as HTMLSelectElement).value);
-    renderList();
+    if (!state.createPanelOpen) void renderList();
   });
 
   // Filter tabs
@@ -148,12 +150,16 @@ export async function renderList(): Promise<void> {
     renderList();
   });
 
-  // New incident button → toggle create panel
+  // New incident button → toggle create panel. State-backed so a
+  // re-render (page-select change, filter tab) doesn't clobber an
+  // open panel mid-typing.
   const createPanel = document.getElementById('inc-create-panel')!;
   document.getElementById('inc-create-btn')?.addEventListener('click', () => {
-    createPanel.hidden = !createPanel.hidden;
+    state.createPanelOpen = !state.createPanelOpen;
+    createPanel.hidden = !state.createPanelOpen;
   });
   document.getElementById('inc-create-close')?.addEventListener('click', () => {
+    state.createPanelOpen = false;
     createPanel.hidden = true;
   });
 
