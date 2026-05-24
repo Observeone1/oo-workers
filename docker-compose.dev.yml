@@ -1,0 +1,72 @@
+# Dev-only infra. Worker + UI run via bun --watch in tmux (scripts/dev/start.sh).
+# Mailpit and RustFS are intentionally absent from docker-compose.yml —
+# the prod self-host artifact must not bundle a mail catcher.
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: oo-workers-postgres
+    environment:
+      POSTGRES_USER: oo
+      POSTGRES_PASSWORD: oo
+      POSTGRES_DB: oo_workers
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - '5442:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U oo -d oo_workers']
+      interval: 3s
+      timeout: 2s
+      retries: 15
+
+  redis:
+    image: redis:8-alpine
+    container_name: oo-workers-redis
+    volumes:
+      - redis_data:/data
+    ports:
+      - '6479:6379'
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping']
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: oo-mailpit
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:8025/ || exit 1']
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: oo-rustfs
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_ACCESS_KEY: oo-workers-access
+      RUSTFS_SECRET_KEY: oo-workers-secret-change-me
+    volumes:
+      - rustfs_data:/data
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://127.0.0.1:9000/ || exit 0']
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
+  rustfs_data:
