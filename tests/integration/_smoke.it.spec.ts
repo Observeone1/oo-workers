@@ -1,11 +1,12 @@
 /**
  * Phase 0 harness smoke test.
  *
- * Two concerns:
+ * Three concerns:
  *  1. Container connectivity — Postgres reachable, schema applied, Redis PONG.
- *  2. Worker round-trip — startWorkers() processes a url-monitor job end-to-end.
- *     This is the anti-regression proof that extracting startWorkers() from
- *     src/index.ts didn't break production worker behaviour.
+ *  2. url-monitor worker round-trip — job processes end-to-end.
+ *  3. api-check worker round-trip — confirms a second queue type works.
+ *
+ * Tests 2 and 3 share one startWorkers() call (same beforeAll).
  */
 
 import { describe, test, beforeAll, afterAll, expect } from 'bun:test';
@@ -54,7 +55,7 @@ describe('container connectivity', () => {
 
 // ── 2. Worker round-trip ─────────────────────────────────────────────────────
 
-describe('url-monitor worker round-trip', () => {
+describe('worker round-trips', () => {
   // Use the session DB (set by setup.ts in DATABASE_URL). When running in a
   // full suite, src/config/db.ts is already a singleton pointing at the session
   // DB. Using a per-test DB would diverge: workers write to the singleton DB
@@ -110,6 +111,49 @@ describe('url-monitor worker round-trip', () => {
     while (Date.now() - start < 30_000) {
       const [row] = await sql<[{ status: string }]>`
         SELECT status FROM url_monitor_executions WHERE id = ${exec.id}
+      `;
+      if (row.status !== 'PENDING') {
+        finalStatus = row.status;
+        break;
+      }
+      await Bun.sleep(500);
+    }
+
+    await sql.end();
+
+    expect(finalStatus).toBe('SUCCESS');
+  }, 35_000);
+
+  test('api-check job completes and execution row leaves PENDING', async () => {
+    const sql = postgres(process.env.DATABASE_URL!);
+
+    const [check] = await sql<[{ id: number }]>`
+      INSERT INTO api_checks (name, url, method, headers, timeout_ms)
+      VALUES ('smoke-api', 'https://example.com', 'GET', '{}'::jsonb, 15000)
+      RETURNING id
+    `;
+
+    const [exec] = await sql<[{ id: number }]>`
+      INSERT INTO api_executions (api_check_id, status)
+      VALUES (${check.id}, 'PENDING')
+      RETURNING id
+    `;
+
+    const connection = new Redis(redisCtx.redisUrl, { maxRetriesPerRequest: null });
+    const queue = new Queue('api-check', { connection });
+    await queue.add('check', {
+      executionId: exec.id,
+      apiCheck: { id: check.id, url: 'https://example.com', method: 'GET', headers: {}, timeoutMs: 15000 },
+      assertions: [{ type: 'status_code', operator: 'equals', path: null, value: '200' }],
+    });
+    await queue.close();
+    await connection.quit();
+
+    const start = Date.now();
+    let finalStatus: string | null = null;
+    while (Date.now() - start < 30_000) {
+      const [row] = await sql<[{ status: string }]>`
+        SELECT status FROM api_executions WHERE id = ${exec.id}
       `;
       if (row.status !== 'PENDING') {
         finalStatus = row.status;
