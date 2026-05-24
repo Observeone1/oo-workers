@@ -56,6 +56,15 @@ if ! docker info >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓ Docker is running.${NC}"
 
+# Remove old standalone containers (from pre-compose script) so compose
+# can take ownership of the names. Safe to run every time — noop if gone.
+for c in oo-workers-postgres oo-workers-redis oo-mailpit oo-rustfs; do
+  if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
+    echo -e "  ${YELLOW}Removing old standalone container: $c${NC}"
+    docker rm -f "$c" >/dev/null 2>&1
+  fi
+done
+
 # --- Infra ---
 echo -e "\n${YELLOW}Starting dev infra...${NC}"
 docker compose -f "$COMPOSE_FILE" up -d --wait
