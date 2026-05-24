@@ -114,7 +114,7 @@ function sign(
   cfg: Config,
   method: 'GET' | 'PUT' | 'HEAD' | 'DELETE',
   url: URL,
-  body: Buffer | null,
+  body: Buffer | ReadableStream<Uint8Array> | null,
   extra: Record<string, string> = {},
 ): Promise<Response> {
   return signedFetchRaw(method, url, body, cfg.accessKey, cfg.secretKey, cfg.region, extra);
@@ -137,6 +137,35 @@ export async function putObject(
     const text = await res.text().catch(() => '');
     throw new ObjectStorageError(
       `PUT ${key} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      res.status,
+    );
+  }
+  return key;
+}
+
+/**
+ * Streaming PUT — same key + content-type as putObject, but accepts a
+ * ReadableStream body so the caller doesn't have to buffer it. Used by the
+ * agent→master→RustFS artifact proxy where bodies can be 50+ MB. Uses
+ * UNSIGNED-PAYLOAD for the content-sha (so we don't need the whole body
+ * hashed upfront); the trust boundary is the agent→master Bearer token,
+ * not the S3 payload signature.
+ */
+export async function putObjectStream(
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  contentType: string,
+  contentLength: number,
+): Promise<string> {
+  const cfg = requireConfig();
+  const res = await sign(cfg, 'PUT', buildUrl(cfg, key), body, {
+    'content-type': contentType,
+    'content-length': String(contentLength),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ObjectStorageError(
+      `PUT ${key} (stream) failed: HTTP ${res.status} ${text.slice(0, 200)}`,
       res.status,
     );
   }
