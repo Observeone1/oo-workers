@@ -106,16 +106,40 @@ curl -X PUT https://master.example.com/api/monitors/url/42/regions \
 
 ## What works on agents
 
-| Monitor type | Agent support                            |
-| ------------ | ---------------------------------------- |
-| URL          | ✅                                       |
-| API          | ✅                                       |
-| TCP          | ✅                                       |
-| UDP          | ✅                                       |
-| Database     | ✅                                       |
-| Browser (QA) | ❌ Returns `ERROR` — runs only on master |
+| Monitor type | Agent support |
+| ------------ | ------------- |
+| URL          | ✅            |
+| API          | ✅            |
+| TCP          | ✅            |
+| UDP          | ✅            |
+| Database     | ✅            |
+| TLS          | ✅            |
+| Browser (QA) | ✅            |
 
-Browser (Playwright) monitors need a heavy Chromium runtime; we haven't yet shipped that on agents. If you bind a QA monitor to a region, the agent will report each run as `ERROR` with a clear message. To run it on master only, delete the matching row from `monitor_regions` (or uncheck the region in the dialog).
+Browser (Playwright) monitors run on agents using the same Chromium runtime master uses (`mcr.microsoft.com/playwright`). The agent runs the test locally, then streams `trace.zip` + screenshots back to master via `PUT /api/agent/qa/artifacts/:executionId/:kind`. Master writes them to its own object-storage bucket — agents never get S3 credentials, and the "master's bucket = single source of truth" invariant is preserved (so `obs backup --include-artifacts` keeps capturing every artifact regardless of which region ran the test).
+
+Artifacts are only generated on test **failure** (`trace: 'retain-on-failure'`, `screenshot: 'only-on-failure'`). A passing test produces no artifact upload — zero load on master.
+
+### Artifact-routing flow
+
+```mermaid
+sequenceDiagram
+    participant M as master
+    participant A as agent
+    participant S as RustFS<br/>(master's bucket)
+
+    M->>A: 1. dispatch QA job<br/>(inline scripts + targetUrl)
+    A->>M: 2. POST /api/agent/qa/executions
+    M-->>A: per-test exec ids<br/>(region-scoped)
+    Note over A: 3. npx playwright test<br/>(local Chromium)
+    rect rgb(245,245,245)
+        Note over A,S: 4–5. only on test FAILURE
+        A->>M: 4. PUT /api/agent/qa/artifacts/:id/:kind<br/>(raw bytes, streaming)
+        M->>S: 5. putObjectStream<br/>(piped, no master buffering)
+        M-->>A: { key }
+    end
+    A->>M: 6. POST /api/agent/results<br/>(traceUrl + screenshotUrls)
+```
 
 ## Verifying QA-on-agents end-to-end
 
@@ -228,7 +252,7 @@ Reads `OO_MASTER_URL` / `OO_AGENT_KEY` / `OO_REGION_SLUG` from the agent's env (
 - **Self-signed TLS** now has an escape hatch — `OO_AGENT_TLS_INSECURE=1`, scoped to the agent→master link with loud warnings (see **Prerequisite**). A trusted cert / tunnel is still strongly preferred.
 - **No automated agent-version-skew warning yet** — if a master upgrade adds a required job-payload field, an un-pulled agent could mis-handle it. Mitigation today is the post-upgrade `pull` (see Troubleshooting). A master-side "region N versions behind" indicator is a tracked follow-up.
 - **No header badge** showing online region count — open the Regions page to see status. On the polish backlog.
-- **Browser (QA) monitors don't run on agents** — see "What works on agents" above.
+- **Slim "agent-only" image not yet shipped** — agents pull the same `observeone/oo-workers` image as master, which includes Playwright/Chromium (~1 GB). HTTP-only operators wanting a tiny agent image will get one in a future release; runtime detection is already in place so the swap is forward-compatible.
 - **No per-region latency series** on the monitor detail page yet — all runs are listed flat. On the polish backlog.
 
 ## Reference
