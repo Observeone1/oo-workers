@@ -16,6 +16,7 @@ export interface IntegrationCtx {
   redisContainer: StartedTestContainer;
   pgAdminUrl: string;
   redisUrl: string;
+  redisDbCounter: number;
 }
 
 declare global {
@@ -55,5 +56,12 @@ if (!globalThis.__OO_IT_CTX__) {
 
   await runMigrations(pgAdminUrl);
 
-  globalThis.__OO_IT_CTX__ = { pgContainer, redisContainer, pgAdminUrl, redisUrl };
+  globalThis.__OO_IT_CTX__ = { pgContainer, redisContainer, pgAdminUrl, redisUrl, redisDbCounter: 0 };
 }
+
+// Expose the session DB + Redis URLs in env so test specs can import
+// src/config/db.ts at the top level (the singleton reads DATABASE_URL at
+// first import — it must be set before the test file's module is loaded).
+const { pgAdminUrl: _pgUrl, redisUrl: _redisUrl } = globalThis.__OO_IT_CTX__;
+process.env.DATABASE_URL = _pgUrl;
+process.env.REDIS_URL = _redisUrl;

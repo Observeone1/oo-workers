@@ -55,30 +55,26 @@ describe('container connectivity', () => {
 // ── 2. Worker round-trip ─────────────────────────────────────────────────────
 
 describe('url-monitor worker round-trip', () => {
-  let dbCtx: Awaited<ReturnType<typeof createTestDb>>;
+  // Use the session DB (set by setup.ts in DATABASE_URL). When running in a
+  // full suite, src/config/db.ts is already a singleton pointing at the session
+  // DB. Using a per-test DB would diverge: workers write to the singleton DB
+  // while the poll loop reads from a different URL, so the job never appears done.
   let redisCtx: Awaited<ReturnType<typeof acquireRedisDb>>;
   let stopWorkers: () => Promise<void>;
 
   beforeAll(async () => {
-    dbCtx = await createTestDb();
     redisCtx = await acquireRedisDb();
-
-    // Set DATABASE_URL before startWorkers() so processors load src/config/db.ts
-    // with the correct test database URL on their first import.
-    process.env.DATABASE_URL = dbCtx.databaseUrl;
     process.env.REDIS_URL = redisCtx.redisUrl;
-
     stopWorkers = await startWorkers(redisCtx.redisUrl);
   });
 
   afterAll(async () => {
     await stopWorkers();
     await redisCtx.releaseDb();
-    await dbCtx.dropDb();
   }, 30_000);
 
   test('url-monitor job completes and execution row leaves PENDING', async () => {
-    const sql = postgres(dbCtx.databaseUrl);
+    const sql = postgres(process.env.DATABASE_URL!);
 
     const [monitor] = await sql<[{ id: number; url: string; timeout_ms: number }]>`
       INSERT INTO url_monitors (name, url, timeout_ms)

@@ -67,14 +67,13 @@ export async function createTestDb(): Promise<{
   };
 }
 
-let _redisDbCounter = 0;
-
 export async function acquireRedisDb(): Promise<{
   redisUrl: string;
   releaseDb: () => Promise<void>;
 }> {
-  const { redisUrl: baseUrl } = ctx();
-  const dbIndex = _redisDbCounter++ % 16;
+  const c = ctx();
+  const dbIndex = c.redisDbCounter++ % 16;
+  const { redisUrl: baseUrl } = c;
   const redisUrl = `${baseUrl}/${dbIndex}`;
 
   const redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
