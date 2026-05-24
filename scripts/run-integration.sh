@@ -138,6 +138,13 @@ bun scripts/heartbeat-test.ts
 # "generated" assertions guard against a handler that always picks one
 # branch.
 bun scripts/import-heartbeat-e2e-test.ts
+# QA-on-agents end-to-end. Boots master, creates a region + agent key,
+# inserts a QA project with a failing test, drives handleQaJob() against
+# the in-process master, asserts the exec row carries region_id +
+# trace_url + screenshot_urls, and round-trips the trace through object
+# storage. Negative case: an alt-region's key can't create executions for
+# the project. Skips loudly if OO_OBJECT_STORAGE_* is unset.
+bun scripts/qa-on-agents-test.ts
 
 # Load test is opt-in. Originally ran in pre-push but it's a stress test,
 # not a correctness gate — pre-push wants quick signal. Run via

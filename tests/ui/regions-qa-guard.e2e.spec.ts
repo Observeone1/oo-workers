@@ -1,13 +1,14 @@
 import { test, expect, waitForList, uniqueSuffix, ensureSessionAccount } from './fixtures';
 
-// Guard: QA/browser checks run on the master only — binding one to a
-// region just yields ERROR exec rows. The add dialog must hide the
-// "Run from" picker (#regions-row) when type=qa. Needs at least one
-// region to exist, else the row is hidden anyway and proves nothing.
+// Previously this spec asserted the OPPOSITE: that QA hid the region picker
+// because browser checks were master-only. PRs #74/#75 enable QA-on-agents,
+// so the picker now stays visible for type=qa — operators can opt into
+// running browser checks from any region whose agent has Playwright.
+// Heartbeat still hides the row (no probe direction).
 
 const HAS_KEY = !!process.env.OO_E2E_API_KEY;
 
-test('add dialog hides the region picker for qa, shows it otherwise', async ({
+test('add dialog shows the region picker for qa now that agents support it', async ({
   page,
   request,
   baseURL,
@@ -39,14 +40,14 @@ test('add dialog hides the region picker for qa, shows it otherwise', async ({
     await page.getByTestId('add-monitor-type-tile-url').click();
     await expect(row).toBeVisible();
 
-    // qa → guard hides it.
+    // qa → picker STAYS visible (was hidden pre-PR #74/#75).
     await page.getByTestId('add-monitor-type-tile-qa').click();
-    await expect(row).toBeHidden();
-    await shot('qa_region_guard_hidden');
-
-    // Toggling back restores it (the guard isn't sticky).
-    await page.getByTestId('add-monitor-type-tile-url').click();
     await expect(row).toBeVisible();
+    await shot('qa_region_picker_now_visible');
+
+    // Heartbeat still hides it (no probe direction).
+    await page.getByTestId('add-monitor-type-tile-heartbeat').click();
+    await expect(row).toBeHidden();
   } finally {
     await request.delete(`${baseURL}/api/regions/${regionId}`).catch(() => {});
   }

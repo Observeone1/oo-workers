@@ -61,7 +61,7 @@ function masterFetchInit(cfg: AgentConfig, init: RequestInit): RequestInit {
   };
 }
 
-interface JobPayload {
+export interface JobPayload {
   jobId: string;
   type: 'url' | 'api' | 'tcp' | 'udp' | 'qa' | 'db' | 'tls';
   executionId: number;
@@ -464,7 +464,7 @@ async function uploadArtifact(
   return null;
 }
 
-async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
+export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
   const tests = job.tests ?? [];
   const projectId = job.projectId;
   if (!projectId || tests.length === 0) {
@@ -520,8 +520,16 @@ async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
     return;
   }
 
-  // Per-run temp dir, one script file per test (same shape master uses).
-  const runDir = path.join(os.tmpdir(), `oo-agent-qa-${projectId}-${Date.now()}`);
+  // Per-run dir inside the repo's tests/ tree so playwright.config.ts's
+  // `testDir: './tests'` + `screenshot: 'only-on-failure'` apply. Mirrors
+  // master's qa-project.processor.ts. Each run gets a unique subdir so
+  // multiple concurrent agent jobs don't collide.
+  const runDir = path.resolve(
+    import.meta.dir,
+    '..',
+    'tests',
+    `agent-qa-${projectId}-${Date.now()}`,
+  );
   await fs.mkdir(runDir, { recursive: true });
 
   try {
