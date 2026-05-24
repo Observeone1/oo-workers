@@ -78,8 +78,8 @@ describe('worker round-trips', () => {
     const sql = postgres(process.env.DATABASE_URL!);
 
     const [monitor] = await sql<[{ id: number; url: string; timeout_ms: number }]>`
-      INSERT INTO url_monitors (name, url, timeout_ms)
-      VALUES ('smoke-worker', 'https://example.com', 15000)
+      INSERT INTO url_monitors (name, url, timeout_ms, enabled)
+      VALUES ('smoke-worker', 'https://example.com', 15000, FALSE)
       RETURNING id, url, timeout_ms
     `;
 
@@ -128,8 +128,8 @@ describe('worker round-trips', () => {
     const sql = postgres(process.env.DATABASE_URL!);
 
     const [check] = await sql<[{ id: number }]>`
-      INSERT INTO api_checks (name, url, method, headers, timeout_ms)
-      VALUES ('smoke-api', 'https://example.com', 'GET', '{}'::jsonb, 15000)
+      INSERT INTO api_checks (name, url, method, headers, timeout_ms, enabled)
+      VALUES ('smoke-api', 'https://example.com', 'GET', '{}'::jsonb, 15000, FALSE)
       RETURNING id
     `;
 
