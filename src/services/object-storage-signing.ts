@@ -63,7 +63,12 @@ export async function signedFetchRaw(
     .join('');
   const signedHeaders = sortedKeys.join(';');
 
-  const qs = url.search ? url.search.slice(1) : '';
+  // AWS Sig-V4 canonical query string: sorted by key, percent-encoded.
+  // Caller can pass the URL with params in any order; we canonicalize here.
+  const qs = [...url.searchParams.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
   const canonicalRequest = [
     method,
     url.pathname,

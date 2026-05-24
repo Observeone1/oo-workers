@@ -282,14 +282,8 @@ export async function listObjects(prefix: string): Promise<string[]> {
     url.searchParams.set('list-type', '2');
     url.searchParams.set('prefix', prefix);
     if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-    // searchParams serializes in insertion order; S3 requires canonical (sorted) query string
-    const sorted = new URL(url.toString());
-    sorted.search = [...url.searchParams.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
 
-    const res = await sign(cfg, 'GET', sorted, null);
+    const res = await sign(cfg, 'GET', url, null);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new ObjectStorageError(
@@ -323,13 +317,8 @@ export async function listObjectsWithSize(
     url.searchParams.set('list-type', '2');
     url.searchParams.set('prefix', prefix);
     if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-    const sorted = new URL(url.toString());
-    sorted.search = [...url.searchParams.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join('&');
 
-    const res = await sign(cfg, 'GET', sorted, null);
+    const res = await sign(cfg, 'GET', url, null);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new ObjectStorageError(
