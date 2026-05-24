@@ -15,7 +15,7 @@
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "knip": "knip",
-    "test:integration": "sh scripts/run-integration.sh",
+    "test:integration": "bash scripts/run-integration.sh",
     "test:backup": "bun scripts/backup-restore-test.ts",
     "test:import": "bun scripts/import-from-saas-test.ts",
     "test:tcp": "bun scripts/tcp-banner-test.ts",

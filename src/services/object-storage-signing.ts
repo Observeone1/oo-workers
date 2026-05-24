@@ -5,19 +5,19 @@
 
 import { createHash, createHmac } from 'node:crypto';
 
-export function hex(buf: Buffer): string {
+function hex(buf: Buffer): string {
   return buf.toString('hex');
 }
 
-export function sha256Hex(data: string | Buffer): string {
+function sha256Hex(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-export function hmac(key: string | Buffer, data: string): Buffer {
+function hmac(key: string | Buffer, data: string): Buffer {
   return createHmac('sha256', key).update(data).digest();
 }
 
-export function signingKey(secret: string, date: string, region: string, service: string): Buffer {
+function signingKey(secret: string, date: string, region: string, service: string): Buffer {
   const kDate = hmac('AWS4' + secret, date);
   const kRegion = hmac(kDate, region);
   const kService = hmac(kRegion, service);
