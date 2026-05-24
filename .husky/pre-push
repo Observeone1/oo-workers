@@ -1,22 +1,8 @@
 #!/usr/bin/env bash
-# Run the integration suite before pushing. Requires local Postgres reachable
-# (run-integration.sh starts its own test-redis container if needed).
-# Skip with `git push --no-verify` only if you have a strong reason —
-# don't let CI be the first thing that catches breakage.
+# Fast pre-push gate: typecheck + lint only (~10s).
+# The full integration suite runs in CI on push to main (.github/workflows/ci.yml).
+# To run the integration suite locally, use `bun run test:integration` directly.
+set -e
 
-PG_PORT="${POSTGRES_PORT:-5442}"
-
-# Portable TCP probe — works in bash without needing pg_isready/redis-cli.
-probe_tcp() {
-  host=$1
-  port=$2
-  (echo > "/dev/tcp/$host/$port") 2>/dev/null
-}
-
-if ! probe_tcp localhost "$PG_PORT"; then
-  echo "[pre-push] Postgres not reachable on localhost:$PG_PORT."
-  echo "           Start your oo-workers postgres container, or 'git push --no-verify' to skip."
-  exit 1
-fi
-
-bun run test:integration
+bunx tsc --noEmit
+bun run lint
