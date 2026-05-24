@@ -82,6 +82,7 @@
           type="button"
           aria-label="Settings"
           title="Settings"
+          data-testid="header-settings-btn"
           hidden
         >
           <svg
@@ -251,7 +252,7 @@
                 <div class="help">Shown in lists, alerts and status pages.</div>
               </div>
               <!-- URL/target + interval — shown for url / api / qa -->
-              <div id="url-row" class="field-grid cols-2">
+              <div id="url-row" class="field-grid cols-2" data-testid="add-monitor-url-row">
                 <div class="field">
                   <label>Target URL</label>
                   <input name="url" placeholder="https://api.example.com/health" />
@@ -320,7 +321,7 @@
                 </div>
               </div>
               <!-- TLS host + port + warn days + interval -->
-              <div id="heartbeat-row" class="field-grid cols-2" data-for="heartbeat" hidden>
+              <div id="heartbeat-row" class="field-grid cols-2" data-for="heartbeat" hidden data-testid="add-monitor-heartbeat-row">
                 <div class="field">
                   <label>Expected period</label>
                   <div class="input-addon">

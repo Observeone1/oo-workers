@@ -27,12 +27,18 @@ export interface IncidentsState {
   selectedPageId: number | null;
   filter: 'all' | 'active' | 'resolved';
   lastBanner: { kind: 'ok' | 'err'; text: string } | null;
+  // Tracked in state so the panel survives a renderList() triggered
+  // by the page-select change or filter-tab click — without this, any
+  // page selector change immediately closes the open panel and loses
+  // the operator's in-progress typing.
+  createPanelOpen: boolean;
 }
 
 export const state: IncidentsState = {
   selectedPageId: null,
   filter: 'all',
   lastBanner: null,
+  createPanelOpen: false,
 };
 
 export function renderBanner(b: { kind: 'ok' | 'err'; text: string }): string {

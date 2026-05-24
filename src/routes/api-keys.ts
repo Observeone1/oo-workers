@@ -4,7 +4,7 @@
  */
 import type { Hono } from 'hono';
 import { randomBytes } from 'node:crypto';
-import { KEY_PREFIX_LEN, requireAuth } from '../middleware/auth.ts';
+import { KEY_PREFIX_LEN, requireAuth, evictFromKeyCache } from '../middleware/auth.ts';
 import { apiKeyRepo } from '../db/repositories/api-key.repo.ts';
 import type { RouteDeps } from './types.ts';
 
@@ -45,6 +45,7 @@ export function registerApiKeyRoutes(app: Hono, { writeAuth }: RouteDeps): void 
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'bad key id' }, 400);
     await apiKeyRepo.revoke(id);
+    evictFromKeyCache(id);
     return c.body(null, 204);
   });
 }

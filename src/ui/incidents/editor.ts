@@ -101,7 +101,7 @@ export async function renderEditor(id: number): Promise<void> {
             </div>
             <div class="help" style="margin-bottom:12px">Pick "Resolved" to close the incident.</div>
             <p id="incident-update-error" class="banner err" hidden style="margin-bottom:8px"></p>
-            <button type="submit" class="btn primary" style="width:100%">Post update</button>
+            <button type="submit" class="btn primary" style="width:100%" data-testid="incident-update-submit">Post update</button>
           </form>
         </div>
 

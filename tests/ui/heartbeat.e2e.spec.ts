@@ -18,8 +18,8 @@ test('create heartbeat via dialog + detail view exposes the public URL', async (
   await page.getByTestId('add-monitor-type-tile-heartbeat').click();
 
   // URL row hides, heartbeat row shows.
-  await expect(page.locator('#url-row')).toBeHidden();
-  await expect(page.locator('#heartbeat-row')).toBeVisible();
+  await expect(page.getByTestId('add-monitor-url-row')).toBeHidden();
+  await expect(page.getByTestId('add-monitor-heartbeat-row')).toBeVisible();
   // Regions row also hides for heartbeat (it runs nowhere; services ping us).
   // Asserting on the hidden state replaces a previous waitForTimeout(200).
   // The dialog populates region options async, but a hidden regions-row
@@ -35,7 +35,7 @@ test('create heartbeat via dialog + detail view exposes the public URL', async (
 
   await shot('heartbeat_dialog_filled');
 
-  await page.locator('#add-form button[type="submit"]').click();
+  await page.getByTestId('add-monitor-submit').click();
 
   // Dialog closes; list re-renders with the new heartbeat tab counter
   // bumped. Switch to the Heartbeat tab to find the row.
