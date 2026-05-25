@@ -93,15 +93,13 @@ function bar(state: DayState, dayIdxFromNow: number): string {
 export function renderStatusPageHtml(summary: StatusPageSummary, themeOverride?: string): string {
   const { page, monitors, incidents, overall, generatedAt } = summary;
   const headline = overallHeadline(overall);
-  // CSP is `script-src 'none'`; force the operator's theme via inline style
-  // on <html> (style-src allows 'unsafe-inline'). Inline beats the :root
-  // rule in tokens.css. Empty/bogus cookie = no inline = follow system.
-  const themeStyle =
-    themeOverride === 'light' || themeOverride === 'dark'
-      ? ` style="color-scheme: ${themeOverride}"`
-      : '';
+  // CSP is `script-src 'none'`; honor the operator's theme via a class on
+  // <html> read from the oo-theme cookie. The matching rule in the <style>
+  // block below beats tokens.css :root (same specificity, later in cascade).
+  const themeClass =
+    themeOverride === 'light' || themeOverride === 'dark' ? ` class="theme-${themeOverride}"` : '';
   return `<!doctype html>
-<html lang="en"${themeStyle}>
+<html lang="en"${themeClass}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -245,6 +243,8 @@ export function renderStatusPageHtml(summary: StatusPageSummary, themeOverride?:
     @media (prefers-color-scheme: dark) {
       :root { color-scheme: dark; }
     }
+    html.theme-light { color-scheme: light; }
+    html.theme-dark { color-scheme: dark; }
   </style>
 </head>
 <body>
