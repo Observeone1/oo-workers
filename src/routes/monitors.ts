@@ -24,6 +24,26 @@ import type { RouteDeps } from './types.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
 
+// Must match the enums in src/services/api-assertion.ts. The api_assertions
+// table has NOT NULL on (type, operator), so an invalid value used to land as
+// a Postgres constraint error → 500. Validating here returns a useful 400.
+const VALID_ASSERTION_TYPES = new Set([
+  'status_code',
+  'response_time',
+  'json_path',
+  'text_contains',
+  'header',
+]);
+const VALID_ASSERTION_OPERATORS = new Set([
+  'equals',
+  'not_equals',
+  'less_than',
+  'greater_than',
+  'contains',
+  'not_contains',
+  'exists',
+]);
+
 export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   const { urlQ, apiQ, qaQ, tcpQ, udpQ, dbQ, tlsQ } = deps;
 
@@ -157,6 +177,32 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/api', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
+    const rawAssertions = (body.assertions ?? []) as unknown;
+    if (!Array.isArray(rawAssertions)) {
+      return c.json({ error: 'assertions must be an array' }, 400);
+    }
+    for (let i = 0; i < rawAssertions.length; i++) {
+      const a = rawAssertions[i] as { type?: unknown; operator?: unknown };
+      if (!a || typeof a !== 'object') {
+        return c.json({ error: `assertions[${i}] must be an object` }, 400);
+      }
+      if (typeof a.type !== 'string' || !VALID_ASSERTION_TYPES.has(a.type)) {
+        return c.json(
+          {
+            error: `assertions[${i}].type must be one of: ${[...VALID_ASSERTION_TYPES].join(', ')}`,
+          },
+          400,
+        );
+      }
+      if (typeof a.operator !== 'string' || !VALID_ASSERTION_OPERATORS.has(a.operator)) {
+        return c.json(
+          {
+            error: `assertions[${i}].operator must be one of: ${[...VALID_ASSERTION_OPERATORS].join(', ')}`,
+          },
+          400,
+        );
+      }
+    }
     const [m] = await apiCheckRepo.create({
       name: body.name,
       url: body.url,
@@ -167,7 +213,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    const assertions = (body.assertions ?? []) as Array<{
+    const assertions = rawAssertions as Array<{
       type: string;
       operator: string;
       path?: string;

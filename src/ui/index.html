@@ -454,7 +454,7 @@
                 </div>
                 <div class="field" style="margin-top: 10px">
                   <label
-                    >Assertions (JSON)
+                    >Assertions
                     <a
                       href="/docs#assertions-api"
                       target="_blank"
@@ -463,10 +463,10 @@
                       >?</a
                     ></label
                   >
-                  <textarea
-                    name="api_assertions"
-                    placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'
-                  ></textarea>
+                  <div id="api-assertion-rows"></div>
+                  <button type="button" class="bare" id="api-add-assertion">
+                    + Add assertion
+                  </button>
                 </div>
               </div>
 

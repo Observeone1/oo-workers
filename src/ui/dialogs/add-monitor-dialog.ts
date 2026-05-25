@@ -59,6 +59,92 @@ export function initAddDialog(): void {
     heartbeat: 'Nightly backup',
   };
 
+  // API-assertion type → whether it needs a path input (json_path / header).
+  // The labels here are the only UI strings; the values match the backend
+  // enum in src/services/api-assertion.ts and the route validator.
+  const ASSERTION_TYPES: ReadonlyArray<{
+    value: string;
+    label: string;
+    needsPath: boolean;
+    valuePlaceholder: string;
+  }> = [
+    { value: 'status_code', label: 'Status code', needsPath: false, valuePlaceholder: '200' },
+    {
+      value: 'response_time',
+      label: 'Response time (ms)',
+      needsPath: false,
+      valuePlaceholder: '1000',
+    },
+    { value: 'json_path', label: 'JSON path', needsPath: true, valuePlaceholder: 'expected' },
+    {
+      value: 'text_contains',
+      label: 'Body contains',
+      needsPath: false,
+      valuePlaceholder: 'substring',
+    },
+    { value: 'header', label: 'Header', needsPath: true, valuePlaceholder: 'expected' },
+  ];
+  const ASSERTION_OPERATORS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'equals', label: 'equals' },
+    { value: 'not_equals', label: 'not equals' },
+    { value: 'less_than', label: 'less than' },
+    { value: 'greater_than', label: 'greater than' },
+    { value: 'contains', label: 'contains' },
+    { value: 'not_contains', label: 'not contains' },
+    { value: 'exists', label: 'exists' },
+  ];
+
+  function addAssertionRow(
+    initial: { type?: string; operator?: string; path?: string; value?: string } = {},
+  ): void {
+    const container = $('#api-assertion-rows');
+    const row = document.createElement('div');
+    row.className = 'assertion-row';
+    row.innerHTML = `
+      <select data-field="type">
+        ${ASSERTION_TYPES.map(
+          (t) =>
+            `<option value="${esc(t.value)}"${initial.type === t.value ? ' selected' : ''}>${esc(t.label)}</option>`,
+        ).join('')}
+      </select>
+      <select data-field="operator">
+        ${ASSERTION_OPERATORS.map(
+          (o) =>
+            `<option value="${esc(o.value)}"${initial.operator === o.value ? ' selected' : ''}>${esc(o.label)}</option>`,
+        ).join('')}
+      </select>
+      <input data-field="path" placeholder="$.field or Header-Name" value="${esc(initial.path ?? '')}" />
+      <input data-field="value" placeholder="200" value="${esc(initial.value ?? '')}" />
+      <button type="button" class="bare assertion-remove" aria-label="Remove assertion">×</button>
+    `;
+    container.appendChild(row);
+
+    const typeSel = row.querySelector<HTMLSelectElement>('[data-field="type"]')!;
+    const pathInput = row.querySelector<HTMLInputElement>('[data-field="path"]')!;
+    const valueInput = row.querySelector<HTMLInputElement>('[data-field="value"]')!;
+    const syncRow = () => {
+      const meta = ASSERTION_TYPES.find((t) => t.value === typeSel.value);
+      pathInput.hidden = !(meta?.needsPath ?? false);
+      valueInput.placeholder = meta?.valuePlaceholder ?? '';
+    };
+    typeSel.addEventListener('change', syncRow);
+    syncRow();
+
+    row.querySelector('.assertion-remove')!.addEventListener('click', () => {
+      row.remove();
+    });
+  }
+
+  function resetAssertionRows(): void {
+    const container = $('#api-assertion-rows');
+    container.innerHTML = '';
+    addAssertionRow({ type: 'status_code', operator: 'equals', value: '200' });
+  }
+
+  $('#api-add-assertion').addEventListener('click', () => {
+    addAssertionRow({ type: 'status_code', operator: 'equals' });
+  });
+
   const syncFields = (t: MonType = 'url') => {
     // Show/hide type-specific check panes
     $('#url-fields').hidden = t !== 'url';
@@ -158,6 +244,7 @@ export function initAddDialog(): void {
     typeGrid2?.querySelectorAll('.type-tile').forEach((t) => t.classList.remove('active'));
     typeGrid2?.querySelector('[data-type="url"]')?.classList.add('active');
     syncFields(activeAddType);
+    resetAssertionRows();
     await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);
     addDialog.showModal();
     requestAnimationFrame(() => {
@@ -191,12 +278,23 @@ export function initAddDialog(): void {
         alertDialog({ title: 'Validation error', body: 'URL is required' });
         return;
       }
-      let assertions: unknown[] = [];
-      try {
-        assertions = JSON.parse((fd.get('api_assertions') as string) || '[]');
-      } catch {
-        alertDialog({ title: 'Validation error', body: 'Assertions JSON is invalid' });
-        return;
+      const rows = addDialog.querySelectorAll<HTMLElement>('#api-assertion-rows .assertion-row');
+      const assertions: Array<{ type: string; operator: string; path?: string; value?: string }> =
+        [];
+      for (const row of rows) {
+        const t = row.querySelector<HTMLSelectElement>('[data-field="type"]')?.value ?? '';
+        const op = row.querySelector<HTMLSelectElement>('[data-field="operator"]')?.value ?? '';
+        const path = row.querySelector<HTMLInputElement>('[data-field="path"]')?.value.trim() ?? '';
+        const value =
+          row.querySelector<HTMLInputElement>('[data-field="value"]')?.value.trim() ?? '';
+        if (!t || !op) continue;
+        const entry: { type: string; operator: string; path?: string; value?: string } = {
+          type: t,
+          operator: op,
+        };
+        if (path) entry.path = path;
+        if (value) entry.value = value;
+        assertions.push(entry);
       }
       body = { name, url, method: fd.get('api_method'), intervalSeconds, assertions };
     } else if (type === 'qa') {
