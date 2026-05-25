@@ -100,22 +100,23 @@ export function initAddDialog(): void {
     const container = $('#api-assertion-rows');
     const row = document.createElement('div');
     row.className = 'assertion-row';
+    row.setAttribute('data-testid', 'add-monitor-api-assertion-row');
     row.innerHTML = `
-      <select data-field="type">
+      <select data-field="type" data-testid="add-monitor-api-assertion-type">
         ${ASSERTION_TYPES.map(
           (t) =>
             `<option value="${esc(t.value)}"${initial.type === t.value ? ' selected' : ''}>${esc(t.label)}</option>`,
         ).join('')}
       </select>
-      <select data-field="operator">
+      <select data-field="operator" data-testid="add-monitor-api-assertion-operator">
         ${ASSERTION_OPERATORS.map(
           (o) =>
             `<option value="${esc(o.value)}"${initial.operator === o.value ? ' selected' : ''}>${esc(o.label)}</option>`,
         ).join('')}
       </select>
-      <input data-field="path" placeholder="$.field or Header-Name" value="${esc(initial.path ?? '')}" />
-      <input data-field="value" placeholder="200" value="${esc(initial.value ?? '')}" />
-      <button type="button" class="bare assertion-remove" aria-label="Remove assertion">×</button>
+      <input data-field="path" data-testid="add-monitor-api-assertion-path" placeholder="$.field or Header-Name" value="${esc(initial.path ?? '')}" />
+      <input data-field="value" data-testid="add-monitor-api-assertion-value" placeholder="200" value="${esc(initial.value ?? '')}" />
+      <button type="button" class="bare assertion-remove" data-testid="add-monitor-api-assertion-remove" aria-label="Remove assertion">×</button>
     `;
     container.appendChild(row);
 

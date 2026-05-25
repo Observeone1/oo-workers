@@ -15,8 +15,8 @@ test('create URL monitor through the dialog', async ({ page, request, shot }) =>
   await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
   // v2: type is a tile (was a <select>); url is the default-active tile.
   await page.getByTestId('add-monitor-type-tile-url').click();
-  await page.locator('#add-form input[name="name"]').fill(name);
-  await page.locator('#add-form input[name="url"]').fill('https://example.com');
+  await page.getByTestId('add-monitor-name-input').fill(name);
+  await page.getByTestId('add-monitor-url-input').fill('https://example.com');
   await shot('create_url_dialog');
   await page.getByTestId('add-monitor-submit').click();
 
@@ -39,12 +39,11 @@ test('create API monitor through the dialog', async ({ page, request, shot }) =>
   const name = `e2e-api-${uniqueSuffix()}`;
   await page.getByTestId('header-add-monitor-btn').click();
   await page.getByTestId('add-monitor-type-tile-api').click();
-  await page.locator('#add-form input[name="name"]').fill(name);
-  await page.locator('#add-form input[name="url"]').fill('https://example.com');
-  await page.locator('#add-form select[name="api_method"]').selectOption('GET');
-  await page
-    .locator('#add-form textarea[name="api_assertions"]')
-    .fill('[{"type":"status_code","operator":"equals","value":"200"}]');
+  await page.getByTestId('add-monitor-name-input').fill(name);
+  await page.getByTestId('add-monitor-url-input').fill('https://example.com');
+  await page.getByTestId('add-monitor-api-method').selectOption('GET');
+  // The default assertion row (status_code equals 200) is auto-populated when
+  // the dialog opens, so no row interaction is needed for the happy path.
   await shot('create_api_dialog');
   await page.getByTestId('add-monitor-submit').click();
 
@@ -66,9 +65,9 @@ test('create QA (browser) monitor through the dialog', async ({ page, request, s
   const name = `e2e-qa-${uniqueSuffix()}`;
   await page.getByTestId('header-add-monitor-btn').click();
   await page.getByTestId('add-monitor-type-tile-qa').click();
-  await page.locator('#add-form input[name="name"]').fill(name);
-  await page.locator('#add-form input[name="url"]').fill('https://example.com');
-  await page.locator('#add-form textarea[name="qa_script"]').fill(QA_SCRIPT);
+  await page.getByTestId('add-monitor-name-input').fill(name);
+  await page.getByTestId('add-monitor-url-input').fill('https://example.com');
+  await page.getByTestId('add-monitor-qa-script').fill(QA_SCRIPT);
   await shot('create_qa_dialog');
   await page.getByTestId('add-monitor-submit').click();
 
