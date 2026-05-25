@@ -1,39 +1,37 @@
 /**
- * Lazy projection for stalled regional executions.
+ * Lazy projection for stalled executions.
  *
  * Regional jobs use plain Redis lists with no BullMQ retry semantics, so a
- * crashed agent leaves its execution row at PENDING indefinitely. Rather
- * than running a background sweeper that overwrites these rows, we
- * project the "stalled" state at read time — the underlying row is left
- * as PENDING (a late agent result can still write into it via
- * writeAgentResult), but every consumer of the row sees it as FAILED
- * once it's older than 2× the monitor's interval.
- *
- * Master-path executions (region_id IS NULL) are not projected — BullMQ's
- * own retry/lock primitives handle stalls there.
+ * crashed agent leaves its execution row at PENDING indefinitely. The
+ * master path uses BullMQ — better protected, but not bullet-proof: hard
+ * worker restarts, container OOM kills, and dropped jobs can all leave
+ * master-path rows stuck at PENDING too. Rather than run a background
+ * sweeper that overwrites these rows, we project "stalled" at read time
+ * — the underlying DB row is left as PENDING (a late result can still
+ * write into it via writeAgentResult / worker update), but every
+ * consumer sees status=FAILED once the row is older than 2× the monitor's
+ * interval. Applies to BOTH regional and master-path executions.
  */
 
 const STALL_MULTIPLE = 2;
-const STALL_REASON = 'no agent result within 2× interval (stalled)';
+const STALL_REASON = 'no result within 2× interval (stalled)';
 
 export interface StalleableRow {
   status: string;
-  regionId: number | null;
   errorMessage?: string | null;
 }
 
 /**
- * Return the row unchanged unless it's a PENDING regional execution
- * older than 2× the monitor's interval — in which case return a copy
- * with status=FAILED and a synthetic errorMessage. The actual DB row
- * is untouched.
+ * Return the row unchanged unless it's a PENDING execution older than 2×
+ * the monitor's interval — in which case return a copy with status=FAILED
+ * and a synthetic errorMessage. The actual DB row is untouched.
  */
 export function projectStalled<T extends StalleableRow>(
   row: T,
   startTime: Date | string | null | undefined,
   intervalSeconds: number,
 ): T {
-  if (row.status !== 'PENDING' || row.regionId === null) return row;
+  if (row.status !== 'PENDING') return row;
   if (!startTime) return row;
   const startMs = typeof startTime === 'string' ? Date.parse(startTime) : startTime.getTime();
   const ageSec = (Date.now() - startMs) / 1000;
