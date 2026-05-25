@@ -23,6 +23,7 @@ import {
   tcpExecutions,
   tcpMonitors,
   tlsExecutions,
+  tlsMonitors,
   udpExecutions,
   udpMonitors,
   urlMonitorExecutions,
@@ -31,6 +32,12 @@ import {
 import type { MonitorType } from '../db/repositories/status-page.repo.ts';
 
 export type DayState = 'up' | 'down' | 'unknown';
+
+// Status-page-wide rollup. Distinct from DayState (which describes a single
+// monitor on a single day) because the page banner needs to communicate
+// "partly working" — a 'degraded' option that has no meaning for a single
+// monitor's day bar.
+export type OverallStatus = 'up' | 'down' | 'degraded' | 'unknown';
 
 interface MonitorSummary {
   type: MonitorType;
@@ -62,38 +69,60 @@ function normalize(status: string): DayState {
 async function monitorMeta(
   type: MonitorType,
   id: number,
-): Promise<{ name: string; target: string } | null> {
+): Promise<{ name: string; target: string; intervalSeconds: number } | null> {
   if (type === 'url') {
     const [r] = await db
-      .select({ name: urlMonitors.name, url: urlMonitors.url })
+      .select({
+        name: urlMonitors.name,
+        url: urlMonitors.url,
+        intervalSeconds: urlMonitors.intervalSeconds,
+      })
       .from(urlMonitors)
       .where(sql`${urlMonitors.id} = ${id}`)
       .limit(1);
-    return r ? { name: r.name, target: r.url } : null;
+    return r ? { name: r.name, target: r.url, intervalSeconds: r.intervalSeconds } : null;
   }
   if (type === 'api') {
     const [r] = await db
-      .select({ name: apiChecks.name, url: apiChecks.url })
+      .select({
+        name: apiChecks.name,
+        url: apiChecks.url,
+        intervalSeconds: apiChecks.intervalSeconds,
+      })
       .from(apiChecks)
       .where(sql`${apiChecks.id} = ${id}`)
       .limit(1);
-    return r ? { name: r.name, target: r.url } : null;
+    return r ? { name: r.name, target: r.url, intervalSeconds: r.intervalSeconds } : null;
   }
   if (type === 'tcp') {
     const [r] = await db
-      .select({ name: tcpMonitors.name, host: tcpMonitors.host, port: tcpMonitors.port })
+      .select({
+        name: tcpMonitors.name,
+        host: tcpMonitors.host,
+        port: tcpMonitors.port,
+        intervalSeconds: tcpMonitors.intervalSeconds,
+      })
       .from(tcpMonitors)
       .where(sql`${tcpMonitors.id} = ${id}`)
       .limit(1);
-    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
+    return r
+      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
+      : null;
   }
   if (type === 'udp') {
     const [r] = await db
-      .select({ name: udpMonitors.name, host: udpMonitors.host, port: udpMonitors.port })
+      .select({
+        name: udpMonitors.name,
+        host: udpMonitors.host,
+        port: udpMonitors.port,
+        intervalSeconds: udpMonitors.intervalSeconds,
+      })
       .from(udpMonitors)
       .where(sql`${udpMonitors.id} = ${id}`)
       .limit(1);
-    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
+    return r
+      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
+      : null;
   }
   if (type === 'db') {
     const [r] = await db
@@ -102,18 +131,44 @@ async function monitorMeta(
         protocol: dbMonitors.protocol,
         host: dbMonitors.host,
         port: dbMonitors.port,
+        intervalSeconds: dbMonitors.intervalSeconds,
       })
       .from(dbMonitors)
       .where(sql`${dbMonitors.id} = ${id}`)
       .limit(1);
-    return r ? { name: r.name, target: `${r.protocol} ${r.host}:${r.port}` } : null;
+    return r
+      ? {
+          name: r.name,
+          target: `${r.protocol} ${r.host}:${r.port}`,
+          intervalSeconds: r.intervalSeconds,
+        }
+      : null;
   }
+  if (type === 'tls') {
+    const [r] = await db
+      .select({
+        name: tlsMonitors.name,
+        host: tlsMonitors.host,
+        port: tlsMonitors.port,
+        intervalSeconds: tlsMonitors.intervalSeconds,
+      })
+      .from(tlsMonitors)
+      .where(sql`${tlsMonitors.id} = ${id}`)
+      .limit(1);
+    return r
+      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
+      : null;
+  }
+  // type === 'qa' — the last remaining case. Switching to exhaustive branches
+  // above (rather than the previous fall-through) avoids the silent-mis-render
+  // bug where adding a type to MonitorType but not here would point status-page
+  // bindings of that type at the qa_projects table with the same numeric id.
   const [r] = await db
-    .select({ name: qaProjects.name })
+    .select({ name: qaProjects.name, intervalSeconds: qaProjects.intervalSeconds })
     .from(qaProjects)
     .where(sql`${qaProjects.id} = ${id}`)
     .limit(1);
-  return r ? { name: r.name, target: 'browser script' } : null;
+  return r ? { name: r.name, target: 'browser script', intervalSeconds: r.intervalSeconds } : null;
 }
 
 function startTimeCol(type: MonitorType) {
@@ -159,16 +214,27 @@ async function uptime24h(type: MonitorType, id: number, since: Date): Promise<nu
   return Math.round((Number(row.ok) / total) * 1000) / 10; // one decimal
 }
 
-async function currentStatus(type: MonitorType, id: number): Promise<DayState> {
+async function currentStatus(
+  type: MonitorType,
+  id: number,
+  intervalSeconds: number,
+): Promise<DayState> {
   const { table, monitorIdCol } = PALETTE[type];
   const startCol = startTimeCol(type);
   const [row] = await db
-    .select({ status: table.status })
+    .select({ status: table.status, startTime: startCol })
     .from(table)
     .where(sql`${monitorIdCol} = ${id}`)
     .orderBy(sql`${startCol} DESC`)
     .limit(1);
-  return row ? normalize(row.status) : 'unknown';
+  if (!row) return 'unknown';
+  // Project stale PENDING → 'down' (mirrors exec-projection.ts read-time logic).
+  if (row.status === 'PENDING' && row.startTime) {
+    const startMs =
+      row.startTime instanceof Date ? row.startTime.getTime() : Date.parse(row.startTime as string);
+    if ((Date.now() - startMs) / 1000 > intervalSeconds * 2) return 'down';
+  }
+  return normalize(row.status);
 }
 
 function dayKey(d: Date): string {
@@ -186,7 +252,7 @@ async function summarizeMonitor(type: MonitorType, id: number): Promise<MonitorS
   const [buckets, up24, cur] = await Promise.all([
     dayBuckets(type, id, since90),
     uptime24h(type, id, since24),
-    currentStatus(type, id),
+    currentStatus(type, id, meta.intervalSeconds),
   ]);
 
   // Build the 90 ordered slots (oldest → newest).
@@ -229,7 +295,7 @@ export interface StatusPageSummary {
   page: { slug: string; title: string; description: string | null };
   monitors: MonitorSummary[];
   incidents: PublicIncident[]; // active + resolved-within-24h, render order
-  overall: DayState; // worst of all monitors
+  overall: OverallStatus; // worst of all monitors; 'degraded' = some unknown, none down
   generatedAt: string;
 }
 
@@ -256,13 +322,21 @@ export async function summarizeStatusPage(slug: string): Promise<StatusPageSumma
       createdAt: u.createdAt.toISOString(),
     })),
   }));
-  const overall: DayState = monitors.some((m) => m.currentStatus === 'down')
-    ? 'down'
-    : monitors.every((m) => m.currentStatus === 'up')
-      ? monitors.length === 0
-        ? 'unknown'
-        : 'up'
-      : 'unknown';
+  // Banner aggregation. Order matters:
+  //   - any down → 'down' ("Some services are degraded")
+  //   - empty page OR every monitor unknown → 'unknown' (genuinely no signal)
+  //   - all up → 'up' ("All systems operational")
+  //   - else (some up, some unknown, none down) → 'degraded'
+  // The pre-fix logic collapsed every non-fully-up case to 'unknown', so a
+  // page with 4 up + 1 unknown read "Status unknown" — alarming for users.
+  const hasDown = monitors.some((m) => m.currentStatus === 'down');
+  const allUnknown = monitors.length === 0 || monitors.every((m) => m.currentStatus === 'unknown');
+  const allUp = monitors.length > 0 && monitors.every((m) => m.currentStatus === 'up');
+  let overall: OverallStatus;
+  if (hasDown) overall = 'down';
+  else if (allUnknown) overall = 'unknown';
+  else if (allUp) overall = 'up';
+  else overall = 'degraded';
   return {
     page: { slug: page.slug, title: page.title, description: page.description },
     monitors,

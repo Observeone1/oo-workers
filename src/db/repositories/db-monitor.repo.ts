@@ -81,6 +81,20 @@ export const dbMonitorRepo = {
     return db.update(dbExecutions).set(data).where(eq(dbExecutions.id, id));
   },
 
+  update(
+    id: number,
+    data: Partial<{
+      name: string;
+      host: string;
+      port: number;
+      protocol: string;
+      tls: boolean;
+      intervalSeconds: number;
+    }>,
+  ) {
+    return db.update(dbMonitors).set(data).where(eq(dbMonitors.id, id)).returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(dbMonitors).set({ enabled }).where(eq(dbMonitors.id, id));
   },

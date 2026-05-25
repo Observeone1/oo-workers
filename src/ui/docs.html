@@ -226,16 +226,19 @@
         <p class="lead">
           Browser checks run any Playwright test file. The script content is stored inline in
           <code>qa_generated_tests.script</code>; oo-workers writes it to a temp
-          <code>.spec.ts</code> file at run time and invokes <code>npx playwright test</code>.
+          <code>.spec.ts</code> file at run time and invokes <code>npx playwright test</code>. The
+          project's <code>targetUrl</code> is passed in as the
+          <code>PLAYWRIGHT_TARGET_URL</code> env var so scripts don't have to hard-code the URL.
         </p>
 
         <h3>Skeleton</h3>
         <pre><code><span class="kw">import</span> { test, expect } <span class="kw">from</span> <span class="str">'@playwright/test'</span>;
 
+<span class="kw">const</span> URL = process.env.PLAYWRIGHT_TARGET_URL!;
+
 test(<span class="str">'my check'</span>, <span class="kw">async</span> ({ page }) =&gt; {
-  <span class="kw">await</span> page.goto(<span class="str">'https://example.com'</span>);
+  <span class="kw">await</span> page.goto(URL);
   <span class="kw">await</span> expect(page.locator(<span class="str">'h1'</span>)).toBeVisible();
-  <span class="kw">await</span> expect(page.locator(<span class="str">'h1'</span>)).toHaveText(<span class="str">'Example Domain'</span>);
 });</code></pre>
 
         <h3>Login flow example</h3>

@@ -248,19 +248,34 @@
               <div class="sec-head"><span class="ttl">Basics</span></div>
               <div class="field">
                 <label>Monitor name</label>
-                <input name="name" required placeholder="API gateway" />
+                <input
+                  name="name"
+                  data-testid="add-monitor-name-input"
+                  required
+                  placeholder="API gateway"
+                />
                 <div class="help">Shown in lists, alerts and status pages.</div>
               </div>
               <!-- URL/target + interval — shown for url / api / qa -->
               <div id="url-row" class="field-grid cols-2" data-testid="add-monitor-url-row">
                 <div class="field">
                   <label>Target URL</label>
-                  <input name="url" placeholder="https://api.example.com/health" />
+                  <input
+                    name="url"
+                    data-testid="add-monitor-url-input"
+                    placeholder="https://api.example.com/health"
+                  />
                 </div>
                 <div class="field">
                   <label>Interval</label>
                   <div class="input-addon">
-                    <input name="interval_seconds" type="number" value="60" min="10" />
+                    <input
+                      name="interval_seconds"
+                      data-testid="add-monitor-interval-input"
+                      type="number"
+                      value="60"
+                      min="10"
+                    />
                     <span class="suffix">seconds</span>
                   </div>
                   <div class="help">Minimum 10s.</div>
@@ -435,7 +450,7 @@
                 <div class="field-grid cols-2">
                   <div class="field">
                     <label>Method</label>
-                    <select name="api_method">
+                    <select name="api_method" data-testid="add-monitor-api-method">
                       <option>GET</option>
                       <option>POST</option>
                       <option>PUT</option>
@@ -454,7 +469,7 @@
                 </div>
                 <div class="field" style="margin-top: 10px">
                   <label
-                    >Assertions (JSON)
+                    >Assertions
                     <a
                       href="/docs#assertions-api"
                       target="_blank"
@@ -463,10 +478,15 @@
                       >?</a
                     ></label
                   >
-                  <textarea
-                    name="api_assertions"
-                    placeholder='[{"type":"status_code","operator":"equals","value":"200"}]'
-                  ></textarea>
+                  <div id="api-assertion-rows" data-testid="add-monitor-api-assertions"></div>
+                  <button
+                    type="button"
+                    class="bare"
+                    id="api-add-assertion"
+                    data-testid="add-monitor-api-add-assertion"
+                  >
+                    + Add assertion
+                  </button>
                 </div>
               </div>
 
@@ -485,7 +505,8 @@
                   >
                   <textarea
                     name="qa_script"
-                    placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"
+                    data-testid="add-monitor-qa-script"
+                    placeholder="import { test, expect } from '@playwright/test';&#10;const URL = process.env.PLAYWRIGHT_TARGET_URL!;&#10;test('my check', async ({ page }) => { await page.goto(URL); ... });"
                   ></textarea>
                 </div>
                 <label class="checkbox-label" style="margin-top: 8px">

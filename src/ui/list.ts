@@ -1,5 +1,14 @@
 import type { MonType, Monitor } from './types';
-import { $, $$, esc, fmtAge, statusClass } from './helpers';
+import {
+  $,
+  $$,
+  esc,
+  fmtAge,
+  statusClass,
+  paginate,
+  paginationFooter,
+  wirePagination,
+} from './helpers';
 import {
   getMonitors,
   getRegions,
@@ -12,6 +21,7 @@ import type { AvailabilityDay } from './types';
 import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
 import { getActiveIncidents } from './incidents';
+import { openEditDialog } from './dialogs/add-monitor-dialog';
 
 const main = $('#main');
 
@@ -145,10 +155,9 @@ export async function renderList() {
 
   const allForTab = data[activeTab];
   const filtered = filterMonitors(allForTab, search);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  if (page > totalPages) page = totalPages;
+  const { pageRows, totalPages, page: safePage } = paginate(filtered, page, PAGE_SIZE);
+  page = safePage;
   const start = (page - 1) * PAGE_SIZE;
-  const pageRows = filtered.slice(start, start + PAGE_SIZE);
 
   const showingFrom = filtered.length === 0 ? 0 : start + 1;
   const showingTo = Math.min(start + PAGE_SIZE, filtered.length);
@@ -336,22 +345,17 @@ export async function renderList() {
             <tbody>${pageRows.map(rowFor).join('')}</tbody>
           </table>
         </div>
-        ${
-          totalPages > 1
-            ? `<div class="pagination">
-                <button class="btn sm" data-page-prev ${page === 1 ? 'disabled' : ''}>← Prev</button>
-                <span class="cell-meta">Page ${page} of ${totalPages}</span>
-                <button class="btn sm" data-page-next ${page === totalPages ? 'disabled' : ''}>Next →</button>
-              </div>`
-            : ''
-        }`
+        ${paginationFooter(page, totalPages)}`
     }
   `;
 
   wireTabs();
   wireRowActions();
   wireSearch(searchWasFocused);
-  wirePagination(totalPages);
+  wirePagination(document, page, totalPages, (next) => {
+    page = next;
+    renderList();
+  });
 }
 
 function wireTabs() {
@@ -368,6 +372,19 @@ function wireTabs() {
 }
 
 function wireRowActions() {
+  $$('[data-edit]').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { type, id } = (e.currentTarget as HTMLElement).dataset;
+      const res = await fetch(`/api/monitors/${type}/${id}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      await openEditDialog(type as import('./types').MonType, Number(id), data.monitor, {
+        assertions: data.assertions,
+        tests: data.tests,
+      });
+    }),
+  );
   $$('[data-run]').forEach((b) =>
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -436,23 +453,6 @@ function wireSearch(wasFocused: boolean) {
   });
 }
 
-function wirePagination(totalPages: number) {
-  const prev = document.querySelector('[data-page-prev]');
-  const next = document.querySelector('[data-page-next]');
-  prev?.addEventListener('click', () => {
-    if (page > 1) {
-      page--;
-      renderList();
-    }
-  });
-  next?.addEventListener('click', () => {
-    if (page < totalPages) {
-      page++;
-      renderList();
-    }
-  });
-}
-
 function rowFor(m: Monitor): string {
   // Heartbeats use their own status (UP/OVERDUE/PENDING) on `m.status`,
   // not the run-result pipeline that other types route through `m.latest`.
@@ -481,6 +481,9 @@ function rowFor(m: Monitor): string {
       </td>
       <td class="col-actions">
         <div class="row-actions">
+          <button class="btn sm" data-edit data-type="${m.type}" data-id="${m.id}" data-testid="monitor-row-edit" title="Edit">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
           <button class="btn sm" data-run data-type="${m.type}" data-id="${m.id}" title="Run now">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>

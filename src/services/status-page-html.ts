@@ -10,7 +10,12 @@
  * without a server-pushed update path.
  */
 
-import type { DayState, PublicIncident, StatusPageSummary } from './status-page-aggregator.ts';
+import type {
+  DayState,
+  OverallStatus,
+  PublicIncident,
+  StatusPageSummary,
+} from './status-page-aggregator.ts';
 import { renderIncidentMarkdown } from './incident-render.ts';
 
 const SEV_LABEL: Record<string, string> = {
@@ -65,8 +70,9 @@ function esc(s: string | null | undefined): string {
   );
 }
 
-function overallHeadline(overall: DayState): { label: string; emoji: string } {
+function overallHeadline(overall: OverallStatus): { label: string; emoji: string } {
   if (overall === 'down') return { label: 'Some services are degraded', emoji: '🔥' };
+  if (overall === 'degraded') return { label: 'Some services are degraded', emoji: '⚠️' };
   if (overall === 'up') return { label: 'All systems operational', emoji: '✅' };
   return { label: 'Status unknown', emoji: '⚪' };
 }
@@ -84,11 +90,16 @@ function bar(state: DayState, dayIdxFromNow: number): string {
   return `<span class="bar bar-${state}" title="${date}: ${state}"></span>`;
 }
 
-export function renderStatusPageHtml(summary: StatusPageSummary): string {
+export function renderStatusPageHtml(summary: StatusPageSummary, themeOverride?: string): string {
   const { page, monitors, incidents, overall, generatedAt } = summary;
   const headline = overallHeadline(overall);
+  // CSP is `script-src 'none'`; honor the operator's theme via a class on
+  // <html> read from the oo-theme cookie. The matching rule in the <style>
+  // block below beats tokens.css :root (same specificity, later in cascade).
+  const themeClass =
+    themeOverride === 'light' || themeOverride === 'dark' ? ` class="theme-${themeOverride}"` : '';
   return `<!doctype html>
-<html lang="en">
+<html lang="en"${themeClass}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -126,6 +137,7 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
     }
     .overall.up { background: color-mix(in srgb, var(--up) 12%, transparent); }
     .overall.down { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
+    .overall.degraded { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
     .overall.unknown { background: var(--panel-2); color: var(--muted); }
     .incidents { margin: 0 0 28px; }
     .incident {
@@ -165,8 +177,38 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
       border-radius: 4px;
     }
     .incident-when { color: var(--muted); font-size: 12px; }
-    .incident details { margin-top: 10px; }
-    .incident summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .incident details { margin-top: 12px; }
+    .incident summary {
+      cursor: pointer;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      list-style: none;
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+    .incident summary:hover { background: var(--panel); }
+    /* Hide the default disclosure triangle in WebKit/Blink so the
+       chevron we draw below is the only marker. */
+    .incident summary::-webkit-details-marker { display: none; }
+    .incident summary::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 0.15s ease;
+      flex-shrink: 0;
+    }
+    .incident details[open] summary::before { transform: rotate(45deg); }
     .incident .upd { border-top: 1px solid var(--border); padding: 10px 0 0; margin-top: 10px; }
     .incident .upd-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .incident .upd-meta time { color: var(--muted); font-size: 12px; }
@@ -231,6 +273,8 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
     @media (prefers-color-scheme: dark) {
       :root { color-scheme: dark; }
     }
+    html.theme-light { color-scheme: light; }
+    html.theme-dark { color-scheme: dark; }
   </style>
 </head>
 <body>

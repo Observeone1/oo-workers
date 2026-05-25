@@ -107,6 +107,25 @@ export const apiCheckRepo = {
     return db.update(apiExecutions).set(data).where(eq(apiExecutions.id, id));
   },
 
+  update(
+    id: number,
+    data: Partial<{ name: string; url: string; method: string; intervalSeconds: number }>,
+  ) {
+    return db.update(apiChecks).set(data).where(eq(apiChecks.id, id)).returning();
+  },
+
+  async replaceAssertions(
+    apiCheckId: number,
+    rows: Array<{ type: string; operator: string; path?: string | null; value?: string | null }>,
+  ) {
+    await db.delete(apiAssertions).where(eq(apiAssertions.apiCheckId, apiCheckId));
+    if (rows.length === 0) return [];
+    return db
+      .insert(apiAssertions)
+      .values(rows.map((r) => ({ apiCheckId, ...r })))
+      .returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(apiChecks).set({ enabled }).where(eq(apiChecks.id, id));
   },

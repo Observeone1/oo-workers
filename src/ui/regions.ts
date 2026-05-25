@@ -218,8 +218,8 @@ function renderOneTimeKey(otk: OneTimeKey): string {
         <code data-testid="region-key-value">${esc(otk.cleartextKey)}</code>
       </div>
       <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
-        <button type="button" class="btn" id="copy-key-btn">Copy to clipboard</button>
-        <button type="button" class="btn primary" id="dismiss-key-btn" data-testid="region-key-dismiss-btn">I've copied it</button>
+        <button type="button" class="btn ghost" id="dismiss-key-btn" data-testid="region-key-dismiss-btn">I've copied it</button>
+        <button type="button" class="btn primary" id="copy-key-btn">Copy to clipboard</button>
       </div>
     </div>
   `;

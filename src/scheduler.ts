@@ -32,6 +32,15 @@
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { DEFAULTS } from './constants.ts';
+
+// Random 4-char suffix stamped on every job ID at boot time. BullMQ silently
+// deduplicates by jobId — without this, a hard-killed process leaves stale
+// waiting jobs in Redis, and on the next boot the scheduler generates the same
+// wall-clock-bucketed ID, which is then deduplicated away forever (the monitor
+// never runs again until the stale job is manually cleared). A per-boot nonce
+// makes every boot's IDs distinct, so the drain below can clear the slate and
+// fresh IDs never collide with the previous boot's artifacts.
+const BOOT_NONCE = Math.random().toString(36).slice(2, 6);
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
@@ -105,7 +114,17 @@ async function dispatch(
   }
 }
 
-export function startScheduler(connection: Redis) {
+const QUEUE_NAMES = [
+  'url-monitor',
+  'api-check',
+  'qa-project',
+  'tcp-monitor',
+  'udp-monitor',
+  'db-monitor',
+  'tls-monitor',
+] as const;
+
+export async function startScheduler(connection: Redis) {
   // BullMQ queues only get created for the null-region path. Regional jobs
   // skip BullMQ entirely — see dispatch().
   const queues = new Map<string, Queue>();
@@ -118,7 +137,27 @@ export function startScheduler(connection: Redis) {
     return q;
   };
 
-  logger.info(`🕒 scheduler starting (tick every ${TICK_MS / 1000}s)`);
+  // Drain waiting jobs left over from the previous process. After a hard
+  // kill (OOM, power-off), unprocessed jobs sit in the BullMQ wait list
+  // indefinitely. On the next boot the scheduler would generate the same
+  // wall-clock-bucketed IDs and BullMQ would deduplicate them — so those
+  // monitors would silently never run until the stale entry expired or was
+  // manually removed. Draining on startup clears the slate; the first tick
+  // immediately re-enqueues everything that is due.
+  await Promise.all(
+    QUEUE_NAMES.map(async (name) => {
+      try {
+        await getQueue(name).drain();
+        logger.info(`startup: drained stale waiting jobs from ${name}`);
+      } catch (err) {
+        logger.warn(
+          `startup: drain failed for ${name}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }),
+  );
+
+  logger.info(`🕒 scheduler starting (tick every ${TICK_MS / 1000}s, boot-nonce ${BOOT_NONCE})`);
 
   // Consecutive-failure escalation. A persistent DB outage used to log
   // one error per tick and let operators discover hours later that no
@@ -199,7 +238,7 @@ async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
         'url-monitor',
         target,
         {
-          jobId: `url:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `url:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'url',
           executionId: exec.id,
           regionId: target.regionId,
@@ -236,7 +275,7 @@ async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
         'api-check',
         target,
         {
-          jobId: `api:${c.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `api:${c.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'api',
           executionId: exec.id,
           regionId: target.regionId,
@@ -279,7 +318,7 @@ async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
         'tcp-monitor',
         target,
         {
-          jobId: `tcp:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `tcp:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'tcp',
           executionId: exec.id,
           regionId: target.regionId,
@@ -321,7 +360,7 @@ async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
         'udp-monitor',
         target,
         {
-          jobId: `udp:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `udp:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'udp',
           executionId: exec.id,
           regionId: target.regionId,
@@ -363,7 +402,7 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
         'db-monitor',
         target,
         {
-          jobId: `db:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `db:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'db',
           executionId: exec.id,
           regionId: target.regionId,
@@ -404,7 +443,7 @@ async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
         'tls-monitor',
         target,
         {
-          jobId: `tls:${m.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `tls:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'tls',
           executionId: exec.id,
           regionId: target.regionId,
@@ -453,7 +492,7 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
         'qa-project',
         target,
         {
-          jobId: `qa:${p.id}:${bucket}${jobIdSuffix(target)}`,
+          jobId: `qa:${p.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'qa',
           executionId: 0, // synthetic; QA processor creates exec rows per test
           regionId: target.regionId,

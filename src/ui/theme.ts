@@ -23,6 +23,10 @@ function resolved(): Theme {
 function apply(theme: Theme) {
   document.documentElement.style.colorScheme = theme;
   document.documentElement.dataset.theme = theme;
+  // Mirror to a cookie so the public status page can match the operator's
+  // theme. The status page has CSP script-src 'none' and can't read
+  // localStorage, so the server reads `oo-theme` and emits a <meta> tag.
+  document.cookie = `oo-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
   const btn = document.getElementById('theme-toggle');
   if (btn) {
     btn.innerHTML = theme === 'dark' ? iconSun : iconMoon;

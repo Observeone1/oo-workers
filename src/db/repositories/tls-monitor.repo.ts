@@ -84,6 +84,23 @@ export const tlsMonitorRepo = {
     return db.update(tlsExecutions).set(data).where(eq(tlsExecutions.id, id));
   },
 
+  update(
+    id: number,
+    data: Partial<{
+      name: string;
+      host: string;
+      port: number;
+      servername: string | null;
+      warnDays: number;
+      intervalSeconds: number;
+      verifyChain: boolean;
+      verifyHostname: boolean;
+      expectCnRegex: string | null;
+    }>,
+  ) {
+    return db.update(tlsMonitors).set(data).where(eq(tlsMonitors.id, id)).returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(tlsMonitors).set({ enabled }).where(eq(tlsMonitors.id, id));
   },

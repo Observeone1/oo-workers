@@ -4,7 +4,7 @@
  * recent freshly-created key shows up in the reveal panel, and clearing
  * "I've copied it" wipes it forever.
  */
-import { esc, fmtAge } from '../helpers';
+import { esc, fmtAge, paginate, paginationFooter, wirePagination } from '../helpers';
 import { createKey, getKeys, revokeKey, type KeyLite, type KeyScope } from '../api';
 import { confirmDialog, alertDialog } from '../dialogs';
 import { openSlideover, closeSlideover } from '../slideover';
@@ -15,6 +15,8 @@ interface OneTimeKey {
 }
 
 let oneTimeKey: OneTimeKey | null = null;
+let page = 1;
+const PAGE_SIZE = 10;
 
 export async function renderKeys(panel: HTMLElement): Promise<void> {
   panel.innerHTML = `
@@ -43,6 +45,7 @@ export async function renderKeys(panel: HTMLElement): Promise<void> {
           <tbody id="s-keys-tbody"><tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">Loading…</td></tr></tbody>
         </table>
       </div>
+      <div id="s-keys-pagination"></div>
     </div>
     <p class="set-foot-note">Need an agent key for a new region? Create one with the <span class="pill scope agent">agent</span> scope, then paste it into your region's docker env as <code>OO_KEY</code>.</p>
   `;
@@ -82,8 +85,8 @@ async function loadKeys(panel: HTMLElement): Promise<void> {
           <p class="warning">This is the only time the key is shown. After you leave this page it's gone.</p>
           <div class="key-box"><code data-testid="key-cleartext">${esc(oneTimeKey.cleartextKey)}</code></div>
           <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
-            <button class="btn" id="s-copy-key">Copy to clipboard</button>
-            <button class="btn primary" id="s-dismiss-key" data-testid="keys-dismiss-btn">I've copied it</button>
+            <button class="btn ghost" id="s-dismiss-key" data-testid="keys-dismiss-btn">I've copied it</button>
+            <button class="btn primary" id="s-copy-key">Copy to clipboard</button>
           </div>
         </div>
       `;
@@ -105,9 +108,20 @@ async function loadKeys(panel: HTMLElement): Promise<void> {
     }
   }
 
+  const { pageRows, totalPages, page: safePage } = paginate(keys, page, PAGE_SIZE);
+  page = safePage;
   tbody.innerHTML = keys.length
-    ? keys.map(renderKeyRow).join('')
+    ? pageRows.map(renderKeyRow).join('')
     : `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted)">No API keys yet. Create one to get started.</td></tr>`;
+
+  const pager = panel.querySelector<HTMLElement>('#s-keys-pagination');
+  if (pager) {
+    pager.innerHTML = paginationFooter(page, totalPages);
+    wirePagination(pager, page, totalPages, (next) => {
+      page = next;
+      void loadKeys(panel);
+    });
+  }
 
   panel.querySelectorAll<HTMLButtonElement>('.key-revoke').forEach((btn) => {
     btn.addEventListener('click', async () => {

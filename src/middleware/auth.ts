@@ -82,10 +82,9 @@ export function evictFromKeyCache(keyId: number): void {
  * per request. Cache key is sha256(cleartext) — the cleartext is never
  * stored. Cache misses still do a real DB lookup + argon2 verify.
  *
- * Revocation takes effect within `VALIDATE_KEY_CACHE_TTL_MS` (not
- * instantly) — acceptable for an open-source dashboard where the
- * "Revoke" affordance is a single-operator decision, not a panic
- * button. If a hard-kill is ever needed, restart the process.
+ * Revocation is instant: the revoke route calls `evictFromKeyCache`
+ * synchronously before returning 204, so the next request always gets
+ * a cache miss and a fresh DB check. The 30s TTL is a safety net only.
  */
 export async function validateKey(cleartext: string): Promise<ApiKeyRow | null> {
   if (!cleartext.startsWith('oo_') || cleartext.length < KEY_PREFIX_LEN + 1) return null;
@@ -93,6 +92,10 @@ export async function validateKey(cleartext: string): Promise<ApiKeyRow | null> 
   const cacheKey = hashCleartextForCache(cleartext);
   const cached = VALIDATE_KEY_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
+    if (cached.row.revokedAt !== null) {
+      VALIDATE_KEY_CACHE.delete(cacheKey);
+      return null;
+    }
     return cached.row;
   }
 

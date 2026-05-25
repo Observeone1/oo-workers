@@ -39,7 +39,12 @@ CSS classes as a shortcut.
 | Header / nav      | `brand`, `nav-monitors`, `nav-channels`, `nav-settings-btn`, `nav-sign-out` |
 | Monitor list      | `monitors-search-input`, `monitors-tab-url`, `monitors-row-{name}`        |
 | Add-monitor dlg   | `add-monitor-btn`, `add-monitor-dialog`, `add-monitor-type-tile-url`,     |
-|                   | `add-monitor-name-input`, `add-monitor-submit`                            |
+|                   | `add-monitor-name-input`, `add-monitor-url-input`,                        |
+|                   | `add-monitor-interval-input`, `add-monitor-api-method`,                   |
+|                   | `add-monitor-qa-script`, `add-monitor-api-assertions`,                    |
+|                   | `add-monitor-api-add-assertion`, `add-monitor-api-assertion-row`,         |
+|                   | `add-monitor-api-assertion-{type,operator,path,value,remove}`,            |
+|                   | `add-monitor-submit`                                                      |
 | Channels          | `channels-add-btn`, `channel-card-{name}`, `channel-test-btn`             |
 | Regions           | `regions-add-btn`, `region-card-{slug}`, `region-rotate-btn`              |
 | Status pages      | `sp-add-btn`, `sp-item-{slug}`, `sp-public-link`                          |

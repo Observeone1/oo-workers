@@ -2,12 +2,19 @@ import type { MonType, RunLite } from './types';
 import { $, esc, fmtAge, statusClass } from './helpers';
 import { iconActive, iconPaused } from './icons';
 import { getDetail, getRegions, runMonitor, type RegionLite } from './api';
+import { openEditDialog } from './dialogs/add-monitor-dialog';
 
 const main = $('#main');
 
 // Filter state per detail-render. 'all' shows every run; 'master' = regionId === null;
 // numeric = regionId of a specific region.
 type Filter = 'all' | 'master' | number;
+
+// Preserve the operator's region-chip selection across the 5s background
+// re-render. Keyed by (type, id) so navigating to a different monitor
+// correctly resets to the default bucket.
+let lastFilterKey: string | null = null;
+let lastFilter: Filter | null = null;
 
 const REGION_PALETTE = [
   '#10b981', // master / fallback
@@ -103,7 +110,14 @@ export async function renderDetail(type: MonType, id: number) {
   if (hasMasterRuns) buckets.push('master');
   regionIdsInRuns.forEach((rid) => buckets.push(rid));
 
-  const initialFilter: Filter = buckets[0] ?? 'all';
+  const key = `${type}:${id}`;
+  const preserved =
+    lastFilterKey === key && lastFilter !== null && buckets.includes(lastFilter)
+      ? lastFilter
+      : null;
+  const initialFilter: Filter = preserved ?? buckets[0] ?? 'all';
+  lastFilterKey = key;
+  lastFilter = initialFilter;
   renderWithFilter(type, id, m, runs, regions, regionIdsInRuns, buckets, initialFilter);
 }
 
@@ -152,6 +166,10 @@ function renderWithFilter(
         <div class="sub">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.intervalSeconds}s</div>
       </div>
       <div style="display:flex;gap:6px">
+        <button id="detail-edit" class="btn" data-testid="detail-edit-btn" title="Edit monitor">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
         <button id="detail-run" class="btn primary">Run now</button>
       </div>
     </div>
@@ -200,11 +218,22 @@ function renderWithFilter(
     await runMonitor(type, id);
     setTimeout(() => renderDetail(type, id), 1000);
   });
+  $('#detail-edit').addEventListener('click', async () => {
+    const data = await getDetail(type, id);
+    if (data.error) return;
+    const raw = data as unknown as Record<string, unknown>;
+    await openEditDialog(type, id, raw.monitor as Record<string, unknown>, {
+      assertions: raw.assertions as Array<Record<string, unknown>>,
+      tests: raw.tests as Array<Record<string, unknown>>,
+    });
+  });
   if (showChips) {
     document.querySelectorAll<HTMLButtonElement>('.region-chip').forEach((btn) => {
       btn.addEventListener('click', () => {
         const v = btn.dataset.filter;
         const next: Filter = v === 'all' || v === 'master' ? v : Number(v);
+        lastFilterKey = `${type}:${id}`;
+        lastFilter = next;
         renderWithFilter(type, id, m, allRuns, regions, regionOrder, buckets, next);
       });
     });
@@ -238,7 +267,7 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
   const enabled = m.enabled === true;
   const lastPingAt = m.lastPingAt ? String(m.lastPingAt) : null;
   const pingUrl = `${location.origin}/heartbeat/${token}`;
-  const curl = `curl -fsS ${pingUrl}`;
+  const curl = `curl -fsS -X POST ${pingUrl}`;
   const cronExample = `*/${Math.max(1, Math.round(periodSeconds / 60))} * * * * ${curl} >/dev/null`;
   const dotClass = statusClass(status);
 
@@ -281,12 +310,12 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
         </p>
         <div class="codeblock" data-testid="heartbeat-ping-url">
           <code>${esc(pingUrl)}</code>
-          <button class="btn sm" data-copy="${esc(pingUrl)}" data-testid="heartbeat-copy-url">Copy</button>
+          <button type="button" class="btn sm" data-copy="${esc(pingUrl)}" data-testid="heartbeat-copy-url">Copy</button>
         </div>
         <p class="help" style="margin-top: 12px"><strong>curl one-shot:</strong></p>
-        <div class="codeblock"><code>${esc(curl)}</code><button class="btn sm" data-copy="${esc(curl)}">Copy</button></div>
+        <div class="codeblock"><code>${esc(curl)}</code><button type="button" class="btn sm" data-copy="${esc(curl)}">Copy</button></div>
         <p class="help" style="margin-top: 12px"><strong>cron line (every ${Math.round(periodSeconds / 60)} min):</strong></p>
-        <div class="codeblock"><code>${esc(cronExample)}</code><button class="btn sm" data-copy="${esc(cronExample)}">Copy</button></div>
+        <div class="codeblock"><code>${esc(cronExample)}</code><button type="button" class="btn sm" data-copy="${esc(cronExample)}">Copy</button></div>
       </div>
     </section>
   `;

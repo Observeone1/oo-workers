@@ -272,9 +272,9 @@ main {
 /* default button = pill-bordered. Opt out with .bare, .icon-btn, .tab, .type-tile, .region-chip, or .seg-btn / .sw-btn */
 .btn,
 button.btn,
-button:not(.tab):not(.icon-btn):not(.region-chip):not(.bare):not(.type-tile):not(.seg-btn):not(
-    .sw-btn
-  ) {
+button:where(
+  :not(.tab):not(.icon-btn):not(.region-chip):not(.bare):not(.type-tile):not(.seg-btn):not(.sw-btn)
+) {
   appearance: none;
   display: inline-flex;
   align-items: center;
@@ -2739,6 +2739,35 @@ dialog .dialog-actions {
   .field-grid.cols-3 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ----- API assertion rows (Add monitor → api) ----- */
+.assertion-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.assertion-row select[data-field='type'] {
+  flex: 0 0 140px;
+}
+.assertion-row select[data-field='operator'] {
+  flex: 0 0 120px;
+}
+.assertion-row input[data-field='path'],
+.assertion-row input[data-field='value'] {
+  flex: 1;
+  min-width: 0;
+}
+.assertion-row .assertion-remove {
+  flex: 0 0 24px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+}
+.assertion-row .assertion-remove:hover {
+  color: var(--down);
 }
 
 /* prefix/suffix input addon */

@@ -39,3 +39,39 @@ const STATUS_CLASS: Record<string, string> = {
   warn: 'warn',
 };
 export const statusClass = (s: string | undefined | null) => STATUS_CLASS[s ?? ''] ?? '';
+
+// Shared client-side pagination. Pure slicing + a render/wire pair so any
+// list can opt in without re-inventing the prev/next/page-of-N footer.
+export function paginate<T>(
+  items: T[],
+  page: number,
+  pageSize: number,
+): { pageRows: T[]; totalPages: number; page: number } {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * pageSize;
+  return { pageRows: items.slice(start, start + pageSize), totalPages, page: safePage };
+}
+
+export function paginationFooter(page: number, totalPages: number): string {
+  if (totalPages <= 1) return '';
+  return `<div class="pagination">
+    <button class="btn sm" data-page-prev ${page === 1 ? 'disabled' : ''}>← Prev</button>
+    <span class="cell-meta">Page ${page} of ${totalPages}</span>
+    <button class="btn sm" data-page-next ${page === totalPages ? 'disabled' : ''}>Next →</button>
+  </div>`;
+}
+
+export function wirePagination(
+  root: ParentNode,
+  currentPage: number,
+  totalPages: number,
+  onChange: (newPage: number) => void,
+): void {
+  root.querySelector('[data-page-prev]')?.addEventListener('click', () => {
+    if (currentPage > 1) onChange(currentPage - 1);
+  });
+  root.querySelector('[data-page-next]')?.addEventListener('click', () => {
+    if (currentPage < totalPages) onChange(currentPage + 1);
+  });
+}

@@ -24,6 +24,26 @@ import type { RouteDeps } from './types.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
 
+// Must match the enums in src/services/api-assertion.ts. The api_assertions
+// table has NOT NULL on (type, operator), so an invalid value used to land as
+// a Postgres constraint error → 500. Validating here returns a useful 400.
+const VALID_ASSERTION_TYPES = new Set([
+  'status_code',
+  'response_time',
+  'json_path',
+  'text_contains',
+  'header',
+]);
+const VALID_ASSERTION_OPERATORS = new Set([
+  'equals',
+  'not_equals',
+  'less_than',
+  'greater_than',
+  'contains',
+  'not_contains',
+  'exists',
+]);
+
 export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   const { urlQ, apiQ, qaQ, tcpQ, udpQ, dbQ, tlsQ } = deps;
 
@@ -157,6 +177,32 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/api', async (c) => {
     const body = await c.req.json();
     if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
+    const rawAssertions = (body.assertions ?? []) as unknown;
+    if (!Array.isArray(rawAssertions)) {
+      return c.json({ error: 'assertions must be an array' }, 400);
+    }
+    for (let i = 0; i < rawAssertions.length; i++) {
+      const a = rawAssertions[i] as { type?: unknown; operator?: unknown };
+      if (!a || typeof a !== 'object') {
+        return c.json({ error: `assertions[${i}] must be an object` }, 400);
+      }
+      if (typeof a.type !== 'string' || !VALID_ASSERTION_TYPES.has(a.type)) {
+        return c.json(
+          {
+            error: `assertions[${i}].type must be one of: ${[...VALID_ASSERTION_TYPES].join(', ')}`,
+          },
+          400,
+        );
+      }
+      if (typeof a.operator !== 'string' || !VALID_ASSERTION_OPERATORS.has(a.operator)) {
+        return c.json(
+          {
+            error: `assertions[${i}].operator must be one of: ${[...VALID_ASSERTION_OPERATORS].join(', ')}`,
+          },
+          400,
+        );
+      }
+    }
     const [m] = await apiCheckRepo.create({
       name: body.name,
       url: body.url,
@@ -167,7 +213,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
-    const assertions = (body.assertions ?? []) as Array<{
+    const assertions = rawAssertions as Array<{
       type: string;
       operator: string;
       path?: string;
@@ -450,6 +496,195 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
     }
     await monitorAlertChannelRepo.set(type, id, body.channelIds as number[]);
     return c.json({ ok: true, channelIds: body.channelIds });
+  });
+
+  // ---------- API: full update ----------
+  app.put('/api/monitors/heartbeat/:id', async (c) => {
+    // Heartbeat already has a specific PATCH; this PUT is its alias for the
+    // unified edit dialog path.
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+    const body = await c.req.json();
+    const update: Record<string, unknown> = {};
+    if (typeof body.name === 'string') update.name = body.name;
+    if (body.description !== undefined) update.description = body.description;
+    if (body.periodSeconds !== undefined) {
+      const p = Number(body.periodSeconds);
+      if (!Number.isFinite(p) || p < 30)
+        return c.json({ error: 'periodSeconds must be ≥ 30' }, 400);
+      update.periodSeconds = p;
+    }
+    if (body.graceSeconds !== undefined) {
+      const g = Number(body.graceSeconds);
+      if (!Number.isFinite(g) || g < 0) return c.json({ error: 'graceSeconds must be ≥ 0' }, 400);
+      update.graceSeconds = g;
+    }
+    const [m] = await heartbeatRepo.update(
+      id,
+      update as Parameters<typeof heartbeatRepo.update>[1],
+    );
+    if (!m) return c.json({ error: 'not found' }, 404);
+    return c.json(m);
+  });
+
+  app.put('/api/monitors/:type/:id', async (c) => {
+    const type = c.req.param('type');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
+    const body = await c.req.json();
+
+    if (type === 'url') {
+      if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
+      const [m] = await urlMonitorRepo.update(id, {
+        name: body.name,
+        url: body.url,
+        intervalSeconds: body.intervalSeconds ?? 60,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      if (Array.isArray(body.assertions)) {
+        await urlMonitorRepo.deleteAssertionsByMonitorId(id);
+        if (body.assertions.length > 0) {
+          await urlMonitorRepo.createAssertions(
+            id,
+            (body.assertions as Array<{ operator: string; statusCode: number }>).map((a) => ({
+              operator: a.operator,
+              statusCode: Number(a.statusCode),
+            })),
+          );
+        }
+      }
+      return c.json(m);
+    }
+    if (type === 'api') {
+      if (!body.name || !body.url) return c.json({ error: 'name + url required' }, 400);
+      const rawAssertions = Array.isArray(body.assertions) ? body.assertions : [];
+      for (let i = 0; i < rawAssertions.length; i++) {
+        const a = rawAssertions[i] as { type?: unknown; operator?: unknown };
+        if (typeof a.type !== 'string' || !VALID_ASSERTION_TYPES.has(a.type))
+          return c.json({ error: `assertions[${i}].type invalid` }, 400);
+        if (typeof a.operator !== 'string' || !VALID_ASSERTION_OPERATORS.has(a.operator))
+          return c.json({ error: `assertions[${i}].operator invalid` }, 400);
+      }
+      const [m] = await apiCheckRepo.update(id, {
+        name: body.name,
+        url: body.url,
+        method: body.method ?? 'GET',
+        intervalSeconds: body.intervalSeconds ?? 60,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      await apiCheckRepo.replaceAssertions(
+        id,
+        rawAssertions.map(
+          (a: { type: string; operator: string; path?: string; value?: string }) => ({
+            type: a.type,
+            operator: a.operator,
+            path: a.path ?? null,
+            value: a.value ?? null,
+          }),
+        ),
+      );
+      return c.json(m);
+    }
+    if (type === 'tcp') {
+      const port = Number(body.port);
+      if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
+        return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const [m] = await tcpMonitorRepo.update(id, {
+        name: body.name,
+        host: body.host,
+        port,
+        payloadHex: body.payloadHex ?? null,
+        expectBanner: body.expectBanner ?? null,
+        intervalSeconds: body.intervalSeconds ?? 60,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      return c.json(m);
+    }
+    if (type === 'udp') {
+      const port = Number(body.port);
+      if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
+        return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const [m] = await udpMonitorRepo.update(id, {
+        name: body.name,
+        host: body.host,
+        port,
+        payloadHex: body.payloadHex ?? null,
+        expectResponse: body.expectResponse === true,
+        intervalSeconds: body.intervalSeconds ?? 60,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      return c.json(m);
+    }
+    if (type === 'db') {
+      const port = Number(body.port);
+      const protocol = body.protocol;
+      if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
+        return c.json({ error: 'name + host + port required' }, 400);
+      if (protocol !== 'postgres' && protocol !== 'mysql' && protocol !== 'redis')
+        return c.json({ error: 'protocol must be postgres, mysql, or redis' }, 400);
+      const [m] = await dbMonitorRepo.update(id, {
+        name: body.name,
+        host: body.host,
+        port,
+        protocol,
+        tls: body.tls === true,
+        intervalSeconds: body.intervalSeconds ?? 60,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      return c.json(m);
+    }
+    if (type === 'tls') {
+      const port = body.port == null ? 443 : Number(body.port);
+      if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
+        return c.json({ error: 'name + host required' }, 400);
+      const warnDays = body.warnDays == null ? 30 : Number(body.warnDays);
+      if (!Number.isInteger(warnDays) || warnDays < 0)
+        return c.json({ error: 'warnDays must be a non-negative integer' }, 400);
+      let expectCnRegex: string | null = null;
+      if (body.expectCnRegex != null && String(body.expectCnRegex).length > 0) {
+        const raw = String(body.expectCnRegex);
+        if (raw.length > 200)
+          return c.json({ error: 'expectCnRegex too long (max 200 chars)' }, 400);
+        if (/\([^()]*[+*][^()]*\)[+*]/.test(raw))
+          return c.json({ error: 'expectCnRegex has a trivially-nested quantifier' }, 400);
+        try {
+          new RegExp(raw);
+        } catch (e) {
+          return c.json(
+            { error: `expectCnRegex invalid: ${e instanceof Error ? e.message : e}` },
+            400,
+          );
+        }
+        expectCnRegex = raw;
+      }
+      const [m] = await tlsMonitorRepo.update(id, {
+        name: body.name,
+        host: body.host,
+        port,
+        servername: body.servername || null,
+        warnDays,
+        intervalSeconds: body.intervalSeconds ?? 60,
+        verifyChain: body.verifyChain === true,
+        verifyHostname: body.verifyHostname === true,
+        expectCnRegex,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      return c.json(m);
+    }
+    if (type === 'qa') {
+      if (!body.name || !body.targetUrl) return c.json({ error: 'name + targetUrl required' }, 400);
+      const [m] = await qaProjectRepo.update(id, {
+        name: body.name,
+        targetUrl: body.targetUrl,
+        intervalSeconds: body.intervalSeconds ?? 300,
+      });
+      if (!m) return c.json({ error: 'not found' }, 404);
+      if (typeof body.script === 'string') {
+        await qaProjectRepo.updateFirstTestScript(id, body.script);
+      }
+      return c.json(m);
+    }
+    return c.json({ error: 'bad type' }, 400);
   });
 
   // ---------- API: enable/disable ----------

@@ -88,6 +88,7 @@ export const TABLES: TableSpec[] = [
   { table: schema.dbMonitors, serial: true },
   { table: schema.tlsMonitors, serial: true },
   { table: schema.qaProjects, serial: true },
+  { table: schema.heartbeatMonitors, serial: true },
   { table: schema.urlMonitorAssertions, serial: true },
   { table: schema.apiAssertions, serial: true },
   { table: schema.qaGeneratedTests, serial: true },
