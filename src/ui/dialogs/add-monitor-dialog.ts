@@ -48,6 +48,17 @@ export function initAddDialog(): void {
     heartbeat: 'Schedule',
   };
 
+  const NAME_PLACEHOLDER: Record<MonType, string> = {
+    url: 'My website',
+    api: 'Payment API',
+    tcp: 'Postgres 5432',
+    udp: 'DNS resolver',
+    db: 'Production DB',
+    tls: 'api.example.com',
+    qa: 'Checkout flow',
+    heartbeat: 'Nightly backup',
+  };
+
   const syncFields = (t: MonType = 'url') => {
     // Show/hide type-specific check panes
     $('#url-fields').hidden = t !== 'url';
@@ -72,6 +83,8 @@ export function initAddDialog(): void {
     if (pill) pill.textContent = t.toUpperCase();
     const checkTitle = document.getElementById('check-title');
     if (checkTitle) checkTitle.textContent = CHECK_TITLE[t] ?? 'Check';
+    const nameInput = addDialog.querySelector<HTMLInputElement>('input[name="name"]');
+    if (nameInput) nameInput.placeholder = NAME_PLACEHOLDER[t];
     // Update rail active step
     syncRailToSection('type');
     syncRegionsRow();
@@ -138,11 +151,12 @@ export function initAddDialog(): void {
     typeGrid2?.querySelectorAll('.type-tile').forEach((t) => t.classList.remove('active'));
     typeGrid2?.querySelector('[data-type="url"]')?.classList.add('active');
     syncFields(activeAddType);
-    // Scroll body back to top
-    const body = addDialog.querySelector<HTMLElement>('.dialog-body');
-    if (body) body.scrollTop = 0;
     await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);
     addDialog.showModal();
+    requestAnimationFrame(() => {
+      const body = addDialog.querySelector<HTMLElement>('.dialog-body');
+      if (body) body.scrollTop = 0;
+    });
   });
 
   addForm.addEventListener('submit', async (e) => {

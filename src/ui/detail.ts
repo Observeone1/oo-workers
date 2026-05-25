@@ -238,7 +238,7 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
   const enabled = m.enabled === true;
   const lastPingAt = m.lastPingAt ? String(m.lastPingAt) : null;
   const pingUrl = `${location.origin}/heartbeat/${token}`;
-  const curl = `curl -fsS ${pingUrl}`;
+  const curl = `curl -fsS -X POST ${pingUrl}`;
   const cronExample = `*/${Math.max(1, Math.round(periodSeconds / 60))} * * * * ${curl} >/dev/null`;
   const dotClass = statusClass(status);
 

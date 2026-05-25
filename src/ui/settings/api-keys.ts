@@ -82,8 +82,8 @@ async function loadKeys(panel: HTMLElement): Promise<void> {
           <p class="warning">This is the only time the key is shown. After you leave this page it's gone.</p>
           <div class="key-box"><code data-testid="key-cleartext">${esc(oneTimeKey.cleartextKey)}</code></div>
           <div style="margin-top:var(--s-3);display:flex;gap:var(--s-2);justify-content:flex-end">
-            <button class="btn" id="s-copy-key">Copy to clipboard</button>
-            <button class="btn primary" id="s-dismiss-key" data-testid="keys-dismiss-btn">I've copied it</button>
+            <button class="btn ghost" id="s-dismiss-key" data-testid="keys-dismiss-btn">Dismiss</button>
+            <button class="btn primary" id="s-copy-key">Copy to clipboard</button>
           </div>
         </div>
       `;
