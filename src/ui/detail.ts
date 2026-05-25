@@ -281,12 +281,12 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
         </p>
         <div class="codeblock" data-testid="heartbeat-ping-url">
           <code>${esc(pingUrl)}</code>
-          <button class="btn sm" data-copy="${esc(pingUrl)}" data-testid="heartbeat-copy-url">Copy</button>
+          <button type="button" class="btn sm" data-copy="${esc(pingUrl)}" data-testid="heartbeat-copy-url">Copy</button>
         </div>
         <p class="help" style="margin-top: 12px"><strong>curl one-shot:</strong></p>
-        <div class="codeblock"><code>${esc(curl)}</code><button class="btn sm" data-copy="${esc(curl)}">Copy</button></div>
+        <div class="codeblock"><code>${esc(curl)}</code><button type="button" class="btn sm" data-copy="${esc(curl)}">Copy</button></div>
         <p class="help" style="margin-top: 12px"><strong>cron line (every ${Math.round(periodSeconds / 60)} min):</strong></p>
-        <div class="codeblock"><code>${esc(cronExample)}</code><button class="btn sm" data-copy="${esc(cronExample)}">Copy</button></div>
+        <div class="codeblock"><code>${esc(cronExample)}</code><button type="button" class="btn sm" data-copy="${esc(cronExample)}">Copy</button></div>
       </div>
     </section>
   `;

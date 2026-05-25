@@ -188,24 +188,25 @@ async function boot() {
 
   window.addEventListener('hashchange', route);
 
-  // Auto-refresh the list every 5s when not viewing a detail page.
+  // Auto-refresh the list every 5s when not viewing a detail or sub-page.
   // Skipped while the search input has focus so keystrokes aren't disrupted.
+  //
+  // The skip list must include every typed detail hash — when a new monitor
+  // type lands, miss this and the detail page snaps back to the list on the
+  // next tick. Match the regex in route() (`url|api|qa|tcp|udp|db|tls|heartbeat`)
+  // plus every top-level non-list section.
   setInterval(() => {
     void refreshRegionBadge();
-    if (
-      location.hash.startsWith('#/url/') ||
-      location.hash.startsWith('#/api/') ||
-      location.hash.startsWith('#/qa/') ||
-      location.hash.startsWith('#/tcp/') ||
-      location.hash.startsWith('#/udp/') ||
-      location.hash.startsWith('#/regions') ||
-      location.hash.startsWith('#/channels') ||
-      location.hash.startsWith('#/status-pages') ||
-      location.hash.startsWith('#/incidents') ||
-      location.hash.startsWith('#/settings') ||
-      location.hash.startsWith('#/docs')
-    )
-      return;
+    const h = location.hash;
+    const onDetail = /^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/\d+/.test(h);
+    const onSection =
+      h.startsWith('#/regions') ||
+      h.startsWith('#/channels') ||
+      h.startsWith('#/status-pages') ||
+      h.startsWith('#/incidents') ||
+      h.startsWith('#/settings') ||
+      h.startsWith('#/docs');
+    if (onDetail || onSection) return;
     if (document.activeElement?.id === 'search-input') return;
     renderList();
   }, 5000);
