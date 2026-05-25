@@ -21,6 +21,7 @@ import type { AvailabilityDay } from './types';
 import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
 import { getActiveIncidents } from './incidents';
+import { openEditDialog } from './dialogs/add-monitor-dialog';
 
 const main = $('#main');
 
@@ -371,6 +372,19 @@ function wireTabs() {
 }
 
 function wireRowActions() {
+  $$('[data-edit]').forEach((b) =>
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const { type, id } = (e.currentTarget as HTMLElement).dataset;
+      const res = await fetch(`/api/monitors/${type}/${id}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      await openEditDialog(type as import('./types').MonType, Number(id), data.monitor, {
+        assertions: data.assertions,
+        tests: data.tests,
+      });
+    }),
+  );
   $$('[data-run]').forEach((b) =>
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -467,6 +481,9 @@ function rowFor(m: Monitor): string {
       </td>
       <td class="col-actions">
         <div class="row-actions">
+          <button class="btn sm" data-edit data-type="${m.type}" data-id="${m.id}" data-testid="monitor-row-edit" title="Edit">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
           <button class="btn sm" data-run data-type="${m.type}" data-id="${m.id}" title="Run now">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </button>

@@ -1,8 +1,8 @@
 # oo-workers
 
-Self-hosted monitoring. HTTP uptime checks, API checks with JSONPath assertions, and full Playwright browser flows. Runs in one `docker compose up`. Apache-2.0.
+Self-hosted monitoring with eight probe types: HTTP uptime, API checks with JSONPath assertions, full Playwright browser tests, TCP/UDP probes, database liveness, TLS certificate checks, and heartbeats. Runs in one `docker compose up`. Apache-2.0.
 
-The open-source slice of [ObserveOne](https://observeone.com) - the engine, the scheduler, and a minimal admin UI.
+The open-source slice of [ObserveOne](https://observeone.com) — the engine, the scheduler, and a minimal admin UI.
 
 ---
 
@@ -17,7 +17,7 @@ docker compose up -d
 
 This pulls the pre-built image from `observeone/oo-workers:latest` on Docker Hub. To build from source, use `docker compose -f docker-compose.build.yml up -d`.
 
-Open **http://localhost:3001**. On first visit a setup wizard asks you to create an admin account (email + password); after that it's a normal email/password login. Click _+ Add monitor_ and you're going.
+Open **http://localhost:3001**. On first visit a setup wizard asks you to create an admin account (email + password); after that it's a normal email/password login. Click _+ Add monitor_ and you're going. To edit an existing monitor, click the pencil icon on any list row or the _Edit_ button on the monitor detail page.
 
 Need programmatic access (CLI, agents, CI)? Mint API keys in the dashboard under **Keys**, or from the shell:
 
@@ -121,7 +121,7 @@ docker compose exec worker bun scripts/create-api-key.ts --name ci
 # → oo_<43 chars>  (copy this - it won't be shown again)
 ```
 
-Only the argon2id hash is stored. Make as many as you want with different names; revoke them individually later.
+Only the argon2id hash is stored. Make as many as you want with different names; revoke them individually from the same page — revocation takes effect immediately.
 
 ### Expose to the network
 

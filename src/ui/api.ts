@@ -41,6 +41,14 @@ export const createMonitor = (type: MonType, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+export const updateMonitor = (type: MonType, id: number, body: unknown) =>
+  fetch(`/api/monitors/${type}/${id}`, {
+    ...COMMON,
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
 export const importJson = async (
   payload: unknown,
 ): Promise<{ res: Response; result: ImportResult }> => {

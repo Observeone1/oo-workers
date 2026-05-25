@@ -40,7 +40,7 @@ Postgres + Redis ports default to `5442` and `6379` on the host so you can conne
 
 ```bash
 # Integration suite — spins up throwaway Postgres + Redis containers via
-# testcontainers, runs all 15 specs (~90s). Docker must be running.
+# testcontainers, runs all 21 specs (~90s). Docker must be running.
 bun run test:integration
 
 # Run a single spec during development:
@@ -114,7 +114,7 @@ scripts/
 tests/integration/
 ├── setup.ts                       # global testcontainers setup (Postgres + Redis)
 ├── _harness.ts                    # per-test helpers (createTestDb, acquireRedisDb, startWorkers, …)
-└── *.it.spec.ts                   # 15 integration specs (~90s, self-contained)
+└── *.it.spec.ts                   # 21 integration specs (~90s, self-contained)
 ```
 
 ## PR conventions

@@ -257,6 +257,25 @@ export const qaProjectRepo = {
     return db.update(qaProjects).set({ lastRunAt: new Date() }).where(eq(qaProjects.id, projectId));
   },
 
+  update(id: number, data: Partial<{ name: string; targetUrl: string; intervalSeconds: number }>) {
+    return db.update(qaProjects).set(data).where(eq(qaProjects.id, id)).returning();
+  },
+
+  async updateFirstTestScript(projectId: number, script: string) {
+    const [first] = await db
+      .select({ id: qaGeneratedTests.id })
+      .from(qaGeneratedTests)
+      .where(eq(qaGeneratedTests.projectId, projectId))
+      .orderBy(qaGeneratedTests.id)
+      .limit(1);
+    if (!first) return [];
+    return db
+      .update(qaGeneratedTests)
+      .set({ script })
+      .where(eq(qaGeneratedTests.id, first.id))
+      .returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(qaProjects).set({ enabled }).where(eq(qaProjects.id, id));
   },

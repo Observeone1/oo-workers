@@ -80,6 +80,20 @@ export const tcpMonitorRepo = {
     return db.update(tcpExecutions).set(data).where(eq(tcpExecutions.id, id));
   },
 
+  update(
+    id: number,
+    data: Partial<{
+      name: string;
+      host: string;
+      port: number;
+      payloadHex: string | null;
+      expectBanner: string | null;
+      intervalSeconds: number;
+    }>,
+  ) {
+    return db.update(tcpMonitors).set(data).where(eq(tcpMonitors.id, id)).returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(tcpMonitors).set({ enabled }).where(eq(tcpMonitors.id, id));
   },

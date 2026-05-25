@@ -80,6 +80,20 @@ export const udpMonitorRepo = {
     return db.update(udpExecutions).set(data).where(eq(udpExecutions.id, id));
   },
 
+  update(
+    id: number,
+    data: Partial<{
+      name: string;
+      host: string;
+      port: number;
+      payloadHex: string | null;
+      expectResponse: boolean;
+      intervalSeconds: number;
+    }>,
+  ) {
+    return db.update(udpMonitors).set(data).where(eq(udpMonitors.id, id)).returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(udpMonitors).set({ enabled }).where(eq(udpMonitors.id, id));
   },

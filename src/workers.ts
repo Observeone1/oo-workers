@@ -93,7 +93,7 @@ export async function startWorkers(redisUrl: string): Promise<() => Promise<void
     logger.error(`❌ tls-monitor #${job?.id} failed: ${err.message}`),
   );
 
-  const stopScheduler = startScheduler(connection);
+  const stopScheduler = await startScheduler(connection);
 
   return async () => {
     await stopScheduler();

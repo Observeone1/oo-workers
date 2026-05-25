@@ -103,3 +103,50 @@ describe('GET /status/:slug', () => {
     expect(html).not.toMatch(/class="theme-(light|dark)"/);
   });
 });
+
+// Projection test: stale PENDING execution on a status page monitor shows as 'down',
+// not 'unknown'. The aggregator's currentStatus() checks start_time age against
+// 2× interval_seconds — the same logic as exec-projection.ts.
+describe('D. stale PENDING execution → down on public status page', () => {
+  let slug2 = '';
+  let urlId2 = -1;
+
+  beforeAll(async () => {
+    // sql, base, redisCtx, serverCtx are initialised by the outer beforeAll.
+    slug2 = `sp-stall-${Date.now()}`;
+
+    const [mon] = await sql<[{ id: number }]>`
+      INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
+      VALUES ('stall-proj', 'https://example.com', 15000, 60, FALSE)
+      RETURNING id`;
+    urlId2 = mon.id;
+
+    // PENDING execution older than 2 × 60 = 120 s → aggregator must project as 'down'.
+    const staleTime = new Date(Date.now() - 5 * 60 * 1000); // 5 min ago
+    await sql`
+      INSERT INTO url_monitor_executions (url_monitor_id, status, start_time)
+      VALUES (${urlId2}, 'PENDING', ${staleTime})`;
+
+    const [pg] = await sql<[{ id: number }]>`
+      INSERT INTO status_pages (slug, title) VALUES (${slug2}, 'Stall test') RETURNING id`;
+    await sql`
+      INSERT INTO status_page_monitors (status_page_id, monitor_type, monitor_id, sort_order)
+      VALUES (${pg.id}, 'url', ${urlId2}, 0)`;
+  }, 30_000);
+
+  afterAll(async () => {
+    await sql`DELETE FROM status_pages WHERE slug = ${slug2}`.catch(() => {});
+    if (urlId2 > 0) await sql`DELETE FROM url_monitors WHERE id = ${urlId2}`.catch(() => {});
+  }, 30_000);
+
+  test('stale PENDING → monitor-status down, not unknown', async () => {
+    const html = await (await fetch(`${base}/status/${slug2}`)).text();
+    expect(html).toContain('class="monitor-status down"');
+    expect(html).not.toContain('class="monitor-status unknown"');
+  });
+
+  test('overall banner is down when the only monitor is stale PENDING', async () => {
+    const html = await (await fetch(`${base}/status/${slug2}`)).text();
+    expect(html).toContain('class="overall down"');
+  });
+});

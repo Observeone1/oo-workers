@@ -2,6 +2,7 @@ import type { MonType, RunLite } from './types';
 import { $, esc, fmtAge, statusClass } from './helpers';
 import { iconActive, iconPaused } from './icons';
 import { getDetail, getRegions, runMonitor, type RegionLite } from './api';
+import { openEditDialog } from './dialogs/add-monitor-dialog';
 
 const main = $('#main');
 
@@ -165,6 +166,10 @@ function renderWithFilter(
         <div class="sub">${esc(url)} · <span class="pill">${type.toUpperCase()}</span> · every ${m.intervalSeconds}s</div>
       </div>
       <div style="display:flex;gap:6px">
+        <button id="detail-edit" class="btn" data-testid="detail-edit-btn" title="Edit monitor">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
         <button id="detail-run" class="btn primary">Run now</button>
       </div>
     </div>
@@ -212,6 +217,15 @@ function renderWithFilter(
   $('#detail-run').addEventListener('click', async () => {
     await runMonitor(type, id);
     setTimeout(() => renderDetail(type, id), 1000);
+  });
+  $('#detail-edit').addEventListener('click', async () => {
+    const data = await getDetail(type, id);
+    if (data.error) return;
+    const raw = data as unknown as Record<string, unknown>;
+    await openEditDialog(type, id, raw.monitor as Record<string, unknown>, {
+      assertions: raw.assertions as Array<Record<string, unknown>>,
+      tests: raw.tests as Array<Record<string, unknown>>,
+    });
   });
   if (showChips) {
     document.querySelectorAll<HTMLButtonElement>('.region-chip').forEach((btn) => {

@@ -101,8 +101,18 @@ export const urlMonitorRepo = {
     return db.update(urlMonitorExecutions).set(data).where(eq(urlMonitorExecutions.id, id));
   },
 
+  update(id: number, data: Partial<{ name: string; url: string; intervalSeconds: number }>) {
+    return db.update(urlMonitors).set(data).where(eq(urlMonitors.id, id)).returning();
+  },
+
   updateEnabled(id: number, enabled: boolean) {
     return db.update(urlMonitors).set({ enabled }).where(eq(urlMonitors.id, id));
+  },
+
+  deleteAssertionsByMonitorId(urlMonitorId: number) {
+    return db
+      .delete(urlMonitorAssertions)
+      .where(eq(urlMonitorAssertions.urlMonitorId, urlMonitorId));
   },
 
   deleteById(id: number) {
