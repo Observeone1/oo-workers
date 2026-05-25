@@ -144,6 +144,13 @@ export function initAddDialog(): void {
     }
   });
 
+  // Number inputs in the dialog ship with sane defaults (e.g. interval=60).
+  // Without this, clicking the field puts the cursor at the end, so typing
+  // "30" produces "6030" instead of replacing the default.
+  addDialog.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach((el) => {
+    el.addEventListener('focus', () => el.select());
+  });
+
   $('#add-btn').addEventListener('click', async () => {
     activeAddType = 'url';
     // Reset tile selection
