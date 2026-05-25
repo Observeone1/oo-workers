@@ -17,12 +17,14 @@ import { randomBytes, createHash } from 'node:crypto';
 import { isStorageConfigured, putObject, getObjectResponse, deleteObject } from '../../src/services/object-storage.ts';
 
 const REPO = resolve(import.meta.dir, '../..');
-const SEED_SCRIPT = resolve(REPO, 'scripts/backup-restore-test.ts');
 const EXPORT_SCRIPT = resolve(REPO, 'scripts/export.ts');
 const IMPORT_SCRIPT = resolve(REPO, 'scripts/import.ts');
 const MIGRATE_SCRIPT = resolve(REPO, 'src/db/migrate.ts');
 
-const CONFIG_TABLES = ['api_keys','users','regions','url_monitors','api_checks','tcp_monitors','udp_monitors','db_monitors','tls_monitors','qa_projects','url_monitor_assertions','api_assertions','qa_generated_tests','alert_channels','monitor_alert_channels','monitor_regions','status_pages','status_page_monitors','incidents','incident_updates'];
+// heartbeat_monitors was missing from backup-shared.ts TABLES, so heartbeats
+// silently disappeared on restore. Now that it's in TABLES it must also be
+// in the count comparison below.
+const CONFIG_TABLES = ['api_keys','users','regions','url_monitors','api_checks','tcp_monitors','udp_monitors','db_monitors','tls_monitors','qa_projects','heartbeat_monitors','url_monitor_assertions','api_assertions','qa_generated_tests','alert_channels','monitor_alert_channels','monitor_regions','status_pages','status_page_monitors','incidents','incident_updates'];
 const EXEC_TABLES = ['url_monitor_executions','api_executions','tcp_executions','udp_executions','db_executions','tls_executions','qa_test_executions'];
 const ALL_TABLES = [...CONFIG_TABLES, ...EXEC_TABLES];
 const SIBS = ['oo_br_src','oo_br_all','oo_br_win','oo_br_split'];
@@ -47,6 +49,70 @@ async function run(cmd: string[], dbName: string): Promise<{ code: number; stder
   });
   const [stderr] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   return { code: proc.exitCode ?? 0, stderr };
+}
+
+// Seed one row of every config table plus, for each execution table, a recent
+// and a >120d-old row. Heartbeat monitors are NOT excluded — that's the bug
+// this spec previously missed: heartbeat_monitors wasn't even in the TABLES
+// array, so the seed got dropped on restore.
+const OLD_DAYS = 200;
+const RECENT_DAYS = 1;
+async function seed(dbName: string): Promise<void> {
+  const sql = postgres(dbUrl(dbName), { max: 1, onnotice: () => {} });
+  const OLD = new Date(Date.now() - OLD_DAYS * 86_400_000);
+  const NEW = new Date(Date.now() - RECENT_DAYS * 86_400_000);
+  try {
+    const [{ id: keyId }] = await sql<[{ id: number }]>`
+      INSERT INTO api_keys (name, key_prefix, key_hash, scopes)
+      VALUES ('br', 'oo_brbrbr', 'h', ARRAY['write','read']) RETURNING id`;
+    await sql`INSERT INTO users (email, password_hash, name) VALUES ('br@x.io', 'p', 'BR')`;
+    const [{ id: regionId }] = await sql<[{ id: number }]>`
+      INSERT INTO regions (slug, label, api_key_id) VALUES ('br-eu', 'EU', ${keyId}) RETURNING id`;
+    const [{ id: umId }] = await sql<[{ id: number }]>`
+      INSERT INTO url_monitors (name, url) VALUES ('br-url', 'https://x.io') RETURNING id`;
+    await sql`INSERT INTO url_monitor_assertions (url_monitor_id, operator, status_code) VALUES (${umId}, 'eq', 200)`;
+    const [{ id: acId }] = await sql<[{ id: number }]>`
+      INSERT INTO api_checks (name, url, headers) VALUES ('br-api', 'https://x.io/api', '{"x-a":"b"}'::jsonb) RETURNING id`;
+    await sql`INSERT INTO api_assertions (api_check_id, type, operator, value) VALUES (${acId}, 'status_code', 'eq', '200')`;
+    const [{ id: tcpId }] = await sql<[{ id: number }]>`
+      INSERT INTO tcp_monitors (name, host, port) VALUES ('br-tcp', 'x.io', 22) RETURNING id`;
+    const [{ id: udpId }] = await sql<[{ id: number }]>`
+      INSERT INTO udp_monitors (name, host, port) VALUES ('br-udp', 'x.io', 53) RETURNING id`;
+    const [{ id: dbId }] = await sql<[{ id: number }]>`
+      INSERT INTO db_monitors (name, protocol, host, port, tls) VALUES ('br-db', 'redis', 'x.io', 6379, true) RETURNING id`;
+    const [{ id: tlsId }] = await sql<[{ id: number }]>`
+      INSERT INTO tls_monitors (name, host, port, warn_days) VALUES ('br-tls', 'x.io', 443, 30) RETURNING id`;
+    const [{ id: qaId }] = await sql<[{ id: number }]>`
+      INSERT INTO qa_projects (name, target_url, config, credentials)
+      VALUES ('br-qa', 'https://x.io', '{"headed":false}'::jsonb, '{"u":"a"}'::jsonb) RETURNING id`;
+    const [{ id: qaTestId }] = await sql<[{ id: number }]>`
+      INSERT INTO qa_generated_tests (project_id, test_name, test_type, script)
+      VALUES (${qaId}, 't1', 'browser', 'test(''t'', async () => {});') RETURNING id`;
+    await sql`INSERT INTO heartbeat_monitors (name, token, period_seconds, grace_seconds) VALUES ('br-hb', 'br-token-123', 300, 60)`;
+    const [{ id: chId }] = await sql<[{ id: number }]>`
+      INSERT INTO alert_channels (name, type, config) VALUES ('br-ch', 'webhook', '{"url":"https://hook"}'::jsonb) RETURNING id`;
+    await sql`INSERT INTO monitor_alert_channels (monitor_type, monitor_id, channel_id) VALUES ('url', ${umId}, ${chId})`;
+    await sql`INSERT INTO monitor_regions (monitor_type, monitor_id, region_id) VALUES ('url', ${umId}, ${regionId})`;
+    const [{ id: spId }] = await sql<[{ id: number }]>`
+      INSERT INTO status_pages (slug, title) VALUES ('br-sp', 'BR') RETURNING id`;
+    await sql`INSERT INTO status_page_monitors (status_page_id, monitor_type, monitor_id) VALUES (${spId}, 'url', ${umId})`;
+    const [{ id: incId }] = await sql<[{ id: number }]>`
+      INSERT INTO incidents (status_page_id, title, severity) VALUES (${spId}, 'br-incident', 'investigating') RETURNING id`;
+    await sql`INSERT INTO incident_updates (incident_id, severity, body) VALUES (${incId}, 'investigating', 'seed **body**')`;
+
+    // One recent + one >120d-old execution per exec table.
+    for (const ts of [NEW, OLD]) {
+      await sql`INSERT INTO url_monitor_executions (url_monitor_id, region_id, status, start_time) VALUES (${umId}, ${regionId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO api_executions (api_check_id, status, start_time) VALUES (${acId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO tcp_executions (tcp_monitor_id, status, start_time) VALUES (${tcpId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO udp_executions (udp_monitor_id, status, start_time) VALUES (${udpId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO db_executions (db_monitor_id, status, start_time) VALUES (${dbId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO tls_executions (tls_monitor_id, status, start_time) VALUES (${tlsId}, 'SUCCESS', ${ts})`;
+      await sql`INSERT INTO qa_test_executions (test_id, project_id, status, started_at) VALUES (${qaTestId}, ${qaId}, 'SUCCESS', ${ts})`;
+    }
+  } finally {
+    await sql.end();
+  }
 }
 
 async function counts(dbName: string): Promise<Record<string, number>> {
@@ -117,10 +183,12 @@ describe('backup-restore round-trip', () => {
     }
   }, 60_000);
 
-  test('seed oo_br_src via --seed mode', async () => {
+  test('seed oo_br_src (one row per config table + recent/old exec rows + 1 heartbeat)', async () => {
     if (!canCreateDb) { console.warn('SKIP'); return; }
-    const sd = await run(['bun', SEED_SCRIPT, '--seed'], 'oo_br_src');
-    expect(sd.code).toBe(0);
+    await seed('oo_br_src');
+    const c = await counts('oo_br_src');
+    expect(c.heartbeat_monitors).toBe(1);
+    expect(c.url_monitor_executions).toBe(2);
   }, 30_000);
 
   test('export all / window / split from src', async () => {
