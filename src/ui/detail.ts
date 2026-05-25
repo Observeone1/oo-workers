@@ -9,6 +9,12 @@ const main = $('#main');
 // numeric = regionId of a specific region.
 type Filter = 'all' | 'master' | number;
 
+// Preserve the operator's region-chip selection across the 5s background
+// re-render. Keyed by (type, id) so navigating to a different monitor
+// correctly resets to the default bucket.
+let lastFilterKey: string | null = null;
+let lastFilter: Filter | null = null;
+
 const REGION_PALETTE = [
   '#10b981', // master / fallback
   '#3b82f6',
@@ -103,7 +109,14 @@ export async function renderDetail(type: MonType, id: number) {
   if (hasMasterRuns) buckets.push('master');
   regionIdsInRuns.forEach((rid) => buckets.push(rid));
 
-  const initialFilter: Filter = buckets[0] ?? 'all';
+  const key = `${type}:${id}`;
+  const preserved =
+    lastFilterKey === key && lastFilter !== null && buckets.includes(lastFilter)
+      ? lastFilter
+      : null;
+  const initialFilter: Filter = preserved ?? buckets[0] ?? 'all';
+  lastFilterKey = key;
+  lastFilter = initialFilter;
   renderWithFilter(type, id, m, runs, regions, regionIdsInRuns, buckets, initialFilter);
 }
 
@@ -205,6 +218,8 @@ function renderWithFilter(
       btn.addEventListener('click', () => {
         const v = btn.dataset.filter;
         const next: Filter = v === 'all' || v === 'master' ? v : Number(v);
+        lastFilterKey = `${type}:${id}`;
+        lastFilter = next;
         renderWithFilter(type, id, m, allRuns, regions, regionOrder, buckets, next);
       });
     });

@@ -29,6 +29,16 @@ import { renderSetup } from './setup';
 import { iconSignOut } from './icons';
 import { closeSlideover } from './slideover';
 
+// Track the active view so the background poll can decide what to refresh
+// without re-parsing the hash. route() is the single writer; the poll is
+// the single reader. Adding a new monitor type only requires updating the
+// regex in route() — the poll picks up the change automatically.
+type ActiveView =
+  | { kind: 'list' }
+  | { kind: 'detail'; type: MonType; id: number }
+  | { kind: 'section' };
+let activeView: ActiveView = { kind: 'list' };
+
 interface AuthState {
   name: string;
   prefix: string;
@@ -82,31 +92,37 @@ function route() {
   closeSlideover();
   const h = location.hash;
   if (h === '#/regions' || h.startsWith('#/regions/')) {
+    activeView = { kind: 'section' };
     setActiveNav('regions');
     renderRegions();
     return;
   }
   if (h === '#/channels' || h.startsWith('#/channels/')) {
+    activeView = { kind: 'section' };
     setActiveNav('channels');
     renderChannels();
     return;
   }
   if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
+    activeView = { kind: 'section' };
     setActiveNav('status-pages');
     renderStatusPages();
     return;
   }
   if (h === '#/incidents' || h.startsWith('#/incidents/')) {
+    activeView = { kind: 'section' };
     setActiveNav('incidents');
     renderIncidents();
     return;
   }
   if (h === '#/settings') {
+    activeView = { kind: 'section' };
     setActiveNav(null);
     renderSettings();
     return;
   }
   if (h === '#/docs' || h.startsWith('#/docs/')) {
+    activeView = { kind: 'section' };
     setActiveNav('docs');
     const section = h.startsWith('#/docs/') ? h.slice('#/docs/'.length) : null;
     renderDocs(section);
@@ -114,9 +130,11 @@ function route() {
   }
   const m = h.match(/^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/);
   if (m) {
+    activeView = { kind: 'detail', type: m[1] as MonType, id: Number(m[2]) };
     setActiveNav(null);
     renderDetail(m[1] as MonType, Number(m[2]));
   } else {
+    activeView = { kind: 'list' };
     setActiveNav('list');
     renderList();
   }
@@ -188,27 +206,27 @@ async function boot() {
 
   window.addEventListener('hashchange', route);
 
-  // Auto-refresh the list every 5s when not viewing a detail or sub-page.
-  // Skipped while the search input has focus so keystrokes aren't disrupted.
-  //
-  // The skip list must include every typed detail hash — when a new monitor
-  // type lands, miss this and the detail page snaps back to the list on the
-  // next tick. Match the regex in route() (`url|api|qa|tcp|udp|db|tls|heartbeat`)
-  // plus every top-level non-list section.
+  // Background poll: refresh the active view in place every 5s. route() owns
+  // the activeView state, so this branch can never drift out of sync with the
+  // router — adding a new monitor type only requires updating the regex above.
   setInterval(() => {
     void refreshRegionBadge();
-    const h = location.hash;
-    const onDetail = /^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/\d+/.test(h);
-    const onSection =
-      h.startsWith('#/regions') ||
-      h.startsWith('#/channels') ||
-      h.startsWith('#/status-pages') ||
-      h.startsWith('#/incidents') ||
-      h.startsWith('#/settings') ||
-      h.startsWith('#/docs');
-    if (onDetail || onSection) return;
-    if (document.activeElement?.id === 'search-input') return;
-    renderList();
+    if (activeView.kind === 'list') {
+      // Don't disrupt keystrokes while the operator is filtering.
+      if (document.activeElement?.id === 'search-input') return;
+      renderList();
+      return;
+    }
+    if (activeView.kind === 'detail') {
+      // Skip if a confirm/alert dialog is open — re-rendering would dismiss
+      // it from under the operator. The slideover (Edit, future) is bound
+      // to navigation via closeSlideover() in route(), so we don't try to
+      // re-render the detail page while one is open either.
+      if (document.querySelector('dialog[open]') || document.querySelector('.slideover')) return;
+      void renderDetail(activeView.type, activeView.id);
+    }
+    // section views (regions, channels, status-pages, incidents, settings,
+    // docs) intentionally don't auto-refresh; they update on user action.
   }, 5000);
 }
 
