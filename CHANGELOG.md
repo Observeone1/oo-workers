@@ -8,22 +8,24 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
-- **Edit monitors** — pencil icon on every list row and an _Edit_ button on the detail page open the add-monitor dialog pre-populated with the existing values. Submit updates in place; the list refreshes and the detail page reloads with the new data. All eight monitor types supported. ([#PR])
+- **Edit monitors** — pencil icon on every list row and an _Edit_ button on the detail page open the add-monitor dialog pre-populated with the existing values. Submit updates in place; the list refreshes and the detail page reloads with the new data. All eight monitor types supported. ([#79])
 
 ### Fixed
 
-- **API key revoke hardening** — `validateKey()` now checks `revokedAt` on every cache hit. If a row was written with `revokedAt: null` and was later revoked before its 30 s TTL expired, the eviction that fires on revoke ensures the entry is gone; this second check closes any theoretical race window. ([#PR])
-- **Monitor name placeholder per type** — the name input in the add-monitor dialog now shows a type-appropriate placeholder ("My website" for URL, "Payment API" for API, "Postgres 5432" for TCP, etc.) instead of always showing "API gateway". ([#PR])
-- **Dialog scroll reset** — the add-monitor dialog now reliably opens at the top. The `scrollTop = 0` reset was moved to after `showModal()` inside `requestAnimationFrame` so the browser layout pass no longer undoes it. ([#PR])
-- **Stale PENDING on status pages** — a PENDING execution older than 2× the monitor's `interval_seconds` now shows as _down_ (not _unknown_) on public status pages, matching the existing projection behaviour on the admin detail page. ([#PR])
-- **BullMQ startup drain** — all seven queues are drained (waiting jobs removed) before the first scheduler tick on every restart. Without this, stale job IDs from a previous boot would permanently block re-enqueue of the same monitors via BullMQ's dedup key. ([#PR])
-- **BullMQ boot nonce** — every job ID now includes a 4-char random boot nonce as a fourth colon-separated segment (`url:1:28975612:ab3f`). Even when two boots land in the same wall-clock minute bucket, their IDs never collide and dedup never silently skips a dispatch. ([#PR])
+- **API key revoke hardening** — `validateKey()` now checks `revokedAt` on every cache hit. If a row was written with `revokedAt: null` and was later revoked before its 30 s TTL expired, the eviction that fires on revoke ensures the entry is gone; this second check closes any theoretical race window. ([#79])
+- **Monitor name placeholder per type** — the name input in the add-monitor dialog now shows a type-appropriate placeholder ("My website" for URL, "Payment API" for API, "Postgres 5432" for TCP, etc.) instead of always showing "API gateway". ([#79])
+- **Dialog scroll reset** — the add-monitor dialog now reliably opens at the top. The `scrollTop = 0` reset was moved to after `showModal()` inside `requestAnimationFrame` so the browser layout pass no longer undoes it. ([#79])
+- **Stale PENDING on status pages** — a PENDING execution older than 2× the monitor's `interval_seconds` now shows as _down_ (not _unknown_) on public status pages, matching the existing projection behaviour on the admin detail page. ([#79])
+- **BullMQ startup drain** — all seven queues are drained (waiting jobs removed) before the first scheduler tick on every restart. Without this, stale job IDs from a previous boot would permanently block re-enqueue of the same monitors via BullMQ's dedup key. ([#79])
+- **BullMQ boot nonce** — every job ID now includes a 4-char random boot nonce as a fourth colon-separated segment (`url:1:28975612:ab3f`). Even when two boots land in the same wall-clock minute bucket, their IDs never collide and dedup never silently skips a dispatch. ([#79])
 
 ### Tests
 
 - `src/scheduler.unit.spec.ts` — pure unit tests for nonce format and job ID structure (no DB required).
 - `tests/integration/scheduler-drain.it.spec.ts` — pre-seeds stale jobs, starts the scheduler, asserts the IDs are gone post-drain.
 - `tests/ui/edit-monitor.e2e.spec.ts` — Playwright e2e for both edit paths (list-row pencil and detail-page Edit button).
+
+[#79]: https://github.com/Observeone1/oo-workers/pull/79
 
 ---
 
