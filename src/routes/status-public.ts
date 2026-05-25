@@ -12,6 +12,15 @@ const STATUS_CSP =
   "default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; " +
   "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'";
 
+function parseThemeCookie(header: string | undefined): 'light' | 'dark' | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(';')) {
+    const [k, v] = part.trim().split('=');
+    if (k === 'oo-theme' && (v === 'light' || v === 'dark')) return v;
+  }
+  return undefined;
+}
+
 export function registerStatusPublicRoutes(app: Hono): void {
   app.get('/status/:slug', async (c) => {
     const slug = c.req.param('slug');
@@ -23,6 +32,7 @@ export function registerStatusPublicRoutes(app: Hono): void {
         404,
       );
     }
-    return c.html(renderStatusPageHtml(summary));
+    const theme = parseThemeCookie(c.req.header('cookie'));
+    return c.html(renderStatusPageHtml(summary, theme));
   });
 }

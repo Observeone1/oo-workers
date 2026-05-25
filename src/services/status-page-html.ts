@@ -90,11 +90,18 @@ function bar(state: DayState, dayIdxFromNow: number): string {
   return `<span class="bar bar-${state}" title="${date}: ${state}"></span>`;
 }
 
-export function renderStatusPageHtml(summary: StatusPageSummary): string {
+export function renderStatusPageHtml(summary: StatusPageSummary, themeOverride?: string): string {
   const { page, monitors, incidents, overall, generatedAt } = summary;
   const headline = overallHeadline(overall);
+  // CSP is `script-src 'none'`; force the operator's theme via inline style
+  // on <html> (style-src allows 'unsafe-inline'). Inline beats the :root
+  // rule in tokens.css. Empty/bogus cookie = no inline = follow system.
+  const themeStyle =
+    themeOverride === 'light' || themeOverride === 'dark'
+      ? ` style="color-scheme: ${themeOverride}"`
+      : '';
   return `<!doctype html>
-<html lang="en">
+<html lang="en"${themeStyle}>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
