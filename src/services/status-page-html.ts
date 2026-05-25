@@ -177,8 +177,38 @@ export function renderStatusPageHtml(summary: StatusPageSummary, themeOverride?:
       border-radius: 4px;
     }
     .incident-when { color: var(--muted); font-size: 12px; }
-    .incident details { margin-top: 10px; }
-    .incident summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .incident details { margin-top: 12px; }
+    .incident summary {
+      cursor: pointer;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 12px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      list-style: none;
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+    .incident summary:hover { background: var(--panel); }
+    /* Hide the default disclosure triangle in WebKit/Blink so the
+       chevron we draw below is the only marker. */
+    .incident summary::-webkit-details-marker { display: none; }
+    .incident summary::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-right: 2px solid currentColor;
+      border-bottom: 2px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 0.15s ease;
+      flex-shrink: 0;
+    }
+    .incident details[open] summary::before { transform: rotate(45deg); }
     .incident .upd { border-top: 1px solid var(--border); padding: 10px 0 0; margin-top: 10px; }
     .incident .upd-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .incident .upd-meta time { color: var(--muted); font-size: 12px; }
