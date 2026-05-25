@@ -1,10 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { sql } from '../config/db.ts';
+import postgres from 'postgres';
 
 const MIGRATIONS_DIR = resolve(import.meta.dir, '../../migrations');
 
-async function ensureMigrationsTable() {
+type Sql = ReturnType<typeof postgres>;
+
+async function ensureMigrationsTable(sql: Sql) {
   await sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       name        TEXT PRIMARY KEY,
@@ -13,7 +15,7 @@ async function ensureMigrationsTable() {
   `;
 }
 
-async function appliedMigrations(): Promise<Set<string>> {
+async function appliedMigrations(sql: Sql): Promise<Set<string>> {
   const rows = await sql<{ name: string }[]>`SELECT name FROM schema_migrations`;
   return new Set(rows.map((r) => r.name));
 }
@@ -23,7 +25,7 @@ async function listMigrationFiles(): Promise<string[]> {
   return entries.filter((f) => f.endsWith('.sql')).sort();
 }
 
-async function applyMigration(filename: string) {
+async function applyMigration(sql: Sql, filename: string) {
   const path = join(MIGRATIONS_DIR, filename);
   const contents = await readFile(path, 'utf8');
   console.log(`→ applying ${filename}`);
@@ -34,23 +36,38 @@ async function applyMigration(filename: string) {
   console.log(`✓ ${filename}`);
 }
 
-async function main() {
-  await ensureMigrationsTable();
-  const already = await appliedMigrations();
-  const files = await listMigrationFiles();
-  const pending = files.filter((f) => !already.has(f));
+export async function runMigrations(databaseUrl: string): Promise<void> {
+  const sql = postgres(databaseUrl);
+  try {
+    await ensureMigrationsTable(sql);
+    const already = await appliedMigrations(sql);
+    const files = await listMigrationFiles();
+    const pending = files.filter((f) => !already.has(f));
 
-  if (pending.length === 0) {
-    console.log('schema up to date');
-  } else {
-    console.log(`applying ${pending.length} migration(s)...`);
-    for (const f of pending) await applyMigration(f);
-    console.log('done');
+    if (pending.length === 0) {
+      console.log('schema up to date');
+    } else {
+      console.log(`applying ${pending.length} migration(s)...`);
+      for (const f of pending) await applyMigration(sql, f);
+      console.log('done');
+    }
+  } finally {
+    await sql.end();
   }
-  await sql.end();
 }
 
-main().catch((err) => {
-  console.error('migration failed:', err);
-  process.exit(1);
-});
+async function main() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error('DATABASE_URL is required');
+    process.exit(1);
+  }
+  await runMigrations(url);
+}
+
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error('migration failed:', err);
+    process.exit(1);
+  });
+}
