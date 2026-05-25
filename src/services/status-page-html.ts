@@ -10,7 +10,12 @@
  * without a server-pushed update path.
  */
 
-import type { DayState, PublicIncident, StatusPageSummary } from './status-page-aggregator.ts';
+import type {
+  DayState,
+  OverallStatus,
+  PublicIncident,
+  StatusPageSummary,
+} from './status-page-aggregator.ts';
 import { renderIncidentMarkdown } from './incident-render.ts';
 
 const SEV_LABEL: Record<string, string> = {
@@ -65,8 +70,9 @@ function esc(s: string | null | undefined): string {
   );
 }
 
-function overallHeadline(overall: DayState): { label: string; emoji: string } {
+function overallHeadline(overall: OverallStatus): { label: string; emoji: string } {
   if (overall === 'down') return { label: 'Some services are degraded', emoji: '🔥' };
+  if (overall === 'degraded') return { label: 'Some services are degraded', emoji: '⚠️' };
   if (overall === 'up') return { label: 'All systems operational', emoji: '✅' };
   return { label: 'Status unknown', emoji: '⚪' };
 }
@@ -126,6 +132,7 @@ export function renderStatusPageHtml(summary: StatusPageSummary): string {
     }
     .overall.up { background: color-mix(in srgb, var(--up) 12%, transparent); }
     .overall.down { background: color-mix(in srgb, var(--down) 12%, transparent); color: var(--down); }
+    .overall.degraded { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
     .overall.unknown { background: var(--panel-2); color: var(--muted); }
     .incidents { margin: 0 0 28px; }
     .incident {
