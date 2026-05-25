@@ -68,7 +68,7 @@
   --accent: #10b981;
   --accent-hover: #059669;
   --accent-glow: #34d399;
-  --on-accent: light-dark(#ffffff, #03130d);
+  --on-accent: #03130d;
 
   --up: #10b981;
   --down: #ef4444;
