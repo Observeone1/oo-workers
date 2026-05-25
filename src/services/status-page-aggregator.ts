@@ -285,13 +285,11 @@ export async function summarizeStatusPage(slug: string): Promise<StatusPageSumma
   const hasDown = monitors.some((m) => m.currentStatus === 'down');
   const allUnknown = monitors.length === 0 || monitors.every((m) => m.currentStatus === 'unknown');
   const allUp = monitors.length > 0 && monitors.every((m) => m.currentStatus === 'up');
-  const overall: OverallStatus = hasDown
-    ? 'down'
-    : allUnknown
-      ? 'unknown'
-      : allUp
-        ? 'up'
-        : 'degraded';
+  let overall: OverallStatus;
+  if (hasDown) overall = 'down';
+  else if (allUnknown) overall = 'unknown';
+  else if (allUp) overall = 'up';
+  else overall = 'degraded';
   return {
     page: { slug: page.slug, title: page.title, description: page.description },
     monitors,
