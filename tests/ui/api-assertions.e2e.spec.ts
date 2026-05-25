@@ -35,6 +35,12 @@ test('default row submits a valid status_code assertion', async ({ page, request
 
   await page.getByTestId('add-monitor-submit').click();
   await waitForList(page);
+  // Wait for the new row to actually appear before probing the API, so the
+  // GET sees the same committed state the user does.
+  await page.getByTestId('monitors-tab-api').click();
+  await expect(
+    page.locator('tr[data-open][data-type="api"]', { hasText: name }),
+  ).toBeVisible({ timeout: 5000 });
 
   // The monitor exists and the assertion came through with a valid `type`.
   const list = await (await request.get('/api/monitors')).json();
@@ -78,6 +84,12 @@ test('+ Add assertion appends a row; type=header reveals path input', async ({
 
   await page.getByTestId('add-monitor-submit').click();
   await waitForList(page);
+  // Wait for the new row to actually appear before probing the API, so the
+  // GET sees the same committed state the user does.
+  await page.getByTestId('monitors-tab-api').click();
+  await expect(
+    page.locator('tr[data-open][data-type="api"]', { hasText: name }),
+  ).toBeVisible({ timeout: 5000 });
 
   const list = await (await request.get('/api/monitors')).json();
   const created = list.api.find((m: { name: string; id: number }) => m.name === name);
@@ -110,6 +122,12 @@ test('× removes a row; empty assertions array submits successfully', async ({ p
 
   await page.getByTestId('add-monitor-submit').click();
   await waitForList(page);
+  // Wait for the new row to actually appear before probing the API, so the
+  // GET sees the same committed state the user does.
+  await page.getByTestId('monitors-tab-api').click();
+  await expect(
+    page.locator('tr[data-open][data-type="api"]', { hasText: name }),
+  ).toBeVisible({ timeout: 5000 });
 
   const list = await (await request.get('/api/monitors')).json();
   const created = list.api.find((m: { name: string; id: number }) => m.name === name);
