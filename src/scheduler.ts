@@ -40,7 +40,7 @@ import { DEFAULTS } from './constants.ts';
 // never runs again until the stale job is manually cleared). A per-boot nonce
 // makes every boot's IDs distinct, so the drain below can clear the slate and
 // fresh IDs never collide with the previous boot's artifacts.
-export const BOOT_NONCE = Math.random().toString(36).slice(2, 6);
+const BOOT_NONCE = Math.random().toString(36).slice(2, 6);
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';

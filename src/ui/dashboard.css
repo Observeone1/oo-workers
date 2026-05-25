@@ -272,7 +272,9 @@ main {
 /* default button = pill-bordered. Opt out with .bare, .icon-btn, .tab, .type-tile, .region-chip, or .seg-btn / .sw-btn */
 .btn,
 button.btn,
-button:where(:not(.tab):not(.icon-btn):not(.region-chip):not(.bare):not(.type-tile):not(.seg-btn):not(.sw-btn)) {
+button:where(
+  :not(.tab):not(.icon-btn):not(.region-chip):not(.bare):not(.type-tile):not(.seg-btn):not(.sw-btn)
+) {
   appearance: none;
   display: inline-flex;
   align-items: center;
