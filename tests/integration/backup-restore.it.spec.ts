@@ -13,6 +13,8 @@ import { resolve } from 'node:path';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { randomBytes, createHash } from 'node:crypto';
+import { isStorageConfigured, putObject, getObjectResponse, deleteObject } from '../../src/services/object-storage.ts';
 
 const REPO = resolve(import.meta.dir, '../..');
 const SEED_SCRIPT = resolve(REPO, 'scripts/backup-restore-test.ts');
@@ -226,6 +228,48 @@ describe('backup-restore round-trip', () => {
     const src = await counts('oo_br_src');
     const tar = await counts('oo_br_tar');
     expect(eq(src, tar)).toBe(true);
+  }, 60_000);
+
+  test('real-S3 round-trip: seed → export → wipe → restore → SHA-256 byte equality', async () => {
+    if (!canCreateDb) { console.warn('SKIP'); return; }
+    if (!isStorageConfigured()) { console.warn('SKIP: OO_OBJECT_STORAGE_* not configured'); return; }
+
+    const prefix = `e2e-backup-${randomBytes(4).toString('hex')}/`;
+    const objs = [
+      { key: `${prefix}script.spec.ts`, body: Buffer.from("test('hi',()=>{});\n", 'utf8') },
+      { key: `${prefix}trace.zip`,       body: randomBytes(2048) },
+      { key: `${prefix}screenshot.png`,  body: randomBytes(1024) },
+    ];
+    const sha256 = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+    const seeded = objs.map((o) => ({ ...o, sha: sha256(o.body) }));
+
+    try {
+      for (const o of seeded) await putObject(o.key, o.body, 'application/octet-stream');
+
+      const rtTgz = resolve(tmp, 'art-rt.oodump.tar.gz');
+      const rtExp = await run(['bun', EXPORT_SCRIPT, '--scope', 'all', '--include-artifacts', '-o', rtTgz], 'oo_br_src');
+      expect(rtExp.code, `export failed: ${rtExp.stderr.trim().split('\n').pop()}`).toBe(0);
+
+      for (const o of seeded) await deleteObject(o.key).catch(() => {});
+
+      await admin!.unsafe('DROP DATABASE IF EXISTS oo_br_art WITH (FORCE)');
+      await admin!.unsafe('CREATE DATABASE oo_br_art');
+      const artMig = await run(['bun', MIGRATE_SCRIPT], 'oo_br_art');
+      expect(artMig.code, `migrate oo_br_art failed: ${artMig.stderr.trim()}`).toBe(0);
+
+      const rtImp = await run(['bun', IMPORT_SCRIPT, '--from', rtTgz], 'oo_br_art');
+      expect(rtImp.code, `restore failed: ${rtImp.stderr.trim().split('\n').pop()}`).toBe(0);
+
+      for (const o of seeded) {
+        const res = await getObjectResponse(o.key);
+        const buf = Buffer.from(await res.arrayBuffer());
+        const got = sha256(buf);
+        expect(got, `SHA-256 mismatch for ${o.key}`).toBe(o.sha);
+      }
+    } finally {
+      for (const o of seeded) await deleteObject(o.key).catch(() => {});
+      await admin!.unsafe('DROP DATABASE IF EXISTS oo_br_art WITH (FORCE)').catch(() => {});
+    }
   }, 60_000);
 
   test('schema-head guard refuses + leaves target untouched', async () => {

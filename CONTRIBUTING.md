@@ -39,9 +39,12 @@ Postgres + Redis ports default to `5442` and `6379` on the host so you can conne
 ## Running tests
 
 ```bash
-# Integration suite — runs the full worker + scheduler, fires monitors of every
-# type, verifies expected counts. Needs Postgres + Redis up.
+# Integration suite — spins up throwaway Postgres + Redis containers via
+# testcontainers, runs all 15 specs (~90s). Docker must be running.
 bun run test:integration
+
+# Run a single spec during development:
+bun test --preload ./tests/integration/setup.ts tests/integration/heartbeat.it.spec.ts
 
 # Playwright e2e against a live UI server (must be reachable at UI_BASE_URL).
 # OO_E2E_API_KEY is injected as the Bearer header.
@@ -54,7 +57,7 @@ bun run format:check
 bun run knip
 ```
 
-The Husky `pre-push` hook also runs `bun run test:integration` and blocks the push on failure. If you're pushing a docs-only change and the integration suite is flaky against your local Postgres, `git push --no-verify` is acceptable (but check with the maintainer first — we generally want CI to be the only gate that catches breakage).
+The Husky `pre-push` hook also runs `bun run test:integration` and blocks the push on failure. Docker must be running for the integration suite — if you're pushing a docs-only change without Docker available, `git push --no-verify` is acceptable (check with the maintainer first).
 
 ## Project layout
 
@@ -103,12 +106,15 @@ migrations/
 ├── 0005_auth.sql                  # api_keys (argon2id, prefix lookup, scopes)
 └── 0006_multi_region.sql          # regions + monitor_regions + region_id on 5 exec tables
 scripts/
-├── smoke.ts                       # end-to-end multi-monitor smoke
-├── load.ts                        # concurrency + failure modes + assertion breadth
-├── scheduler-test.ts              # scheduler tick verification
+├── export.ts                      # backup — dump DB rows (+ optional S3 artifacts) to .oodump.gz
+├── import.ts                      # restore — load a .oodump.gz or .oodump.tar.gz into a DB
 ├── create-api-key.ts              # bootstrap a write key
 ├── create-region.ts               # provision a region + agent key
 └── rotate-region-key.ts           # atomic key rotation for an existing region
+tests/integration/
+├── setup.ts                       # global testcontainers setup (Postgres + Redis)
+├── _harness.ts                    # per-test helpers (createTestDb, acquireRedisDb, startWorkers, …)
+└── *.it.spec.ts                   # 15 integration specs (~90s, self-contained)
 ```
 
 ## PR conventions
