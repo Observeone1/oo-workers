@@ -506,7 +506,7 @@
                   <textarea
                     name="qa_script"
                     data-testid="add-monitor-qa-script"
-                    placeholder="import { test, expect } from '@playwright/test';&#10;test('my check', async ({ page }) => { ... });"
+                    placeholder="import { test, expect } from '@playwright/test';&#10;const URL = process.env.PLAYWRIGHT_TARGET_URL!;&#10;test('my check', async ({ page }) => { await page.goto(URL); ... });"
                   ></textarea>
                 </div>
                 <label class="checkbox-label" style="margin-top: 8px">

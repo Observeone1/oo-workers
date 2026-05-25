@@ -38,16 +38,44 @@ interface TestConfig {
   outputDir?: string;
 }
 
+// Built from a string with explicit unicode escapes so editor tools and
+// diff viewers don't lose the literal ESC byte. Matches CSI + OSC and
+// the most common SGR sequences Playwright emits.
+const ANSI_RE = new RegExp(
+  '[\\u001b\\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]',
+  'g',
+);
+
+/**
+ * Strip ANSI escapes from stderr and trim it to the first N non-empty
+ * lines so the resulting message is short enough to land in an execution
+ * row's error_message column without dragging in the whole npm spinner.
+ */
+export function extractStderrSummary(stderr: string, maxLines = 20): string {
+  return stderr
+    .replace(ANSI_RE, '')
+    .split('\n')
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0)
+    .slice(0, maxLines)
+    .join('\n');
+}
+
 /**
  * Run a Playwright `.spec.ts` against `playwright test`, capture artifacts
  * (trace + screenshots on failure), parse the JSON reporter output, and
  * return a structured result. Cleanup of `outputDir` is the caller's
  * responsibility — we don't delete it because the caller usually wants to
  * read artifact files first.
+ *
+ * `targetUrl` is injected into the spawned process as `PLAYWRIGHT_TARGET_URL`
+ * so scripts can `page.goto(process.env.PLAYWRIGHT_TARGET_URL!)` instead
+ * of hard-coding the URL inline. Always set (empty string when the caller
+ * has none), so scripts can detect absence with a plain truthy check.
  */
 export async function executePlaywrightTest(
   scriptPath: string,
-  _targetUrl: string,
+  targetUrl: string,
   _credentials?: Record<string, string>,
   config?: TestConfig,
 ): Promise<PlaywrightTestResult> {
@@ -83,6 +111,7 @@ export async function executePlaywrightTest(
         env: {
           ...process.env,
           PLAYWRIGHT_HEADLESS: 'true',
+          PLAYWRIGHT_TARGET_URL: targetUrl ?? '',
         },
       });
       stdout = result.stdout;
@@ -174,12 +203,26 @@ export async function executePlaywrightTest(
       if (executionError) success = false;
     } else {
       if (!success) {
-        const cleanStderr = stderr.replace(
-          /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-          '',
-        );
+        // Two error sources for a "no suites" failure:
+        //   1) parsedResult.errors[] — Playwright crashed before tests
+        //      (bad import, syntax, missing dep, no-tests-found). Goes
+        //      to stdout as part of the JSON reporter.
+        //   2) stderr — anything Playwright didn't structure (worker
+        //      panic, OOM, dep install crash).
+        // Prefer (1) when present, fall back to (2). Without this, the
+        // execution row used to land with the generic "Command failed
+        // with exit code 1" and no debugging signal.
+        const reporterErrors = Array.isArray(parsedResult?.errors)
+          ? parsedResult.errors
+              .map((e: { message?: string }) => (e?.message ?? '').trim())
+              .filter(Boolean)
+              .join('\n')
+          : '';
+        const stderrSummary = extractStderrSummary(stderr);
+        const detail = reporterErrors || stderrSummary;
         logs.push(`Execution failed: ${executionError}`);
-        logs.push(`STDERR: ${cleanStderr}`);
+        if (detail) logs.push(`Detail: ${detail}`);
+        if (detail) executionError = `Playwright runner failed: ${detail}`;
       }
     }
 
