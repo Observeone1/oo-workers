@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.25.1] - 2026-05-26
+
+### Fixed
+
+- **cols-3 form-row squish.** TCP/UDP/DB host+port+interval rows used `2fr 1fr 1fr` columns. The "seconds" suffix addon ate ~75% of the Interval column; the number input collapsed onto its spinner controls. Reshape to `1.6fr 0.9fr 1.5fr` — Host stays widest, Port shrinks (5 digits max), Interval gets ~50% more room. ([#PR])
+- **Dialog resized when switching monitor type.** The v2 add-monitor dialog had `min-width: 720px; max-width: 880px;` so it flexed wider for crowded forms (TCP/DB) and narrower for sparse forms (URL). Pin to `width: min(880px, 95vw)` for a stable width. ([#PR])
+- **Heartbeat detail Edit button rendered on the wrong side.** Used a custom `.detail-head-row` class that had no CSS, so the button stacked below the title left-aligned. Restructured to use the same `.page-head` pattern as the other 7 monitor types — Edit now sits right-aligned with the title row. ([#PR])
+- **Import JSON dialog: CLI link target.** Hand-rolling-JSON footnote removed; install link points at `https://www.observeone.com/cli` (the landing CLI sub-page) instead of a placeholder GitHub URL. ([#PR])
+
+[#PR]: https://github.com/Observeone1/oo-workers/pull/
+
+---
+
 ## [1.25.0] - 2026-05-26
 
 ### Changed (behavior change)
