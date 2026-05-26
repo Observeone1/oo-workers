@@ -182,7 +182,7 @@ Proves the agent's retry-once-then-drop pattern is real, not just code. With the
 
 ### Forcing the light-image rejection path (for testing only)
 
-Set `OO_AGENT_FORCE_LIGHT=1` on an agent that has Playwright installed. The agent reports any dispatched QA job as a single ERROR result with the message _"This agent is the light variant — redeploy with `observeone/oo-agent:qa` to handle QA jobs."_ Useful for verifying the error surfaces correctly in the UI before shipping a real light image, or for deliberately routing QA off a known-capable agent without rebuilding.
+Set `OO_AGENT_FORCE_LIGHT=1` on an agent that has Playwright installed. The agent reports any dispatched QA job as a single ERROR result with the message _"This agent is the light variant — redeploy with `observeone/oo-agent-qa` to handle QA jobs."_ Useful for verifying the error surfaces correctly in the UI before shipping a real light image, or for deliberately routing QA off a known-capable agent without rebuilding.
 
 ## Multiple agents per region
 

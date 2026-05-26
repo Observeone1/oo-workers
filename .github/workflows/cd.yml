@@ -1,6 +1,13 @@
 name: CD
 
-# Publish a Docker image to Docker Hub on every version tag push.
+# Publish Docker images to Docker Hub on every version tag push.
+# Three images per release, all from the same multi-stage Dockerfile:
+#
+#   observeone/oo-workers       — master + UI (default target)
+#   observeone/oo-agent-light   — slim agent, no Chromium (~360 MB)
+#   observeone/oo-agent-qa      — agent with Chromium for QA browser checks
+#
+# Each is tagged as :<version>, :<major>.<minor>, and :latest.
 # CI (typecheck/format/lint/knip/integration) runs separately on the
 # commit that the tag points at — the tag itself is the manual gate.
 
@@ -29,8 +36,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      # ---------- observeone/oo-workers (master) ----------
+      - name: Metadata — oo-workers
+        id: meta_workers
         uses: docker/metadata-action@v5
         with:
           images: observeone/oo-workers
@@ -39,12 +47,57 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Build and push
+      - name: Build + push oo-workers
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: master
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_workers.outputs.tags }}
+          labels: ${{ steps.meta_workers.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---------- observeone/oo-agent-light (slim agent, no Chromium) ----------
+      - name: Metadata — oo-agent-light
+        id: meta_agent_light
+        uses: docker/metadata-action@v5
+        with:
+          images: observeone/oo-agent-light
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build + push oo-agent-light
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: agent-light
+          push: true
+          tags: ${{ steps.meta_agent_light.outputs.tags }}
+          labels: ${{ steps.meta_agent_light.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---------- observeone/oo-agent-qa (agent with Chromium) ----------
+      - name: Metadata — oo-agent-qa
+        id: meta_agent_qa
+        uses: docker/metadata-action@v5
+        with:
+          images: observeone/oo-agent-qa
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build + push oo-agent-qa
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: agent-qa
+          push: true
+          tags: ${{ steps.meta_agent_qa.outputs.tags }}
+          labels: ${{ steps.meta_agent_qa.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

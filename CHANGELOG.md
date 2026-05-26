@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.27.0] - 2026-05-26
+
+### Added
+
+- **`observeone/oo-agent-light` Docker image** — slim agent image, no Chromium. ~360 MB compared to the ~3.75 GB master image. Handles URL, API, TCP, UDP, DB, TLS, and heartbeat probes. The default for regional probe boxes. The `docker-compose.agent.yml` `image:` now points at this. ([#PR])
+- **`observeone/oo-agent-qa` Docker image** — agent image with Playwright/Chromium for regions that also run QA browser checks. ~3.5 GB. Set `OO_AGENT_IMAGE=observeone/oo-agent-qa` in your agent stack's `.env` to opt in. ([#PR])
+
+### Internal
+
+- `Dockerfile` is now a 4-stage multi-target build: `deps` → `agent-light` → `agent-qa` → `master`. The master stage stays last so `docker build .` (no `--target`) still produces the master image — existing source-build flows unchanged.
+- `cd.yml` now builds + pushes all three images on every `v*` tag. The buildx GHA cache is shared across all three; the agent-light stage adds ~20s to the CD run.
+- `src/agent.ts` error messages updated to reference `observeone/oo-agent-qa` (the new Docker Hub repo name) instead of the never-existed `observeone/oo-agent:qa` placeholder.
+
+### Operator migration
+
+- Existing regional agent stacks pulling `observeone/oo-workers:latest` in agent role keep working — no breaking change. Switch to `observeone/oo-agent-light` on next deploy to drop ~3 GB per agent box.
+- A new Docker Hub repository (`observeone/oo-agent-light`, `observeone/oo-agent-qa`) needs to be created manually before the first publish; the `DOCKERHUB_TOKEN` already has push scope for the `observeone` org.
+
+[#PR]: https://github.com/Observeone1/oo-workers/pull/
+
+---
+
 ## [1.26.1] - 2026-05-26
 
 ### Added
