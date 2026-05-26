@@ -540,7 +540,8 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
 // stored value. Re-derived from `lastSeenAt` (no schema change needed).
 const REGION_ONLINE_THRESHOLD_MS = 60_000;
 const lastOnlineState = new Map<number, boolean>();
-async function tickRegionStatus(): Promise<void> {
+/** Exported for tests. Internal use only — the scheduler tick calls this. */
+export async function tickRegionStatus(): Promise<void> {
   const regions = await regionRepo.list();
   const now = Date.now();
   for (const r of regions) {

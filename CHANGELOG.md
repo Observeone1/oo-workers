@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.27.1] - 2026-05-26
+
+### Tests
+
+Closes the v1.26.x verification gap honestly. Each integration spec exercises a code path that previously shipped without behaviour observation.
+
+- **V1 — multi-region agent-dispatch emits** (`tests/integration/sse-agent-dispatch.it.spec.ts`, 6 specs). Inserts a region + monitor + execution row per type, calls `writeAgentResult` directly, asserts the `execution` event fires with the right type+monitorId+regionId. Covers url/api/tcp/udp/db/tls.
+- **V2 — region online/offline sweep** (`tests/integration/sse-region-status.it.spec.ts`, 3 specs). Asserts first-sweep silence (just seeds state), then a real transition emits exactly the right `region` events per region, then an unchanged sweep emits zero.
+- **V4 — per-monitor-type processor emits** (`tests/integration/sse-processor-emits.it.spec.ts`, 6 specs). Boots `startWorkers` + scheduler, inserts one monitor of each type, asserts each processor emits `execution` with the matching type. Covers url/api/tcp/udp/db/tls. QA deferred (Playwright runtime cost; per-test row would need a join to project id).
+- **V3 — heartbeat OVERDUE-flip e2e** SKIPPED with comment. The behaviour works in dev (DB confirms the heartbeat flips on schedule, SSE event fires) but headless Playwright tab-throttling makes the 30-90s wait flaky. The test exists with a clear skip comment and a path forward (tighter scheduler tick env, or headed-mode Playwright).
+
+### Internal
+
+- `tickRegionStatus()` in `src/scheduler.ts` is now `export`ed for direct test invocation. Marked "Exported for tests; internal use only."
+
+### Honest scorecard
+
+After this release, every SSE-emit site shipped in v1.26.0+v1.26.1 has at least one behaviour-level test. The only remaining gap is the heartbeat OVERDUE→UP browser-level flip; the underlying bus emit + the dashboard subscriber wiring are both covered, just not in a single end-to-end assertion.
+
+---
+
 ## [1.27.0] - 2026-05-26
 
 ### Added
@@ -207,7 +228,7 @@ The `scheduler.it.spec.ts` integration test would have caught this — it insert
 
 ### Code-quality + correctness pass (audit cleanup, 2026-05-21)
 
-Three-pass audit recorded at `observeone-context/audit/2026-05-21-*.md`. Findings shipped across 14 PRs merged to main on the same day.
+Three-pass audit. Findings shipped across 14 PRs merged to main on the same day.
 
 #### Fixed
 
@@ -288,7 +309,7 @@ V2 dashboard redesign (PR #45). Fixed navbar, sectioned add-monitor dialog, slid
 
 ## Older
 
-Releases prior to v1.16.0 (the v2 dashboard cut) are summarised in `observeone-context/progress/2026-W21.md` and the per-tag git log. The notable predecessors:
+Releases prior to v1.16.0 (the v2 dashboard cut) are summarised in the per-tag git log. The notable predecessors:
 
 - **1.15.0** (2026-05-19) - Multi-region setup-friction leftovers: `OO_AGENT_TLS_INSECURE` opt-in for the agent → master link (loud warnings + hourly drift reminder), `scripts/agent-tls-test.ts` gating, agent-version reporting + master-side skew detection.
 - **1.14.0** (2026-05-19) - TLS chain/hostname assertions: opt-in `verify_chain`, `verify_hostname`, `expect_cn_regex` columns; save-time regex validation; new `tls-assertions.e2e` spec.
