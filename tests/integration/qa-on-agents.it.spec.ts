@@ -235,7 +235,7 @@ describe('qa-on-agents', () => {
       .where(and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, lightTestId)));
     expect(rows.length).toBe(1);
     expect(rows[0].status).toBe('ERROR');
-    expect(rows[0].errorMessage?.includes('observeone/oo-agent:qa')).toBe(true);
+    expect(rows[0].errorMessage?.includes('observeone/oo-agent-qa')).toBe(true);
   }, 30_000);
 
   test('N-O. dispatcher round-trip: lpush → popJobForRegion → handleQaJob', async () => {

@@ -479,7 +479,7 @@ export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<vo
   if (!(await isPlaywrightAvailable())) {
     // Light image — surface the misconfiguration as a single FAILED test
     // so it shows in the dashboard with a clear message. The operator
-    // redeploys with `observeone/oo-agent:qa` and the next tick succeeds.
+    // redeploys with `observeone/oo-agent-qa` and the next tick succeeds.
     const firstTest = tests[0]!;
     let execMap: Map<number, number>;
     try {
@@ -499,7 +499,7 @@ export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<vo
       executionId,
       status: 'ERROR',
       errorMessage:
-        'This agent is the light variant — redeploy with `observeone/oo-agent:qa` to handle QA jobs.',
+        'This agent is the light variant — redeploy with `observeone/oo-agent-qa` to handle QA jobs.',
     });
     logger.error(
       `qa job ${job.jobId}: light image cannot run Playwright; reported ERROR on test ${firstTest.id}`,

@@ -1,8 +1,15 @@
 # oo-workers agent stack — for regional probe boxes.
 #
-# Pulls the same observeone/oo-workers image as the master but runs it in
-# `agent` role, which short-circuits Redis/Postgres/scheduler entirely.
-# The only outbound connection is HTTPS back to the master URL.
+# Two images available:
+#   - observeone/oo-agent-light  (default; ~360 MB; no Chromium)
+#     Handles URL, API, TCP, UDP, DB, TLS, and heartbeat checks.
+#   - observeone/oo-agent-qa     (~3.5 GB; Playwright/Chromium)
+#     Same as light + handles QA browser checks. Use this if you bind QA
+#     monitors to this region. Set OO_AGENT_IMAGE=observeone/oo-agent-qa
+#     in your .env to override.
+#
+# Both images short-circuit Redis/Postgres/scheduler entirely. The only
+# outbound connection is HTTPS back to the master URL.
 #
 # Create a region on your master first:
 #   docker compose exec worker bun scripts/create-region.ts --slug us-east --label "US East"
@@ -14,7 +21,7 @@
 
 services:
   agent:
-    image: observeone/oo-workers:${OO_WORKERS_TAG:-latest}
+    image: ${OO_AGENT_IMAGE:-observeone/oo-agent-light}:${OO_AGENT_TAG:-latest}
     restart: unless-stopped
     environment:
       OO_WORKER_ROLE: agent
