@@ -175,7 +175,7 @@ export async function renderRegions() {
     <div class="page-head">
       <div>
         <h2 data-testid="page-title">Regions</h2>
-        <div class="sub">Multi-region probing: each region is a separately-deployed agent that pulls jobs from this master. <a href="/docs#multi-region">Multi-region guide →</a></div>
+        <div class="sub">Multi-region probing: each region is a separately-deployed agent that pulls jobs from this master. <a href="#/docs#multi-region">Multi-region guide →</a></div>
       </div>
       <button class="btn primary" id="add-region-btn" data-testid="regions-add-btn">
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>

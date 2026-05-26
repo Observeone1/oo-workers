@@ -12,7 +12,10 @@ let cachedDoc: Document | null = null;
 
 async function fetchDoc(): Promise<Document> {
   if (cachedDoc) return cachedDoc;
-  const res = await fetch('/docs', { credentials: 'include' });
+  // /docs is the SPA route that wraps this content in the dashboard
+  // shell. Fetch the raw HTML from /docs.html so we don't follow the
+  // /docs → /#/docs redirect set up in src/routes/static-ui.ts.
+  const res = await fetch('/docs.html', { credentials: 'include' });
   const html = await res.text();
   cachedDoc = new DOMParser().parseFromString(html, 'text/html');
   return cachedDoc;

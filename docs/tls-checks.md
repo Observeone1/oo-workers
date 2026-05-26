@@ -1,5 +1,24 @@
 # TLS certificate checks (expiry monitoring)
 
+## Using the CLI
+
+```bash
+# Expiry-only — alerts when the cert is within 30 days of expiring
+obs create tls --name edge-cert --host api.example.com --port 443 --warn-days 30
+
+# Strict chain + hostname verification (rejects self-signed, mismatched SAN)
+obs create tls --name strict-cert --host api.example.com --port 443 \
+  --warn-days 30 --verify-chain --verify-hostname
+
+# Pin the expected CN/SAN with a regex (catches accidental cert swaps)
+obs create tls --name pinned-cert --host api.example.com --port 443 \
+  --expect-cn-regex '^api\.example\.com$'
+```
+
+The dashboard's `+ Add monitor → TLS` tile covers the same operations.
+
+---
+
 A TLS monitor performs a real TLS handshake to `host:port`, reads the
 server's leaf certificate, and **FAILs when it expires within `warnDays`
 days** (default **30**). Use it to catch the classic 3am outage: a cert

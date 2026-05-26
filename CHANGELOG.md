@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.0] - 2026-05-26
+
+### Added
+
+- **In-app `/docs` page is CLI-first.** The dashboard's docs route now leads each topic with the `obs ...` command that ships the same outcome, with the dashboard listed as the alt path. New `#cli` section covers install + login + per-type create flows + export/apply + programmatic API key minting. New `#resources` section is a single table mapping each monitor type to its required flags and type-specific extras. `#import` now leads with `obs apply` instead of raw JSON.
+- **`/docs` → `/#/docs` redirect** so direct URL hits land inside the SPA shell instead of a bare HTML page. The SPA fetches the raw markup from the new `/docs.html` route. All in-app `href="/docs#X"` anchors rewritten to `href="#/docs#X"` (9 occurrences across `src/ui/regions.ts` + `src/ui/index.html`).
+
+### Docs
+
+- **`docs/*.md` are CLI-first.** Each of the 9 topic docs (`alerts`, `backup-restore`, `db-checks`, `heartbeat`, `import-from-saas`, `incidents`, `multi-region`, `tcp-checks`, `tls-checks`) opens with a `## Using the CLI` section showing the relevant `obs ...` invocation, followed by the existing prose. The dashboard tile is reframed as the alt path.
+
+### Why
+
+Self-hosters land on docs looking for "how do I create one" — every page now answers that in the first 10 lines via a copy-pasteable CLI block, with the dashboard alternative listed alongside. The split between in-app docs and repo docs was previously inconsistent; both now follow the same shape.
+
+---
+
 ## [1.27.1] - 2026-05-26
 
 ### Tests

@@ -1,5 +1,21 @@
 # Database checks
 
+## Using the CLI
+
+```bash
+# Postgres / MySQL / Redis liveness handshake
+obs create db --name pg-prod    --host db.internal --port 5432 --protocol postgres
+obs create db --name mysql-prod --host db.internal --port 3306 --protocol mysql
+obs create db --name redis-prod --host redis.internal --port 6379 --protocol redis
+
+# Add --tls if the connection uses TLS (rediss://, stunnel-wrapped pg/mysql)
+obs create db --name pg-tls --host db.internal --port 5432 --protocol postgres --tls
+```
+
+The dashboard's `+ Add monitor → DB` tile covers the same operation.
+
+---
+
 A `db` monitor answers one question: **is a live database speaking its
 protocol on `host:port`?** — for **PostgreSQL**, **MySQL**, or **Redis**.
 

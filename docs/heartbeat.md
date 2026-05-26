@@ -1,5 +1,20 @@
 # Heartbeat monitors
 
+## Using the CLI
+
+```bash
+# Create a heartbeat — period 60s, grace 30s before OVERDUE
+obs create heartbeat --name nightly-backup --period 60 --grace 30
+
+# The response includes the public ping URL — POST to it from your cron:
+# 0 3 * * * /path/to/your/job && curl -fsS -X POST https://master.example.com/heartbeat/<token>
+```
+
+The dashboard's `+ Add monitor → Heartbeat` tile generates the same token URL with
+copy buttons for the curl + cron snippets.
+
+---
+
 Heartbeat monitors are **inverted-direction**: instead of oo-workers probing your service, **your service pings oo-workers** every time it completes a successful run. If no ping arrives within `period + grace` seconds, the monitor flips to `OVERDUE` and fires an alert.
 
 Best for cron jobs, scheduled batch tasks, queue consumers, and anything that doesn't expose an HTTP endpoint you can probe.

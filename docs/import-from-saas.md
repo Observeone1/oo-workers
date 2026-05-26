@@ -1,5 +1,21 @@
 # Import from ObserveOne SaaS
 
+## Using the CLI
+
+```bash
+# Export from SaaS (the CLI talks to the SaaS API by default)
+obs --host https://app.observeone.com export --include-scripts > saas.json
+
+# Apply into your self-hosted instance
+obs --host http://localhost:3001 apply saas.json
+```
+
+The CLI handles the id-anchor remap that lets bindings between monitors,
+channels, and status pages reconstruct correctly across the SaaS↔self-host
+id boundary. Hand-rolled JSON typically misses these — use the CLI.
+
+---
+
 Already running monitors on ObserveOne SaaS? Pull that config into a
 self-hosted instance in one command.
 
