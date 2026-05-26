@@ -34,7 +34,14 @@ export function registerStaticRoutes(app: Hono): void {
       ? c.body(js, 200, { 'content-type': 'application/javascript' })
       : c.text('// not built', 404);
   });
-  app.get('/docs', (c) => {
+  // Direct hits to /docs land inside the SPA shell (navbar + chrome).
+  // The SPA's renderDocs() fetches the raw HTML from /docs.html below
+  // and injects its <main> into the dashboard. Without this redirect,
+  // anyone clicking a "?" hint link in a dialog (or pasting /docs into
+  // the URL bar) would see the standalone HTML with no navbar.
+  app.get('/docs', (c) => c.redirect('/#/docs', 302));
+  // Raw HTML used by the SPA-side injector. Not meant for human use.
+  app.get('/docs.html', (c) => {
     const html = loadText('docs.html');
     return html ? c.html(html) : c.text('docs not built', 500);
   });

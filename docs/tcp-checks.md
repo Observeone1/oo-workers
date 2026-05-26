@@ -1,5 +1,21 @@
 # TCP checks (with optional banner-grab)
 
+## Using the CLI
+
+```bash
+# Bare connect — just measures latency
+obs create tcp --name pg-reachable --host db.internal --port 5432
+
+# Send a payload + assert on the response banner (SMTP HELO example)
+obs create tcp --name smtp-banner --host mail.example.com --port 25 \
+  --payload-hex '48454c4f206f6f2d776f726b6572730d0a' \
+  --expect-banner '250-mail.example.com'
+```
+
+The dashboard's `+ Add monitor → TCP` tile covers the same operations.
+
+---
+
 A TCP monitor opens a socket to `host:port` and records connect latency.
 That answers _"is the port open?"_ — but a port can be open while the
 service behind it is the wrong one or unhealthy. Two optional fields turn

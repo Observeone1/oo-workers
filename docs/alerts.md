@@ -1,5 +1,30 @@
 # Alerts
 
+## Using the CLI
+
+```bash
+# Create a channel
+obs channel create webhook --name pager --url https://hooks.example.com/...
+obs channel create slack   --name eng-alerts --url https://hooks.slack.com/...
+obs channel create discord --name eng-alerts --url https://discord.com/api/webhooks/...
+obs channel create email   --name oncall --to oncall@example.com
+
+# List channels
+obs channel list
+
+# Bind a channel to a monitor (or unbind)
+obs monitor bind-channel <monitor-id> --channel <channel-id>
+obs monitor unbind-channel <monitor-id> --channel <channel-id>
+
+# Send a test alert through a channel without flipping a monitor
+obs channel test <channel-id>
+```
+
+The dashboard's `#/channels` page is the alt path for ad-hoc setup. Everything
+below applies to both interfaces.
+
+## Trigger model
+
 When a monitor's status **transitions**, oo-workers dispatches to every
 alert channel bound to it. Trigger model is transition-only: `SUCCESS →
 FAILED` fires an **outage**, `FAILED → SUCCESS` fires a **recovery**.
