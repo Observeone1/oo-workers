@@ -1140,6 +1140,20 @@ td.col-actions {
   font-size: var(--fs-12);
   font-family: var(--font-mono);
 }
+/* API assertion results table cell — one line per assertion, with a
+   pass/fail dot. Used by the API monitor detail page's run history. */
+.assertion-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.assertion-results li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  line-height: 1.4;
+}
 .cell-num {
   color: var(--text);
   font-family: var(--font-mono);

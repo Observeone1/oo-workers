@@ -13,6 +13,15 @@ export interface RunLite {
   traceUrl?: string | null;
   /** QA-only: bucket keys for per-failure screenshots (failed runs). */
   screenshotUrls?: string[] | null;
+  /** API-only: per-assertion evaluation results from the run. Shape matches
+   * AssertionResult in src/services/api-assertion.ts. */
+  assertionResults?: Array<{
+    type?: string;
+    passed: boolean;
+    message: string;
+    expected?: unknown;
+    actual?: unknown;
+  }> | null;
 }
 
 export interface Monitor {

@@ -58,6 +58,27 @@ function renderArtifactsCell(r: RunLite): string {
   return `<td class="artifacts">${traceLink}${thumbs ? '<div class="artifact-thumbs">' + thumbs + '</div>' : ''}</td>`;
 }
 
+/**
+ * API-only detail cell. Replaces the generic "One or more assertions failed"
+ * with a per-assertion breakdown: each result on its own line with a small
+ * pass/fail dot and the message from the evaluator. Falls back to the
+ * errorMessage for non-assertion failures (fetch errors, timeouts) where
+ * the row has no assertion_results.
+ */
+function renderApiAssertionCell(r: RunLite): string {
+  const results = r.assertionResults;
+  if (!Array.isArray(results) || results.length === 0) {
+    return `<td class="cell-meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>`;
+  }
+  const items = results
+    .map((res) => {
+      const dot = res.passed ? 'up' : 'down';
+      return `<li><span class="dot ${dot}"></span> ${esc(res.message)}</li>`;
+    })
+    .join('');
+  return `<td class="cell-meta"><ul class="assertion-results" data-testid="assertion-results">${items}</ul></td>`;
+}
+
 function latenciesOf(runs: RunLite[]): number[] {
   return runs
     .map((r) => r.responseTimeMs ?? r.durationMs)
@@ -199,13 +220,20 @@ function renderWithFilter(
               ? `<td class="cell-meta">${r.regionId == null ? 'master' : esc(regions.get(r.regionId)?.slug ?? `#${r.regionId}`)}</td>`
               : '';
             const artifactsCell = type === 'qa' ? renderArtifactsCell(r) : '';
+            // For API monitors, surface per-assertion pass/fail in the Detail
+            // cell instead of the generic "One or more assertions failed".
+            // assertion_results is jsonb on the api_executions row.
+            const detailCell =
+              type === 'api'
+                ? renderApiAssertionCell(r)
+                : `<td class="cell-meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>`;
             return `<tr>
             <td><span class="dot ${cls}"></span></td>
             <td class="cell-meta">${fmtAge(r.startTime)}</td>
             ${regionCell}
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
             <td class="cell-meta">${latency != null ? `${latency}ms` : '—'}</td>
-            <td class="cell-meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>
+            ${detailCell}
             ${artifactsCell}
           </tr>`;
           })
