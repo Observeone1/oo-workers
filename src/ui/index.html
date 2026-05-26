@@ -169,6 +169,7 @@
             <div class="form-section" data-section="type">
               <div class="sec-head"><span class="ttl">Type</span></div>
               <div class="type-grid" id="type-grid">
+                <div class="type-group-label">HTTP &amp; application</div>
                 <button
                   type="button"
                   class="type-tile active"
@@ -176,7 +177,6 @@
                   data-testid="add-monitor-type-tile-url"
                 >
                   <span class="ttl">URL</span>
-                  <span class="desc">HTTP ping with status code check</span>
                 </button>
                 <button
                   type="button"
@@ -185,7 +185,6 @@
                   data-testid="add-monitor-type-tile-api"
                 >
                   <span class="ttl">API</span>
-                  <span class="desc">Request + JSONPath assertions</span>
                 </button>
                 <button
                   type="button"
@@ -194,8 +193,9 @@
                   data-testid="add-monitor-type-tile-qa"
                 >
                   <span class="ttl">QA</span>
-                  <span class="desc">Inline Playwright script</span>
                 </button>
+
+                <div class="type-group-label">Network probes</div>
                 <button
                   type="button"
                   class="type-tile"
@@ -203,7 +203,6 @@
                   data-testid="add-monitor-type-tile-tcp"
                 >
                   <span class="ttl">TCP</span>
-                  <span class="desc">Host:port reachability</span>
                 </button>
                 <button
                   type="button"
@@ -212,7 +211,6 @@
                   data-testid="add-monitor-type-tile-udp"
                 >
                   <span class="ttl">UDP</span>
-                  <span class="desc">Datagram probe</span>
                 </button>
                 <button
                   type="button"
@@ -221,7 +219,6 @@
                   data-testid="add-monitor-type-tile-db"
                 >
                   <span class="ttl">DB</span>
-                  <span class="desc">Postgres / MySQL / Redis liveness</span>
                 </button>
                 <button
                   type="button"
@@ -230,8 +227,9 @@
                   data-testid="add-monitor-type-tile-tls"
                 >
                   <span class="ttl">TLS</span>
-                  <span class="desc">Certificate expiry &amp; chain check</span>
                 </button>
+
+                <div class="type-group-label">Push-based</div>
                 <button
                   type="button"
                   class="type-tile"
@@ -239,7 +237,6 @@
                   data-testid="add-monitor-type-tile-heartbeat"
                 >
                   <span class="ttl">Heartbeat</span>
-                  <span class="desc">Your service pings us — we alert when it stops</span>
                 </button>
               </div>
             </div>
@@ -265,6 +262,7 @@
                     name="url"
                     data-testid="add-monitor-url-input"
                     placeholder="https://api.example.com/health"
+                    autocomplete="off"
                   />
                 </div>
                 <div class="field">
@@ -286,11 +284,18 @@
               <div id="tcp-row" class="field-grid cols-3" hidden>
                 <div class="field">
                   <label>Host</label>
-                  <input name="tcp_host" placeholder="db-1.internal" />
+                  <input name="tcp_host" placeholder="db-1.internal" autocomplete="off" />
                 </div>
                 <div class="field">
                   <label>Port</label>
-                  <input name="tcp_port" type="number" min="1" max="65535" placeholder="5432" />
+                  <input
+                    name="tcp_port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    placeholder="5432"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
                   <label>Interval</label>
@@ -304,11 +309,18 @@
               <div id="udp-row" class="field-grid cols-3" hidden>
                 <div class="field">
                   <label>Host</label>
-                  <input name="udp_host" placeholder="8.8.8.8" />
+                  <input name="udp_host" placeholder="8.8.8.8" autocomplete="off" />
                 </div>
                 <div class="field">
                   <label>Port</label>
-                  <input name="udp_port" type="number" min="1" max="65535" placeholder="53" />
+                  <input
+                    name="udp_port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    placeholder="53"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
                   <label>Interval</label>
@@ -322,11 +334,18 @@
               <div id="db-row" class="field-grid cols-3" hidden>
                 <div class="field">
                   <label>Host</label>
-                  <input name="db_host" placeholder="db.internal" />
+                  <input name="db_host" placeholder="db.internal" autocomplete="off" />
                 </div>
                 <div class="field">
                   <label>Port</label>
-                  <input name="db_port" type="number" min="1" max="65535" placeholder="5432" />
+                  <input
+                    name="db_port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    placeholder="5432"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
                   <label>Interval</label>
@@ -385,11 +404,18 @@
               <div id="tls-row" class="field-grid cols-2" hidden>
                 <div class="field">
                   <label>Host</label>
-                  <input name="tls_host" placeholder="example.com" />
+                  <input name="tls_host" placeholder="example.com" autocomplete="off" />
                 </div>
                 <div class="field">
                   <label>Port</label>
-                  <input name="tls_port" type="number" min="1" max="65535" value="443" />
+                  <input
+                    name="tls_port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value="443"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
                   <label>Warn when expires in less than</label>
@@ -692,18 +718,18 @@
       </div>
       <div class="dialog-body">
         <p class="form-help">
-          Schema:
-          <code>{"version":1, "urlMonitors":[...], "apiChecks":[...], "qaProjects":[...]}</code>
-          <a href="/docs#import" target="_blank" class="hint" data-tooltip="Full schema reference"
-            >?</a
-          >
+          Paste the output of <code>obs export --include-scripts</code> from the
+          <a href="https://github.com/observeone/cli" target="_blank">ObserveOne CLI</a>
+          (v1.25.0+). The CLI handles the schema, id-anchor remap, and embedded resources for you.
         </p>
-        <p class="form-help">
-          Already on ObserveOne SaaS? Run <code>obs export --include-scripts</code> and paste the
-          output here.
+        <p class="form-help muted">
+          Hand-rolling JSON? Schema reference at
+          <a href="#/docs#import" target="_blank">/docs#import</a>. Not recommended &mdash; bindings
+          between monitors, channels, and status pages need id anchors the CLI generates
+          automatically.
         </p>
         <label>JSON</label>
-        <textarea id="import-text" placeholder='{ "version": 1, "urlMonitors": [...] }'></textarea>
+        <textarea id="import-text" placeholder="Paste `obs export` output here…"></textarea>
       </div>
       <div class="dialog-actions">
         <button type="button" class="btn" id="import-cancel">Cancel</button>

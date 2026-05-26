@@ -21,7 +21,29 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - `requireAuth('read')` is now wired in `server.ts` as `methodScoped` middleware. Read endpoints accept both `read` and `write` scopes (write implies read).
 
+### Added (UX)
+
+- **Context-aware add-monitor dialog.** `+ Add monitor` now opens with the active tab's type pre-selected (was always URL). Empty-state CTAs on each tab are real clickable links ("Add a TCP monitor") that open the dialog with the matching type. Keyboard accessible. ([#84])
+- **Edit-mode dialog labels.** Title flips to "Edit monitor" and submit button reads "Save" in edit mode. Both revert on next create-mode open. ([#84])
+- **Heartbeat detail page Edit button.** The v1.24.0 edit-feature batch missed heartbeat's separate render path. Now matches the other 7 types. ([#84])
+- **Type tiles regrouped + compact.** Three groups (HTTP & application, Network probes, Push-based) with section labels. Tighter tile design, no 2-line descriptions. ([#84])
+
+### Fixed (UX)
+
+- **No form-state leak between edit and next create.** A cancelled edit used to leave its values in the fields when the user next clicked `+ Add`. `addForm.reset()` is now part of the create-mode open. ([#84])
+- **Heartbeat list rows hide Run-now.** Heartbeats are push-based; the button used to render with no useful effect. Hidden for `type === 'heartbeat'`. ([#84])
+- **Assertion-row path placeholder is type-aware.** Was bundling two syntaxes in one hint. Now: `$.field` for JSON path, `Content-Type` for Header. ([#84])
+- **Assertion-row overflow.** When the type needed both `path` and `value` (Header / JSON path), the row used to clip the × button. `flex-wrap` + `order: 4` lets the path input wrap to a second line. ([#84])
+- **`autocomplete="off"`** on host / port / url inputs. Closes a Chrome autofill case where typed values were silently replaced with stored ones. ([#84])
+- **Import JSON dialog: CLI-first copy.** Previous hint framed `obs export` as conditional. Now it's the primary path; hand-rolling JSON demoted to a footnote. ([#84])
+- **Create-from-detail no longer bounces back.** Submitting a _new_ monitor from a detail page used to flash the list then snap back to the previous detail (background poll re-read the unchanged hash). Now: bounce `location.hash` to `'#/'` so the router updates `activeView`. ([#84])
+
+### Tests
+
+- `tests/ui/dialog-ux.e2e.spec.ts` — six new Playwright specs covering the behaviour changes above.
+
 [#83]: https://github.com/Observeone1/oo-workers/pull/83
+[#84]: https://github.com/Observeone1/oo-workers/pull/84
 
 ---
 
@@ -49,11 +71,13 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
-- **CRITICAL: scheduler tick broken on master path in v1.24.0.** The boot-nonce work (#79) joined `:${BOOT_NONCE}` onto the job ID, producing 4 colon-separated segments. BullMQ rejects custom IDs containing `:` unless they split into exactly 3 parts — so every master-path `queue.add()` threw `Custom Id cannot contain :`, the scheduler caught it, and no monitor was ever dispatched. Fresh installs of `:latest` showed every monitor stuck PENDING. Fix: switch the nonce separator from `:` to `-`. New format `url:${id}:${bucket}-${nonce}-r${regionId}` keeps the per-boot uniqueness but stays at 2 colons. Unit spec now asserts `colon count === 2` as an explicit regression guard. ([#83])
+- **CRITICAL: scheduler tick broken on master path in v1.24.0.** The boot-nonce work (#79) joined `:${BOOT_NONCE}` onto the job ID, producing 4 colon-separated segments. BullMQ rejects custom IDs containing `:` unless they split into exactly 3 parts — so every master-path `queue.add()` threw `Custom Id cannot contain :`, the scheduler caught it, and no monitor was ever dispatched. Fresh installs of `:latest` showed every monitor stuck PENDING. Fix: switch the nonce separator from `:` to `-`. New format `url:${id}:${bucket}-${nonce}-r${regionId}` keeps the per-boot uniqueness but stays at 2 colons. Unit spec now asserts `colon count === 2` as an explicit regression guard. ([#80])
 
 ### Test gap
 
 The `scheduler.it.spec.ts` integration test would have caught this — it inserts a real monitor row, runs the actual scheduler, and expects executions to flip to SUCCESS. It didn't catch it because **CI doesn't run the integration suite**, only typecheck/lint/format/knip. Adding integration tests to CI gating is queued as a follow-up — out of scope for this hotfix.
+
+[#80]: https://github.com/Observeone1/oo-workers/pull/80
 
 ---
 

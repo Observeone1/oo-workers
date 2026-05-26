@@ -20,7 +20,7 @@ import {
   type ChannelLite,
   type RegionLite,
 } from '../api';
-import { renderList, setActiveTab } from '../list';
+import { renderList, setActiveTab, getActiveTab } from '../list';
 import { alertDialog } from '../dialogs';
 
 // Cache regions/channels for the lifetime of the dialog session. Refreshed
@@ -37,23 +37,44 @@ const ASSERTION_TYPES: ReadonlyArray<{
   value: string;
   label: string;
   needsPath: boolean;
+  pathPlaceholder: string;
   valuePlaceholder: string;
 }> = [
-  { value: 'status_code', label: 'Status code', needsPath: false, valuePlaceholder: '200' },
+  {
+    value: 'status_code',
+    label: 'Status code',
+    needsPath: false,
+    pathPlaceholder: '',
+    valuePlaceholder: '200',
+  },
   {
     value: 'response_time',
     label: 'Response time (ms)',
     needsPath: false,
+    pathPlaceholder: '',
     valuePlaceholder: '1000',
   },
-  { value: 'json_path', label: 'JSON path', needsPath: true, valuePlaceholder: 'expected' },
+  {
+    value: 'json_path',
+    label: 'JSON path',
+    needsPath: true,
+    pathPlaceholder: '$.field',
+    valuePlaceholder: 'expected',
+  },
   {
     value: 'text_contains',
     label: 'Body contains',
     needsPath: false,
+    pathPlaceholder: '',
     valuePlaceholder: 'substring',
   },
-  { value: 'header', label: 'Header', needsPath: true, valuePlaceholder: 'expected' },
+  {
+    value: 'header',
+    label: 'Header',
+    needsPath: true,
+    pathPlaceholder: 'Content-Type',
+    valuePlaceholder: 'expected',
+  },
 ];
 const ASSERTION_OPERATORS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'equals', label: 'equals' },
@@ -108,7 +129,7 @@ function addAssertionRow(
           `<option value="${esc(o.value)}"${initial.operator === o.value ? ' selected' : ''}>${esc(o.label)}</option>`,
       ).join('')}
     </select>
-    <input data-field="path" data-testid="add-monitor-api-assertion-path" placeholder="$.field or Header-Name" value="${esc(initial.path ?? '')}" />
+    <input data-field="path" data-testid="add-monitor-api-assertion-path" placeholder="" value="${esc(initial.path ?? '')}" />
     <input data-field="value" data-testid="add-monitor-api-assertion-value" placeholder="200" value="${esc(initial.value ?? '')}" />
     <button type="button" class="bare assertion-remove" data-testid="add-monitor-api-assertion-remove" aria-label="Remove assertion">×</button>
   `;
@@ -120,6 +141,7 @@ function addAssertionRow(
   const syncRow = () => {
     const meta = ASSERTION_TYPES.find((t) => t.value === typeSel.value);
     pathInput.hidden = !(meta?.needsPath ?? false);
+    pathInput.placeholder = meta?.pathPlaceholder ?? '';
     valueInput.placeholder = meta?.valuePlaceholder ?? '';
   };
   typeSel.addEventListener('change', syncRow);
@@ -133,6 +155,10 @@ function addAssertionRow(
 // When non-null the dialog is in edit mode: type tiles are locked and submit
 // calls PUT /api/monitors/:type/:id instead of POST.
 let editModeId: number | null = null;
+
+/** Matches a detail-page hash like `#/url/42`. Used to decide whether to
+ * navigate back to the previously-viewed detail after submit. */
+const DETAIL_HASH_RE = /^#\/(?:url|api|qa|tcp|udp|db|tls|heartbeat)\/\d+$/;
 
 export function initAddDialog(): void {
   const addDialog = $<HTMLDialogElement>('#add-dialog');
@@ -266,24 +292,65 @@ export function initAddDialog(): void {
   });
 
   $('#add-btn').addEventListener('click', async () => {
+    openCreateDialog();
+  });
+
+  /** Open the dialog for *create* mode. `initialType` defaults to the
+   * currently-active list tab, falling back to URL when no typed tab is
+   * showing. Clears any state left over from a prior edit so fields don't
+   * leak between flows. */
+  async function openCreateDialog(initialType?: MonType): Promise<void> {
+    const tab = initialType ?? getActiveTab();
+    const VALID: ReadonlySet<MonType> = new Set([
+      'url',
+      'api',
+      'qa',
+      'tcp',
+      'udp',
+      'db',
+      'tls',
+      'heartbeat',
+    ]);
+    const type: MonType = VALID.has(tab) ? tab : 'url';
+
     editModeId = null;
-    activeAddType = 'url';
+    activeAddType = type;
     updateDialogTitle('New monitor');
-    // Reset tile selection and enable tiles
+    updateSubmitLabel('Create monitor');
+
+    // Clear any values left over from a prior edit. `addForm.reset()` resets
+    // every native input/select/textarea inside the form, plus the multi-
+    // selects for regions/channels. resetAssertionRows() seeds one default
+    // status_code row so the API form opens with a sensible default.
+    addForm.reset();
+    resetAssertionRows();
+
+    // Reset tile selection and re-enable any tile that edit mode had locked.
     const typeGrid2 = document.getElementById('type-grid');
     typeGrid2?.querySelectorAll('.type-tile').forEach((t) => {
       t.classList.remove('active');
       (t as HTMLButtonElement).disabled = false;
     });
-    typeGrid2?.querySelector('[data-type="url"]')?.classList.add('active');
+    typeGrid2?.querySelector(`[data-type="${type}"]`)?.classList.add('active');
+
     syncFields(activeAddType);
-    resetAssertionRows();
     await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);
     addDialog.showModal();
     requestAnimationFrame(() => {
       const body = addDialog.querySelector<HTMLElement>('.dialog-body');
       if (body) body.scrollTop = 0;
     });
+  }
+
+  // Per-tab empty-state CTA. Clicking "Add a <TYPE> monitor" opens the
+  // dialog with the matching type pre-selected. Delegated handler so the
+  // CTA can re-render without rebinding.
+  document.addEventListener('click', (e) => {
+    const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-tab-add]');
+    if (!target) return;
+    e.preventDefault();
+    const t = target.dataset.tabAdd as MonType | undefined;
+    void openCreateDialog(t);
   });
 
   addForm.addEventListener('submit', async (e) => {
@@ -493,12 +560,13 @@ export function initAddDialog(): void {
     addDialog.close();
     addForm.reset();
     syncFields();
+    const cameFromDetail = DETAIL_HASH_RE.test(location.hash);
     if (editModeId !== null) {
       const editedId = editModeId;
       editModeId = null;
       // If the dialog was opened from a detail page, navigate back there so
       // the operator sees the updated monitor instead of a list-then-detail flash.
-      if (/^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/\d+$/.test(location.hash)) {
+      if (cameFromDetail) {
         location.hash = `#/${type}/${editedId}`;
       } else {
         setActiveTab(type);
@@ -506,7 +574,15 @@ export function initAddDialog(): void {
       }
     } else {
       setActiveTab(type);
-      renderList();
+      // If the dialog was opened from a detail page, the activeView in
+      // app.ts is still 'detail' — the 5s background poll would re-render
+      // the previous detail page right on top of the list we just rendered.
+      // Bounce the hash to '#/' so the router updates activeView to 'list'.
+      if (cameFromDetail) {
+        location.hash = '#/';
+      } else {
+        renderList();
+      }
     }
   });
 }
@@ -514,6 +590,11 @@ export function initAddDialog(): void {
 function updateDialogTitle(title: string) {
   const h = document.querySelector<HTMLElement>('#add-dialog .dialog-head h2');
   if (h) h.textContent = title;
+}
+
+function updateSubmitLabel(label: string) {
+  const btn = document.querySelector<HTMLElement>('[data-testid="add-monitor-submit"]');
+  if (btn) btn.textContent = label;
 }
 
 /**
@@ -532,6 +613,7 @@ export async function openEditDialog(
   editModeId = id;
   activeAddType = type;
   updateDialogTitle('Edit monitor');
+  updateSubmitLabel('Save');
 
   // Lock tile to the current type (no type switching on edit).
   const typeGrid = document.getElementById('type-grid');

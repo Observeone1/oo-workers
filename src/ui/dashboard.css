@@ -1210,6 +1210,16 @@ td.col-actions {
   max-width: 420px;
   text-wrap: pretty;
 }
+.empty-cta {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.empty-cta:hover,
+.empty-cta:focus-visible {
+  text-decoration: underline;
+}
 
 /* =================================================================
    PAGE HEADER (used by settings pages + detail)
@@ -1682,16 +1692,29 @@ input[type='radio'] {
   gap: 6px;
   margin-bottom: 4px;
 }
+.type-group-label {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 4px;
+  padding-bottom: 2px;
+}
+.type-group-label:first-child {
+  margin-top: 0;
+}
 .type-tile {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
   border-radius: var(--r);
   border: 1px solid var(--border);
   background: var(--panel);
   cursor: pointer;
-  text-align: left;
+  text-align: center;
   transition:
     border-color 0.12s,
     background 0.12s;
@@ -1707,20 +1730,14 @@ input[type='radio'] {
 }
 .type-tile .ttl {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--muted);
+  color: var(--text-2);
   font-weight: var(--fw-medium);
 }
 .type-tile.active .ttl {
   color: var(--up-text);
-}
-.type-tile .desc {
-  font-size: var(--fs-12);
-  color: var(--text-2);
-  line-height: 1.35;
-  text-wrap: pretty;
 }
 
 /* =================================================================
@@ -2744,6 +2761,7 @@ dialog .dialog-actions {
 /* ----- API assertion rows (Add monitor → api) ----- */
 .assertion-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin-bottom: 6px;
@@ -2754,9 +2772,16 @@ dialog .dialog-actions {
 .assertion-row select[data-field='operator'] {
   flex: 0 0 120px;
 }
-.assertion-row input[data-field='path'],
+.assertion-row input[data-field='path'] {
+  /* Path-required types (Header / JSON path) need both path AND value.
+     Path takes the full remaining width and wraps to a new line so the
+     value input stays large enough to be usable on the next row. */
+  flex: 1 1 100%;
+  min-width: 0;
+  order: 4;
+}
 .assertion-row input[data-field='value'] {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
 }
 .assertion-row .assertion-remove {
