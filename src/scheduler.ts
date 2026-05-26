@@ -51,7 +51,7 @@ import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from './services/alert-dispatch.ts';
-import { monitorRegionRepo, type MonitorType } from './db/repositories/region.repo.ts';
+import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
 const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? DEFAULTS.SCHEDULER_TICK_MS);
@@ -189,6 +189,10 @@ export async function startScheduler(connection: Redis) {
         // BullMQ jobs to dispatch, just an overdue sweep that fires
         // outage alerts via the existing channel system.
         tickHeartbeats(),
+        // Region online/offline sweep — fires SSE `region` events on
+        // every transition so the navbar badge updates live without
+        // the dashboard polling every 30s.
+        tickRegionStatus(),
       ]);
       if (consecutiveFailures > 0) {
         logger.info(`scheduler recovered after ${consecutiveFailures} consecutive failure(s)`);
@@ -531,6 +535,36 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
 // and fires an outage alert via the existing channel system. The state
 // transition is idempotent (markOverdue returns null if status already
 // OVERDUE) so a heartbeat alerts ONCE per outage, not on every tick.
+// In-memory map of region id → last-known online state. Initialised on
+// first sweep; subsequent sweeps detect transitions by comparing to the
+// stored value. Re-derived from `lastSeenAt` (no schema change needed).
+const REGION_ONLINE_THRESHOLD_MS = 60_000;
+const lastOnlineState = new Map<number, boolean>();
+async function tickRegionStatus(): Promise<void> {
+  const regions = await regionRepo.list();
+  const now = Date.now();
+  for (const r of regions) {
+    const isOnline = r.lastSeenAt
+      ? now - r.lastSeenAt.getTime() < REGION_ONLINE_THRESHOLD_MS
+      : false;
+    const prev = lastOnlineState.get(r.id);
+    if (prev === undefined) {
+      // First sweep — record state, don't fire (no transition).
+      lastOnlineState.set(r.id, isOnline);
+      continue;
+    }
+    if (prev !== isOnline) {
+      lastOnlineState.set(r.id, isOnline);
+      execEvents.emit('region', {
+        regionId: r.id,
+        status: isOnline ? 'online' : 'offline',
+        lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
+      });
+      logger.info(`region #${r.id} (${r.slug}) → ${isOnline ? 'online' : 'offline'}`);
+    }
+  }
+}
+
 async function tickHeartbeats(): Promise<void> {
   const overdue = await heartbeatRepo.findOverdue();
   for (const h of overdue) {

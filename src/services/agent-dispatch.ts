@@ -22,6 +22,7 @@ import {
 import type { MonitorType } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
 import { maybeAlertOnTransition } from './transition-detector.ts';
+import { emitExecution } from './exec-events.ts';
 
 const REGION_LIST = (slug: string) => `oo:jobs:${slug}`;
 
@@ -124,6 +125,14 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('url', rows[0].monitorId, {
+        id: executionId,
+        status,
+        statusCode: body.statusCode ?? null,
+        responseTimeMs: body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'api': {
@@ -150,6 +159,14 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('api', rows[0].monitorId, {
+        id: executionId,
+        status,
+        statusCode: body.responseStatus ?? null,
+        responseTimeMs: body.responseTimeMs ?? body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'tcp': {
@@ -172,6 +189,13 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('tcp', rows[0].monitorId, {
+        id: executionId,
+        status,
+        latencyMs: body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'udp': {
@@ -194,6 +218,13 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('udp', rows[0].monitorId, {
+        id: executionId,
+        status,
+        latencyMs: body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'db': {
@@ -215,6 +246,13 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('db', rows[0].monitorId, {
+        id: executionId,
+        status,
+        latencyMs: body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'tls': {
@@ -239,6 +277,13 @@ export async function writeAgentResult(
           regionId: agentRegionId,
         });
       }
+      emitExecution('tls', rows[0].monitorId, {
+        id: executionId,
+        status,
+        latencyMs: body.latencyMs ?? null,
+        errorMessage: errorMessage ?? null,
+        regionId: agentRegionId,
+      });
       return { updated: true };
     }
     case 'qa': {
