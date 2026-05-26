@@ -8,7 +8,7 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed (behavior change)
 
-- **All `/api/*` endpoints now require authentication.** Previously, `GET` on `/api/monitors`, `/api/channels`, `/api/regions`, `/api/status-pages`, `/api/availability` (and a few others) returned full operator config to anyone who could reach the dashboard port. For a self-host product whose value is "monitor my private services," that's the wrong default — the moment the UI is bound to a public IP, the inventory leaks. Now every `/api/*` path requires either a Bearer API key or a dashboard session cookie. ([#PR])
+- **All `/api/*` endpoints now require authentication.** Previously, `GET` on `/api/monitors`, `/api/channels`, `/api/regions`, `/api/status-pages`, `/api/availability` (and a few others) returned full operator config to anyone who could reach the dashboard port. For a self-host product whose value is "monitor my private services," that's the wrong default — the moment the UI is bound to a public IP, the inventory leaks. Now every `/api/*` path requires either a Bearer API key or a dashboard session cookie. ([#83])
 
   **Public surfaces left intentionally unauthed:**
   - `GET /status/<slug>` — public status pages (operators curate which monitors appear)
@@ -21,7 +21,7 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - `requireAuth('read')` is now wired in `server.ts` as `methodScoped` middleware. Read endpoints accept both `read` and `write` scopes (write implies read).
 
-[#PR]: https://github.com/Observeone1/oo-workers/pull/
+[#83]: https://github.com/Observeone1/oo-workers/pull/83
 
 ---
 
@@ -49,7 +49,7 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
-- **CRITICAL: scheduler tick broken on master path in v1.24.0.** The boot-nonce work (#79) joined `:${BOOT_NONCE}` onto the job ID, producing 4 colon-separated segments. BullMQ rejects custom IDs containing `:` unless they split into exactly 3 parts — so every master-path `queue.add()` threw `Custom Id cannot contain :`, the scheduler caught it, and no monitor was ever dispatched. Fresh installs of `:latest` showed every monitor stuck PENDING. Fix: switch the nonce separator from `:` to `-`. New format `url:${id}:${bucket}-${nonce}-r${regionId}` keeps the per-boot uniqueness but stays at 2 colons. Unit spec now asserts `colon count === 2` as an explicit regression guard. ([#PR])
+- **CRITICAL: scheduler tick broken on master path in v1.24.0.** The boot-nonce work (#79) joined `:${BOOT_NONCE}` onto the job ID, producing 4 colon-separated segments. BullMQ rejects custom IDs containing `:` unless they split into exactly 3 parts — so every master-path `queue.add()` threw `Custom Id cannot contain :`, the scheduler caught it, and no monitor was ever dispatched. Fresh installs of `:latest` showed every monitor stuck PENDING. Fix: switch the nonce separator from `:` to `-`. New format `url:${id}:${bucket}-${nonce}-r${regionId}` keeps the per-boot uniqueness but stays at 2 colons. Unit spec now asserts `colon count === 2` as an explicit regression guard. ([#83])
 
 ### Test gap
 
