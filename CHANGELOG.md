@@ -8,8 +8,8 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
-- **`observeone/oo-agent-light` Docker image** — slim agent image, no Chromium. ~360 MB compared to the ~3.75 GB master image. Handles URL, API, TCP, UDP, DB, TLS, and heartbeat probes. The default for regional probe boxes. The `docker-compose.agent.yml` `image:` now points at this. ([#PR])
-- **`observeone/oo-agent-qa` Docker image** — agent image with Playwright/Chromium for regions that also run QA browser checks. ~3.5 GB. Set `OO_AGENT_IMAGE=observeone/oo-agent-qa` in your agent stack's `.env` to opt in. ([#PR])
+- **`observeone/oo-agent-light` Docker image** — slim agent image, no Chromium. ~360 MB compared to the ~3.75 GB master image. Handles URL, API, TCP, UDP, DB, TLS, and heartbeat probes. The default for regional probe boxes. The `docker-compose.agent.yml` `image:` now points at this. ([#96])
+- **`observeone/oo-agent-qa` Docker image** — agent image with Playwright/Chromium for regions that also run QA browser checks. ~3.5 GB. Set `OO_AGENT_IMAGE=observeone/oo-agent-qa` in your agent stack's `.env` to opt in. ([#96])
 
 ### Internal
 
@@ -22,7 +22,7 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Existing regional agent stacks pulling `observeone/oo-workers:latest` in agent role keep working — no breaking change. Switch to `observeone/oo-agent-light` on next deploy to drop ~3 GB per agent box.
 - A new Docker Hub repository (`observeone/oo-agent-light`, `observeone/oo-agent-qa`) needs to be created manually before the first publish; the `DOCKERHUB_TOKEN` already has push scope for the `observeone` org.
 
-[#PR]: https://github.com/Observeone1/oo-workers/pull/
+[#96]: https://github.com/Observeone1/oo-workers/pull/96
 
 ---
 
