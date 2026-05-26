@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateAssertions } from '../services/api-assertion.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 export const apiCheckProcessor = async (job: Job) => {
   const { executionId, apiCheck, assertions } = job.data;
@@ -67,6 +68,13 @@ export const apiCheckProcessor = async (job: Job) => {
       errorMessage: allAssertionsPassed ? null : 'One or more assertions failed',
       endTime: new Date(),
     });
+    emitExecution('api', apiCheck.id, {
+      id: executionId,
+      status,
+      statusCode: response.status,
+      responseTimeMs: responseTime,
+      errorMessage: allAssertionsPassed ? null : 'One or more assertions failed',
+    });
 
     if (status === 'SUCCESS' || status === 'FAILED') {
       void maybeAlertOnTransition('api', apiCheck.id, executionId, status, {
@@ -93,6 +101,11 @@ export const apiCheckProcessor = async (job: Job) => {
       status: finalStatus,
       errorMessage,
       endTime: new Date(),
+    });
+    emitExecution('api', apiCheck.id, {
+      id: executionId,
+      status: finalStatus,
+      errorMessage,
     });
 
     if (finalStatus === 'FAILED') {

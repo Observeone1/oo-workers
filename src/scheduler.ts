@@ -42,6 +42,7 @@ import { DEFAULTS } from './constants.ts';
 // fresh IDs never collide with the previous boot's artifacts.
 const BOOT_NONCE = Math.random().toString(36).slice(2, 6);
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
+import { execEvents } from './services/exec-events.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
@@ -536,6 +537,12 @@ async function tickHeartbeats(): Promise<void> {
     const transitioned = await heartbeatRepo.markOverdue(h.id);
     if (!transitioned) continue; // someone else got there (or already OVERDUE)
     logger.info(`heartbeat #${h.id} (${h.name}) → OVERDUE`);
+    execEvents.emit('monitor-state', {
+      type: 'heartbeat',
+      monitorId: h.id,
+      status: 'OVERDUE',
+      lastTransitionAt: new Date().toISOString(),
+    });
     await dispatchAlert({
       monitor: { type: 'heartbeat', id: h.id, name: h.name, target: h.name },
       event: 'outage',

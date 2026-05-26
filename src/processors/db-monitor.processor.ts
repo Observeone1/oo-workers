@@ -4,6 +4,7 @@ import { dbMonitorRepo } from '../db/repositories/db-monitor.repo.ts';
 import { dbProbe, type DbProtocol } from '../services/db-probe.ts';
 import { logger } from '../utils/logger.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 export const dbMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
@@ -26,6 +27,11 @@ export const dbMonitorProcessor = async (job: Job) => {
       latencyMs: result.latencyMs,
       endTime: new Date(),
     });
+    emitExecution('db', monitor.id, {
+      id: executionId,
+      status: 'SUCCESS',
+      latencyMs: result.latencyMs,
+    });
     void maybeAlertOnTransition('db', monitor.id, executionId, 'SUCCESS', {
       durationMs: result.latencyMs,
     });
@@ -39,6 +45,12 @@ export const dbMonitorProcessor = async (job: Job) => {
     latencyMs: result.latencyMs,
     errorMessage: result.errorMessage,
     endTime: new Date(),
+  });
+  emitExecution('db', monitor.id, {
+    id: executionId,
+    status: finalStatus,
+    latencyMs: result.latencyMs,
+    errorMessage: result.errorMessage,
   });
   if (finalStatus === 'FAILED') {
     void maybeAlertOnTransition('db', monitor.id, executionId, 'FAILED', {

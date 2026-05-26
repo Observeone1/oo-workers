@@ -206,35 +206,18 @@ async function boot() {
   void refreshRegionBadge();
 
   // Open the SSE stream now that we know the user is authenticated.
-  // No view consumes events yet — Phase 2/3 wires the list and detail
-  // handlers. Opening early lets the stream warm up before any view
-  // mounts and keeps the connection alive across navigation.
+  // list.ts subscribes on first renderList(); detail.ts subscribes on
+  // first renderDetail(); the stream stays open across hash changes and
+  // pauses automatically when the tab is hidden.
   startEventStream();
 
   window.addEventListener('hashchange', route);
 
-  // Background poll: refresh the active view in place every 5s. route() owns
-  // the activeView state, so this branch can never drift out of sync with the
-  // router — adding a new monitor type only requires updating the regex above.
-  setInterval(() => {
-    void refreshRegionBadge();
-    if (activeView.kind === 'list') {
-      // Don't disrupt keystrokes while the operator is filtering.
-      if (document.activeElement?.id === 'search-input') return;
-      renderList();
-      return;
-    }
-    if (activeView.kind === 'detail') {
-      // Skip if a confirm/alert dialog is open — re-rendering would dismiss
-      // it from under the operator. The slideover (Edit, future) is bound
-      // to navigation via closeSlideover() in route(), so we don't try to
-      // re-render the detail page while one is open either.
-      if (document.querySelector('dialog[open]') || document.querySelector('.slideover')) return;
-      void renderDetail(activeView.type, activeView.id);
-    }
-    // section views (regions, channels, status-pages, incidents, settings,
-    // docs) intentionally don't auto-refresh; they update on user action.
-  }, 5000);
+  // Regions badge isn't event-driven yet — region status changes are
+  // batched-low-frequency, so a 30s poll is fine until the SSE region
+  // emitter lands (follow-up). The 5s polling that previously drove
+  // list + detail refresh was deleted with the SSE migration.
+  setInterval(() => void refreshRegionBadge(), 30_000);
 }
 
 boot();
