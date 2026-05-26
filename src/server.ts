@@ -30,6 +30,7 @@ import { registerIncidentRoutes } from './routes/incidents.ts';
 import { registerHeartbeatPublicRoutes } from './routes/heartbeat-public.ts';
 import { registerStatusPublicRoutes } from './routes/status-public.ts';
 import { registerAgentRoutes } from './routes/agent.ts';
+import { registerEventsRoutes } from './routes/events.ts';
 import { registerStaticRoutes } from './routes/static-ui.ts';
 
 function buildApp(connection: Redis) {
@@ -108,6 +109,7 @@ function buildApp(connection: Redis) {
   registerHeartbeatPublicRoutes(app);
   registerStatusPublicRoutes(app);
   registerAgentRoutes(app, deps);
+  registerEventsRoutes(app);
   // Static UI last so /api/* routes always win the route table.
   registerStaticRoutes(app);
 

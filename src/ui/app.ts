@@ -22,6 +22,7 @@ import { renderIncidents } from './incidents';
 import { renderSettings } from './settings';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
+import { startEventStream } from './events';
 import { getRegions } from './api';
 import { initTheme } from './theme';
 import { renderLogin } from './login';
@@ -203,6 +204,12 @@ async function boot() {
   initDialogs();
   route();
   void refreshRegionBadge();
+
+  // Open the SSE stream now that we know the user is authenticated.
+  // No view consumes events yet — Phase 2/3 wires the list and detail
+  // handlers. Opening early lets the stream warm up before any view
+  // mounts and keeps the connection alive across navigation.
+  startEventStream();
 
   window.addEventListener('hashchange', route);
 
