@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.24.2] - 2026-05-26
+
+### Added
+
+- **Favicon** — `src/ui/favicon.svg` matches the in-app brand-mark (rounded green square with a dark inner square). Wired through `build:ui`, served at `/favicon.svg`, linked from `index.html` and `docs.html`. Replaces the browser's default globe icon. ([#81])
+
+### Fixed
+
+- **`scripts/setup.sh` next-steps hint** — the printed instructions used to tell first-time operators to paste an API key into the login screen, which predates the v1.3.0 email/password wizard. Now points to `http://localhost:3001` for the wizard, with a separate hint for the programmatic API-key path. ([#81])
+- **README** — version examples in §Releases bumped from `:1.6.0` to `:1.24.1` so the snippet reflects current state. ([#81])
+
+### CI / infra
+
+- **Integration tests now gate every PR.** New `integration` job in `ci.yml` runs `bun run test:integration` (testcontainers Postgres + Redis, ~90s). Would have caught the v1.24.0 colon-count regression. ([#81])
+- **`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`** set on `ci.yml` and `cd.yml`. GitHub flips this default on 2026-06-02; setting it now keeps behaviour identical across the cutover. ([#81])
+
+[#81]: https://github.com/Observeone1/oo-workers/pull/81
+
+---
+
 ## [1.24.1] - 2026-05-26
 
 ### Fixed
