@@ -31,8 +31,7 @@ import { adaptSaaSExport } from '../../scripts/adapt-cli-export.ts';
  *    physically cannot be in the DB.
  *
  * HONEST RESIDUAL: the fixture mirrors the verified export.ts shape but
- * CANNOT catch SaaS list-endpoint field omissions (see context repo
- * plans/2026-05-19-observeone-cli-export-gaps.md, Gap 2) — only a real
+ * CANNOT catch SaaS list-endpoint field omissions — only a real
  * SaaS-instance capture can. This e2e does not pretend to close that.
  *
  * Prereq: dev stack on :3010 (worker running) + Mailpit (:8025).

@@ -127,11 +127,8 @@ tests/integration/
 
 ## Release flow
 
-See `observeone-context/.claude/skills/ob-oo-workers-release/SKILL.md` (internal).
-
-Summary: bump `package.json` version on the PR branch → merge → tag the merge commit → push the tag → CD does the rest.
+Bump `package.json` version on the PR branch → merge → tag the merge commit (`git tag v<version> && git push origin v<version>`) → CD does the rest. The CD workflow at `.github/workflows/cd.yml` publishes three Docker Hub images per tag: `observeone/oo-workers`, `observeone/oo-agent-light`, and `observeone/oo-agent-qa`.
 
 ## Need a hand
 
 - File an issue: https://github.com/Observeone1/oo-workers/issues
-- The internal context repo has design docs and the master sequence; ask if you need access.

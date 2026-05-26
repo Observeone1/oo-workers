@@ -257,5 +257,4 @@ Reads `OO_MASTER_URL` / `OO_AGENT_KEY` / `OO_REGION_SLUG` from the agent's env (
 
 ## Reference
 
-- Design doc (architecture choices, alternatives considered): `observeone-context/plans/2026-05-13-oo-workers-phase-4-multi-region.md` (internal)
 - Source: `src/scheduler.ts` (dual-path dispatch), `src/agent.ts` (loop), `src/services/agent-dispatch.ts` (master-side), `src/services/region-admin.ts` (CRUD), `src/ui/regions.ts` (settings page)
