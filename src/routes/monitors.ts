@@ -20,6 +20,7 @@ import { monitorRegionRepo, type MonitorType } from '../db/repositories/region.r
 import { monitorAlertChannelRepo } from '../db/repositories/alert-channel.repo.ts';
 import { statusPageMonitorRepo } from '../db/repositories/status-page.repo.ts';
 import { getFleetAvailability } from '../db/repositories/availability.repo.ts';
+import { emitMonitorCreated, emitMonitorDeleted } from '../services/exec-events.ts';
 import type { RouteDeps } from './types.ts';
 
 const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
@@ -171,6 +172,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       m.id,
       assertions.map((a) => ({ operator: a.operator, statusCode: a.statusCode })),
     );
+    emitMonitorCreated('url', m.id);
     return c.json(m, 201);
   });
 
@@ -228,6 +230,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
         value: a.value ?? null,
       })),
     );
+    emitMonitorCreated('api', m.id);
     return c.json(m, 201);
   });
 
@@ -254,6 +257,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
+    emitMonitorCreated('tcp', m.id);
     return c.json(m, 201);
   });
 
@@ -280,6 +284,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
+    emitMonitorCreated('udp', m.id);
     return c.json(m, 201);
   });
 
@@ -303,6 +308,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       intervalSeconds: body.intervalSeconds ?? 60,
       enabled: body.enabled ?? true,
     });
+    emitMonitorCreated('db', m.id);
     return c.json(m, 201);
   });
 
@@ -358,6 +364,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       verifyHostname: body.verifyHostname === true,
       expectCnRegex,
     });
+    emitMonitorCreated('tls', m.id);
     return c.json(m, 201);
   });
 
@@ -385,6 +392,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       graceSeconds: grace,
       enabled: body.enabled ?? true,
     });
+    emitMonitorCreated('heartbeat', m.id);
     return c.json(m, 201);
   });
 
@@ -439,6 +447,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
         description: t.description ?? null,
       })),
     );
+    emitMonitorCreated('qa', m.id);
     return c.json(m, 201);
   });
 
@@ -461,6 +470,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
     // ghost monitors on status pages.
     await monitorAlertChannelRepo.clearForMonitor(type, id);
     await statusPageMonitorRepo.clearForMonitor(type, id);
+    emitMonitorDeleted(type, id);
     return c.body(null, 204);
   });
 

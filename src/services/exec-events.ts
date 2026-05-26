@@ -82,3 +82,42 @@ const emitter = new EventEmitter() as EventEmitter & TypedEmitter;
 emitter.setMaxListeners(256);
 
 export const execEvents: TypedEmitter = emitter;
+
+/**
+ * Convenience emitter used by every monitor-type processor. One line at
+ * every processor exit point (success + final-attempt failure) feeds the
+ * dashboard's list + detail views in real time without each processor
+ * caring about the payload shape.
+ *
+ * Always-now startTime is acceptable for the wire format — the actual
+ * row in the DB carries the authoritative timestamp; this payload is
+ * just a hint for the dashboard to patch a row in place.
+ */
+export function emitExecution(
+  type: EventMonitorType,
+  monitorId: number,
+  row: {
+    id: number;
+    status: string;
+    latencyMs?: number | null;
+    responseTimeMs?: number | null;
+    statusCode?: number | null;
+    errorMessage?: string | null;
+    regionId?: number | null;
+  },
+): void {
+  execEvents.emit('execution', {
+    type,
+    monitorId,
+    row: { ...row, startTime: new Date().toISOString() },
+  });
+}
+
+/** Used by routes/monitors.ts create / delete handlers and the public
+ * heartbeat ingest (when a new heartbeat token is minted). */
+export function emitMonitorCreated(type: EventMonitorType, monitorId: number): void {
+  execEvents.emit('monitor-created', { type, monitorId });
+}
+export function emitMonitorDeleted(type: EventMonitorType, monitorId: number): void {
+  execEvents.emit('monitor-deleted', { type, monitorId });
+}

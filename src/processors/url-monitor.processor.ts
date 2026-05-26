@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.ts';
 import { classifyFetchError } from '../utils/fetch-errors.ts';
 import { evaluateUrlMonitorAssertions } from '../services/url-assertion.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 export const urlMonitorProcessor = async (job: Job) => {
   const { executionId, monitor, assertions } = job.data;
@@ -31,6 +32,12 @@ export const urlMonitorProcessor = async (job: Job) => {
       responseTimeMs: responseTime,
       assertionResults,
       endTime: new Date(),
+    });
+    emitExecution('url', monitor.id, {
+      id: executionId,
+      status,
+      statusCode: response.status,
+      responseTimeMs: responseTime,
     });
 
     if (status === 'SUCCESS' || status === 'FAILED') {
@@ -60,6 +67,12 @@ export const urlMonitorProcessor = async (job: Job) => {
       errorMessage: detailedMessage,
       responseTimeMs: responseTime,
       endTime: new Date(),
+    });
+    emitExecution('url', monitor.id, {
+      id: executionId,
+      status: finalStatus,
+      errorMessage: detailedMessage,
+      responseTimeMs: responseTime,
     });
 
     if (finalStatus === 'FAILED') {
