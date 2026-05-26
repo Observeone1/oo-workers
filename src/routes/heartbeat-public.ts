@@ -14,6 +14,7 @@
 import type { Hono } from 'hono';
 import { heartbeatRepo } from '../db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from '../services/alert-dispatch.ts';
+import { execEvents } from '../services/exec-events.ts';
 
 export function registerHeartbeatPublicRoutes(app: Hono): void {
   app.post('/heartbeat/:token', async (c) => {
@@ -31,6 +32,15 @@ export function registerHeartbeatPublicRoutes(app: Hono): void {
         startTime: new Date().toISOString(),
       }).catch(() => {});
     }
+    // Always emit on a real ping — the dashboard refreshes the "last
+    // ping" cell live, even on UP → UP pings. wasOverdue picks the
+    // status delta correctly: a recovering monitor pings UP.
+    execEvents.emit('monitor-state', {
+      type: 'heartbeat',
+      monitorId: row.id,
+      status: row.status,
+      lastTransitionAt: new Date().toISOString(),
+    });
     return c.json({ ok: true, status: row.status, lastPingAt: row.lastPingAt }, 200);
   });
 

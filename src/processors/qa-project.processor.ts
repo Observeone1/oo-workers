@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
 import { maybeAlertOnQaRunTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
 // Avoids process.cwd() so the worker still works if started from a different dir.
@@ -170,6 +171,12 @@ export const createQaProjectProcessor = (redis: Redis) => {
             traceUrl,
             screenshotUrls,
           });
+          emitExecution('qa', projectId, {
+            id: executionId,
+            status,
+            responseTimeMs: durationMs,
+            errorMessage: result.error ?? null,
+          });
 
           await publishUpdate(projectId, {
             type: 'test_update',
@@ -199,6 +206,12 @@ export const createQaProjectProcessor = (redis: Redis) => {
             status: 'error',
             completedAt: new Date(),
             durationMs,
+            errorMessage,
+          });
+          emitExecution('qa', projectId, {
+            id: executionId,
+            status: 'error',
+            responseTimeMs: durationMs,
             errorMessage,
           });
 

@@ -5,6 +5,7 @@ import { tcpProbe } from '../services/tcp-probe.ts';
 import { parseHexPayload } from '../services/udp-probe.ts';
 import { logger } from '../utils/logger.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 export const tcpMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
@@ -22,6 +23,7 @@ export const tcpMonitorProcessor = async (job: Job) => {
       errorMessage: msg,
       endTime: new Date(),
     });
+    emitExecution('tcp', monitor.id, { id: executionId, status: 'FAILED', errorMessage: msg });
     void maybeAlertOnTransition('tcp', monitor.id, executionId, 'FAILED', { errorMessage: msg });
     throw new Error(msg);
   }
@@ -42,6 +44,11 @@ export const tcpMonitorProcessor = async (job: Job) => {
       banner: result.banner ?? null,
       endTime: new Date(),
     });
+    emitExecution('tcp', monitor.id, {
+      id: executionId,
+      status: 'SUCCESS',
+      latencyMs: result.latencyMs,
+    });
     void maybeAlertOnTransition('tcp', monitor.id, executionId, 'SUCCESS', {
       durationMs: result.latencyMs,
     });
@@ -56,6 +63,12 @@ export const tcpMonitorProcessor = async (job: Job) => {
     banner: result.banner ?? null,
     errorMessage: result.errorMessage,
     endTime: new Date(),
+  });
+  emitExecution('tcp', monitor.id, {
+    id: executionId,
+    status: finalStatus,
+    latencyMs: result.latencyMs,
+    errorMessage: result.errorMessage,
   });
   if (finalStatus === 'FAILED') {
     void maybeAlertOnTransition('tcp', monitor.id, executionId, 'FAILED', {

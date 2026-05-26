@@ -4,6 +4,7 @@ import { tlsMonitorRepo } from '../db/repositories/tls-monitor.repo.ts';
 import { tlsProbe } from '../services/tls-probe.ts';
 import { logger } from '../utils/logger.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
+import { emitExecution } from '../services/exec-events.ts';
 
 export const tlsMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
@@ -32,6 +33,11 @@ export const tlsMonitorProcessor = async (job: Job) => {
       certSummary: result.certSummary ?? null,
       endTime: new Date(),
     });
+    emitExecution('tls', monitor.id, {
+      id: executionId,
+      status: 'SUCCESS',
+      latencyMs: result.latencyMs,
+    });
     void maybeAlertOnTransition('tls', monitor.id, executionId, 'SUCCESS', {
       durationMs: result.latencyMs,
     });
@@ -48,6 +54,12 @@ export const tlsMonitorProcessor = async (job: Job) => {
     certSummary: result.certSummary ?? null,
     errorMessage: result.errorMessage,
     endTime: new Date(),
+  });
+  emitExecution('tls', monitor.id, {
+    id: executionId,
+    status: finalStatus,
+    latencyMs: result.latencyMs,
+    errorMessage: result.errorMessage,
   });
   if (finalStatus === 'FAILED') {
     void maybeAlertOnTransition('tls', monitor.id, executionId, 'FAILED', {

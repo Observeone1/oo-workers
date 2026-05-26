@@ -3,6 +3,40 @@ import { $, esc, fmtAge, statusClass } from './helpers';
 import { iconActive, iconPaused } from './icons';
 import { getDetail, getRegions, runMonitor, type RegionLite } from './api';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
+import { on as onStreamEvent } from './events';
+
+// Live updates from /api/events. The detail view subscribes lazily on
+// first render. When an execution event arrives for the currently-
+// viewed monitor, re-render so the new row + status pill show up
+// immediately. Filtering by (type, id) at the handler avoids re-
+// rendering when an unrelated monitor reports.
+let liveSubscribed = false;
+let currentType: MonType | null = null;
+let currentId: number | null = null;
+function subscribeDetailLive(): void {
+  if (liveSubscribed) return;
+  liveSubscribed = true;
+  onStreamEvent('execution', (p) => {
+    const evt = p as { type: MonType; monitorId: number };
+    if (evt.type === currentType && evt.monitorId === currentId) {
+      void renderDetail(currentType, currentId);
+    }
+  });
+  onStreamEvent('monitor-state', (p) => {
+    const evt = p as { type: MonType; monitorId: number };
+    if (evt.type === currentType && evt.monitorId === currentId) {
+      void renderDetail(currentType, currentId);
+    }
+  });
+  onStreamEvent('monitor-deleted', (p) => {
+    // If the monitor we're viewing is deleted from another tab, bounce
+    // back to the list so the operator isn't stuck on a 404 detail.
+    const evt = p as { type: MonType; monitorId: number };
+    if (evt.type === currentType && evt.monitorId === currentId) {
+      location.hash = '#/';
+    }
+  });
+}
 
 const main = $('#main');
 
@@ -94,6 +128,13 @@ function applyFilter(runs: RunLite[], filter: Filter): RunLite[] {
 }
 
 export async function renderDetail(type: MonType, id: number) {
+  // Track the active (type, id) so the SSE handlers know whether an
+  // incoming event applies to the current view. Updated on every render
+  // so navigation between detail pages re-targets correctly.
+  currentType = type;
+  currentId = id;
+  subscribeDetailLive();
+
   // Heartbeats short-circuit the runs/regions/latency-chart machinery —
   // they have none of those (inverted-direction). Show the public URL,
   // status, last ping, and a copy-paste curl example instead.
