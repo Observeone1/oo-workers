@@ -73,6 +73,15 @@ async function loadKeys(panel: HTMLElement): Promise<void> {
   const tbody = panel.querySelector('#s-keys-tbody');
   if (!tbody) return;
 
+  // The reveal-panel host is only populated when oneTimeKey is set. On
+  // every render we either fill it (key just created) or clear it
+  // (dismiss button clicked, or no key currently shown). Without the
+  // explicit `else { host.innerHTML = '' }` the panel never went away —
+  // "I've copied it" set oneTimeKey to null but the prior HTML stayed
+  // in the DOM.
+  const revealHost = panel.querySelector<HTMLElement>('#s-key-reveal-host');
+  if (!oneTimeKey && revealHost) revealHost.innerHTML = '';
+
   if (oneTimeKey) {
     const host = panel.querySelector<HTMLElement>('#s-key-reveal-host');
     if (host) {
