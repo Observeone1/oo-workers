@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.26.0] - 2026-05-26
+
+### Added
+
+- **Live updates via Server-Sent Events.** The dashboard previously polled `/api/monitors` every 5 seconds, full-rendering on every tick whether anything had changed or not. Now there's a single `/api/events` SSE stream per dashboard tab. The server pushes typed events on every change (execution row written, monitor created/deleted, heartbeat OVERDUE/UP flip). Operators see updates within a tick of the worker recording them — no 5s lag, no flicker on every poll, no wasted server CPU on idle dashboards. The stream pauses automatically when the tab is hidden. ([#90], [#91], [#92])
+
+### Internal
+
+- `src/services/exec-events.ts` — typed in-process event bus. Helpers (`emitExecution`, `emitMonitorCreated`, `emitMonitorDeleted`) called from every processor exit point + the create/delete route handlers + the heartbeat sweeper.
+- `src/routes/events.ts` — hono `streamSSE` endpoint, 15s keepalive ping, listener cleanup on `stream.onAbort` (no leak across reconnects).
+- `src/ui/events.ts` — dashboard-side dispatcher. One `EventSource` per tab, per-view handler sets, visibility-based pause/resume.
+- `src/ui/list.ts` and `src/ui/detail.ts` subscribe lazily on first render.
+- `src/ui/app.ts` deletes the 5s `setInterval`. Region badge keeps a 30s poll until the follow-up region-SSE emit lands.
+
+### Not in this release
+
+Two pieces of the SSE migration are queued for a follow-up:
+
+- Multi-region: `services/agent-dispatch.writeAgentResult` does not yet emit `execution` for agent-side runs (7 type branches). Master-only operators get full live updates; regional probe results still update on detail-page navigation.
+- Region status changes (online/offline transitions) don't emit a `region` event yet. The navbar online/offline badge polls every 30s until that's wired.
+
+[#90]: https://github.com/Observeone1/oo-workers/pull/90
+[#91]: https://github.com/Observeone1/oo-workers/pull/91
+[#92]: https://github.com/Observeone1/oo-workers/pull/92
+
+---
+
 ## [1.25.2] - 2026-05-26
 
 ### Added
