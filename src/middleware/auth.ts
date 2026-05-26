@@ -126,6 +126,13 @@ export function requireAuth(scope: Scope): MiddlewareHandler {
     const cleartext = extractKey(c);
     if (!cleartext) return c.json({ error: 'authentication required' }, 401);
 
+    // Track which credential source the request used. Used at the end of
+    // this function to pick an honest error message when nothing matched:
+    // a cookie that doesn't match any session means "session expired",
+    // not "invalid or revoked key" — the operator might never have used
+    // an API key in their life.
+    const hasBearer = /^Bearer\s+\S+$/i.test(c.req.header('authorization') ?? '');
+
     const row = await validateKey(cleartext);
     if (row) {
       // Write implies read — a key authorised to mutate state is also
@@ -161,7 +168,20 @@ export function requireAuth(scope: Scope): MiddlewareHandler {
       return next();
     }
 
-    return c.json({ error: 'invalid or revoked key' }, 401);
+    // No match. The wording depends on which credential the request sent:
+    // an Authorization header genuinely points at a key (which is invalid
+    // or revoked), but a cookie-only request points at a session that's
+    // gone. Conflating the two leads to confusing UX where a dashboard
+    // user with an expired session sees "invalid or revoked key" — they
+    // never even minted one. Returns a `code` field too so the client
+    // can branch on it (e.g. redirect to /login on session-expired).
+    if (hasBearer) {
+      return c.json({ error: 'invalid or revoked key', code: 'key_invalid' }, 401);
+    }
+    return c.json(
+      { error: 'session expired — please sign in again', code: 'session_expired' },
+      401,
+    );
   };
 }
 

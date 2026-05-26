@@ -10,6 +10,7 @@ import {
   wirePagination,
 } from './helpers';
 import {
+  apiFetch,
   getMonitors,
   getRegions,
   getAvailability,
@@ -382,7 +383,7 @@ function wireRowActions() {
     b.addEventListener('click', async (e) => {
       e.stopPropagation();
       const { type, id } = (e.currentTarget as HTMLElement).dataset;
-      const res = await fetch(`/api/monitors/${type}/${id}`, { credentials: 'include' });
+      const res = await apiFetch(`/api/monitors/${type}/${id}`, { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       await openEditDialog(type as import('./types').MonType, Number(id), data.monitor, {

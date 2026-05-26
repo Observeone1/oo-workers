@@ -10,20 +10,49 @@ import type {
 // flows on same-origin fetches — required for the auth gate.
 const COMMON: RequestInit = { credentials: 'include' };
 
+/**
+ * fetch() shim that catches "session expired" responses from the auth
+ * middleware and redirects to the login screen. Without this, an expired
+ * session leaves the dashboard in a confused state where every poll
+ * fails with a generic error.
+ *
+ * The server emits `{ error, code: 'session_expired' }` for cookie-only
+ * 401s (vs `code: 'key_invalid'` for Bearer 401s, which the dashboard
+ * never sees because the dashboard auths via cookie). On detecting that
+ * code, hash-route to #/login so the SPA's router renders the login
+ * view. Falls through to the normal Response on every other case so
+ * existing call sites keep working.
+ */
+const _fetch: typeof fetch = globalThis.fetch.bind(globalThis);
+export async function apiFetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const r = await _fetch(input, init);
+  if (r.status === 401) {
+    // Clone before reading the body — callers may also want to parse it.
+    const body = await r
+      .clone()
+      .json()
+      .catch(() => null);
+    if (body?.code === 'session_expired' && location.hash !== '#/login') {
+      location.hash = '#/login';
+    }
+  }
+  return r;
+}
+
 export const getMonitors = async (): Promise<MonitorsByType> =>
-  (await fetch('/api/monitors', COMMON)).json();
+  (await apiFetch('/api/monitors', COMMON)).json();
 
 export const getAvailability = async (days = 30): Promise<AvailabilityDay[]> =>
-  (await fetch(`/api/availability?days=${days}`, COMMON)).json();
+  (await apiFetch(`/api/availability?days=${days}`, COMMON)).json();
 
 export const getDetail = async (type: MonType, id: number): Promise<MonitorDetail> =>
-  (await fetch(`/api/monitors/${type}/${id}`, COMMON)).json();
+  (await apiFetch(`/api/monitors/${type}/${id}`, COMMON)).json();
 
 export const runMonitor = (type: MonType, id: number) =>
-  fetch(`/api/monitors/${type}/${id}/run`, { ...COMMON, method: 'POST' });
+  apiFetch(`/api/monitors/${type}/${id}/run`, { ...COMMON, method: 'POST' });
 
 export const toggleMonitor = (type: MonType, id: number, enabled: boolean) =>
-  fetch(`/api/monitors/${type}/${id}`, {
+  apiFetch(`/api/monitors/${type}/${id}`, {
     ...COMMON,
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
@@ -31,10 +60,10 @@ export const toggleMonitor = (type: MonType, id: number, enabled: boolean) =>
   });
 
 export const deleteMonitor = (type: MonType, id: number) =>
-  fetch(`/api/monitors/${type}/${id}`, { ...COMMON, method: 'DELETE' });
+  apiFetch(`/api/monitors/${type}/${id}`, { ...COMMON, method: 'DELETE' });
 
 export const createMonitor = (type: MonType, body: unknown) =>
-  fetch(`/api/monitors/${type}`, {
+  apiFetch(`/api/monitors/${type}`, {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -42,7 +71,7 @@ export const createMonitor = (type: MonType, body: unknown) =>
   });
 
 export const updateMonitor = (type: MonType, id: number, body: unknown) =>
-  fetch(`/api/monitors/${type}/${id}`, {
+  apiFetch(`/api/monitors/${type}/${id}`, {
     ...COMMON,
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -52,7 +81,7 @@ export const updateMonitor = (type: MonType, id: number, body: unknown) =>
 export const importJson = async (
   payload: unknown,
 ): Promise<{ res: Response; result: ImportResult }> => {
-  const res = await fetch('/api/import', {
+  const res = await apiFetch('/api/import', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -78,7 +107,7 @@ export interface BackupEstimate {
 }
 
 export const backupEstimate = async (): Promise<BackupEstimate> => {
-  const res = await fetch('/api/backup/estimate', COMMON);
+  const res = await apiFetch('/api/backup/estimate', COMMON);
   if (!res.ok) return { artifactCount: 0, artifactBytes: 0 };
   return res.json();
 };
@@ -87,7 +116,7 @@ export const restoreBackup = async (
   file: File,
   force: boolean,
 ): Promise<{ res: Response; result: { error?: string; counts?: Record<string, number> } }> => {
-  const res = await fetch(`/api/restore${force ? '?force=1' : ''}`, {
+  const res = await apiFetch(`/api/restore${force ? '?force=1' : ''}`, {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/gzip' },
@@ -115,7 +144,7 @@ export interface RegionLite {
 }
 
 export const getRegions = async (): Promise<RegionLite[]> =>
-  (await fetch('/api/regions', COMMON)).json();
+  (await apiFetch('/api/regions', COMMON)).json();
 
 export const createRegion = async (
   slug: string,
@@ -124,7 +153,7 @@ export const createRegion = async (
   res: Response;
   data: { region: RegionLite; cleartextKey: string } | { error: string; code?: string };
 }> => {
-  const res = await fetch('/api/regions', {
+  const res = await apiFetch('/api/regions', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -134,17 +163,17 @@ export const createRegion = async (
 };
 
 export const deleteRegion = (id: number) =>
-  fetch(`/api/regions/${id}`, { ...COMMON, method: 'DELETE' });
+  apiFetch(`/api/regions/${id}`, { ...COMMON, method: 'DELETE' });
 
 export const rotateRegionKey = async (
   id: number,
 ): Promise<{ region: RegionLite; cleartextKey: string }> => {
-  const res = await fetch(`/api/regions/${id}/rotate-key`, { ...COMMON, method: 'POST' });
+  const res = await apiFetch(`/api/regions/${id}/rotate-key`, { ...COMMON, method: 'POST' });
   return res.json();
 };
 
 export const setMonitorRegions = (type: MonType, id: number, regionIds: number[]) =>
-  fetch(`/api/monitors/${type}/${id}/regions`, {
+  apiFetch(`/api/monitors/${type}/${id}/regions`, {
     ...COMMON,
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -164,14 +193,14 @@ export interface ChannelLite {
 }
 
 export const getChannels = async (): Promise<ChannelLite[]> =>
-  (await fetch('/api/channels', COMMON)).json();
+  (await apiFetch('/api/channels', COMMON)).json();
 
 export const createChannel = async (
   name: string,
   type: ChannelType,
   url: string,
 ): Promise<{ res: Response; data: ChannelLite | { error: string } }> => {
-  const res = await fetch('/api/channels', {
+  const res = await apiFetch('/api/channels', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -181,7 +210,7 @@ export const createChannel = async (
 };
 
 export const deleteChannel = (id: number) =>
-  fetch(`/api/channels/${id}`, { ...COMMON, method: 'DELETE' });
+  apiFetch(`/api/channels/${id}`, { ...COMMON, method: 'DELETE' });
 
 export const testChannel = async (
   id: number,
@@ -193,12 +222,12 @@ export const testChannel = async (
     mailpit?: { delivered: boolean; subject?: string; to?: string };
   };
 }> => {
-  const res = await fetch(`/api/channels/${id}/test`, { ...COMMON, method: 'POST' });
+  const res = await apiFetch(`/api/channels/${id}/test`, { ...COMMON, method: 'POST' });
   return { res, data: await res.json().catch(() => ({ ok: false })) };
 };
 
 export const setMonitorChannels = (type: MonType, id: number, channelIds: number[]) =>
-  fetch(`/api/monitors/${type}/${id}/channels`, {
+  apiFetch(`/api/monitors/${type}/${id}/channels`, {
     ...COMMON,
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -220,17 +249,17 @@ export interface StatusPageDetail extends StatusPageLite {
 }
 
 export const getStatusPages = async (): Promise<StatusPageLite[]> =>
-  (await fetch('/api/status-pages', COMMON)).json();
+  (await apiFetch('/api/status-pages', COMMON)).json();
 
 export const getStatusPage = async (id: number): Promise<StatusPageDetail> =>
-  (await fetch(`/api/status-pages/${id}`, COMMON)).json();
+  (await apiFetch(`/api/status-pages/${id}`, COMMON)).json();
 
 export const createStatusPage = async (
   slug: string,
   title: string,
   description: string | null,
 ): Promise<{ res: Response; data: StatusPageLite | { error: string } }> => {
-  const res = await fetch('/api/status-pages', {
+  const res = await apiFetch('/api/status-pages', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -240,10 +269,10 @@ export const createStatusPage = async (
 };
 
 export const deleteStatusPage = (id: number) =>
-  fetch(`/api/status-pages/${id}`, { ...COMMON, method: 'DELETE' });
+  apiFetch(`/api/status-pages/${id}`, { ...COMMON, method: 'DELETE' });
 
 export const setStatusPageMonitors = (id: number, monitors: Array<{ type: MonType; id: number }>) =>
-  fetch(`/api/status-pages/${id}/monitors`, {
+  apiFetch(`/api/status-pages/${id}/monitors`, {
     ...COMMON,
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -264,7 +293,7 @@ export interface KeyLite {
   createdAt: string;
 }
 
-export const getKeys = async (): Promise<KeyLite[]> => (await fetch('/api/keys', COMMON)).json();
+export const getKeys = async (): Promise<KeyLite[]> => (await apiFetch('/api/keys', COMMON)).json();
 
 export const createKey = async (
   name: string,
@@ -275,7 +304,7 @@ export const createKey = async (
     | { id: number; name: string; keyPrefix: string; scopes: string[]; cleartextKey: string }
     | { error: string };
 }> => {
-  const res = await fetch('/api/keys', {
+  const res = await apiFetch('/api/keys', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -285,7 +314,7 @@ export const createKey = async (
 };
 
 export const revokeKey = (id: number) =>
-  fetch(`/api/keys/${id}/revoke`, { ...COMMON, method: 'POST' });
+  apiFetch(`/api/keys/${id}/revoke`, { ...COMMON, method: 'POST' });
 
 // ---------- Incidents (status-page timeline) ----------
 
@@ -309,10 +338,10 @@ export const getIncidents = async (
   statusPageId: number,
   filter: 'all' | 'active' | 'resolved' = 'all',
 ): Promise<IncidentLite[]> =>
-  (await fetch(`/api/incidents?status_page_id=${statusPageId}&filter=${filter}`, COMMON)).json();
+  (await apiFetch(`/api/incidents?status_page_id=${statusPageId}&filter=${filter}`, COMMON)).json();
 
 export const getIncident = async (id: number): Promise<IncidentDetail> =>
-  (await fetch(`/api/incidents/${id}`, COMMON)).json();
+  (await apiFetch(`/api/incidents/${id}`, COMMON)).json();
 
 export const createIncident = async (data: {
   statusPageId: number;
@@ -320,7 +349,7 @@ export const createIncident = async (data: {
   severity: Severity;
   body: string;
 }): Promise<{ res: Response; data: IncidentLite | { error: string } }> => {
-  const res = await fetch('/api/incidents', {
+  const res = await apiFetch('/api/incidents', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -338,7 +367,7 @@ export const addIncidentUpdate = async (
   id: number,
   data: { severity: Severity; body: string },
 ): Promise<{ res: Response; data: unknown }> => {
-  const res = await fetch(`/api/incidents/${id}/updates`, {
+  const res = await apiFetch(`/api/incidents/${id}/updates`, {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -348,7 +377,7 @@ export const addIncidentUpdate = async (
 };
 
 export const updateIncidentTitle = (id: number, title: string) =>
-  fetch(`/api/incidents/${id}`, {
+  apiFetch(`/api/incidents/${id}`, {
     ...COMMON,
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
@@ -356,7 +385,7 @@ export const updateIncidentTitle = (id: number, title: string) =>
   });
 
 export const deleteIncident = (id: number) =>
-  fetch(`/api/incidents/${id}`, { ...COMMON, method: 'DELETE' });
+  apiFetch(`/api/incidents/${id}`, { ...COMMON, method: 'DELETE' });
 
 // ---------- profile / password ----------
 
@@ -367,7 +396,7 @@ export const updateProfile = async (
   res: Response;
   data: { name: string; email: string; role: string } | { error: string };
 }> => {
-  const res = await fetch('/api/auth/profile', {
+  const res = await apiFetch('/api/auth/profile', {
     ...COMMON,
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
@@ -380,7 +409,7 @@ export const changePassword = async (
   currentPassword: string,
   newPassword: string,
 ): Promise<{ res: Response; data: { ok: boolean } | { error: string } }> => {
-  const res = await fetch('/api/auth/password', {
+  const res = await apiFetch('/api/auth/password', {
     ...COMMON,
     method: 'POST',
     headers: { 'content-type': 'application/json' },
