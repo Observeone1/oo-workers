@@ -22,7 +22,7 @@ import { renderIncidents } from './incidents';
 import { renderSettings } from './settings';
 import { renderDocs } from './docs-view';
 import { initDialogs } from './dialogs';
-import { startEventStream } from './events';
+import { startEventStream, on as onStreamEvent } from './events';
 import { getRegions } from './api';
 import { initTheme } from './theme';
 import { renderLogin } from './login';
@@ -211,13 +211,11 @@ async function boot() {
   // pauses automatically when the tab is hidden.
   startEventStream();
 
-  window.addEventListener('hashchange', route);
+  // Navbar regions badge — refresh on every region online/offline flip.
+  // The scheduler's tickRegionStatus sweep emits these. No more polling.
+  onStreamEvent('region', () => void refreshRegionBadge());
 
-  // Regions badge isn't event-driven yet — region status changes are
-  // batched-low-frequency, so a 30s poll is fine until the SSE region
-  // emitter lands (follow-up). The 5s polling that previously drove
-  // list + detail refresh was deleted with the SSE migration.
-  setInterval(() => void refreshRegionBadge(), 30_000);
+  window.addEventListener('hashchange', route);
 }
 
 boot();
