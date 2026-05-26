@@ -76,8 +76,13 @@ function regionalListKey(slug: string): string {
   return `oo:jobs:${slug}`;
 }
 
+// BullMQ rejects custom job IDs containing ':' unless they split into exactly 3 parts
+// (split(':').length === 3). Our master-path IDs use ':' as the primary separator —
+// `<type>:<monitorId>:<bucket>`. The boot nonce and region suffix are joined with '-'
+// so the total colon count stays at 2, satisfying BullMQ. The previous v1.24.0 format
+// used ':' as the nonce separator, which produced 4-part IDs and broke every tick.
 function jobIdSuffix(target: FanOutTarget): string {
-  return target.regionSlug === null ? '' : `:r${target.regionId}`;
+  return target.regionSlug === null ? '' : `-r${target.regionId}`;
 }
 
 type QueueFactory = (name: string) => Queue;
@@ -238,7 +243,7 @@ async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
         'url-monitor',
         target,
         {
-          jobId: `url:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `url:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'url',
           executionId: exec.id,
           regionId: target.regionId,
@@ -275,7 +280,7 @@ async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
         'api-check',
         target,
         {
-          jobId: `api:${c.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `api:${c.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'api',
           executionId: exec.id,
           regionId: target.regionId,
@@ -318,7 +323,7 @@ async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
         'tcp-monitor',
         target,
         {
-          jobId: `tcp:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `tcp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'tcp',
           executionId: exec.id,
           regionId: target.regionId,
@@ -360,7 +365,7 @@ async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
         'udp-monitor',
         target,
         {
-          jobId: `udp:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `udp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'udp',
           executionId: exec.id,
           regionId: target.regionId,
@@ -402,7 +407,7 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
         'db-monitor',
         target,
         {
-          jobId: `db:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `db:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'db',
           executionId: exec.id,
           regionId: target.regionId,
@@ -443,7 +448,7 @@ async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
         'tls-monitor',
         target,
         {
-          jobId: `tls:${m.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `tls:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'tls',
           executionId: exec.id,
           regionId: target.regionId,
@@ -492,7 +497,7 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
         'qa-project',
         target,
         {
-          jobId: `qa:${p.id}:${bucket}:${BOOT_NONCE}${jobIdSuffix(target)}`,
+          jobId: `qa:${p.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
           type: 'qa',
           executionId: 0, // synthetic; QA processor creates exec rows per test
           regionId: target.regionId,
