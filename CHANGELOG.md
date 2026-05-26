@@ -8,14 +8,14 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
-- **Multi-region SSE emits.** `services/agent-dispatch.writeAgentResult` now emits `execution` for every agent-side result it accepts (url / api / tcp / udp / db / tls; qa-agent deferred — that path emits per-test which would need a project-id lookup). Regional probe results now show up live on the dashboard. ([#PR])
-- **Region online/offline emit.** New `tickRegionStatus()` runs alongside the scheduler ticks (every TICK_MS). Maintains in-memory `wasOnline` per region, emits `region` event on every transition. The navbar online/offline badge subscribes to it. ([#PR])
+- **Multi-region SSE emits.** `services/agent-dispatch.writeAgentResult` now emits `execution` for every agent-side result it accepts (url / api / tcp / udp / db / tls; qa-agent deferred — that path emits per-test which would need a project-id lookup). Regional probe results now show up live on the dashboard. ([#94])
+- **Region online/offline emit.** New `tickRegionStatus()` runs alongside the scheduler ticks (every TICK_MS). Maintains in-memory `wasOnline` per region, emits `region` event on every transition. The navbar online/offline badge subscribes to it. ([#94])
 
 ### Removed
 
-- **The last polling `setInterval`.** Region badge refresh was on a 30s poll. Now event-driven through the new region SSE. The dashboard is fully event-driven on the master path. ([#PR])
+- **The last polling `setInterval`.** Region badge refresh was on a 30s poll. Now event-driven through the new region SSE. The dashboard is fully event-driven on the master path. ([#94])
 
-[#PR]: https://github.com/Observeone1/oo-workers/pull/
+[#94]: https://github.com/Observeone1/oo-workers/pull/94
 
 ---
 
