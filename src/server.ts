@@ -48,34 +48,37 @@ function buildApp(connection: Redis) {
   const blockingConn = connection.duplicate();
 
   // ---------- Auth ----------
-  // Gate every write under /api/monitors and /api/import behind requireAuth.
-  // Reads (GET) stay open — they don't leak secrets, only metadata.
+  // All /api/* endpoints require auth. Reads need 'read' scope (write keys
+  // also satisfy), writes need 'write'. Public surfaces (the public status
+  // page, heartbeat ingest, auth/setup bootstrap, /api/auth/me) live on
+  // distinct routes and are not gated here.
+  //
+  // Each gated namespace covers two paths: the bare path (e.g. /api/monitors)
+  // and the wildcard (/api/monitors/*). Hono's /* does NOT match the bare
+  // path — leaving only the wildcard would let GET /api/monitors slip past.
   const writeAuth = requireAuth('write');
-  app.use('/api/monitors/*', async (c, next) => {
-    if (c.req.method === 'GET') return next();
-    return writeAuth(c, next);
-  });
+  const readAuth = requireAuth('read');
+  const methodScoped: import('hono').MiddlewareHandler = (c, next) =>
+    (c.req.method === 'GET' ? readAuth : writeAuth)(c, next);
+
+  app.use('/api/monitors', methodScoped);
+  app.use('/api/monitors/*', methodScoped);
+  app.use('/api/availability', readAuth);
+  app.use('/api/channels', methodScoped);
+  app.use('/api/channels/*', methodScoped);
+  app.use('/api/regions', methodScoped);
+  app.use('/api/regions/*', methodScoped);
+  app.use('/api/status-pages', methodScoped);
+  app.use('/api/status-pages/*', methodScoped);
+
+  // Write-only namespaces — even reads need a write key (or session).
   app.use('/api/import', writeAuth);
-  // Backup/restore is write-gated even on GET — the dump contains API-key
-  // and password hashes, so it must never be reachable unauthenticated.
-  // The `/*` line covers /api/backup/estimate too.
+  // Backup dump contains API-key + password hashes; never reachable unauthed.
   app.use('/api/backup', writeAuth);
   app.use('/api/backup/*', writeAuth);
   app.use('/api/restore', writeAuth);
-  app.use('/api/channels/*', async (c, next) => {
-    if (c.req.method === 'GET') return next();
-    return writeAuth(c, next);
-  });
-  app.use('/api/status-pages/*', async (c, next) => {
-    if (c.req.method === 'GET') return next();
-    return writeAuth(c, next);
-  });
-  app.use('/api/regions/*', async (c, next) => {
-    if (c.req.method === 'GET') return next();
-    return writeAuth(c, next);
-  });
-  // Incidents admin API is fully operator-only (even GET) — the public
-  // consumes incidents through /status/<slug> only, never /api/incidents.
+  // Incidents admin API is operator-only (the public consumes incidents
+  // through /status/<slug> only, never /api/incidents).
   app.use('/api/incidents', writeAuth);
   app.use('/api/incidents/*', writeAuth);
 
