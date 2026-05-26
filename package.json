@@ -8,7 +8,7 @@
     "start": "bun src/index.ts",
     "dev": "bun --watch src/index.ts",
     "migrate": "bun src/db/migrate.ts",
-    "build:ui": "mkdir -p public && cp src/ui/index.html src/ui/docs.html src/ui/tokens.css src/ui/dashboard.css src/ui/docs.css public/ && bun build src/ui/app.ts --outdir public --target browser",
+    "build:ui": "mkdir -p public && cp src/ui/index.html src/ui/docs.html src/ui/tokens.css src/ui/dashboard.css src/ui/docs.css src/ui/favicon.svg public/ && bun build src/ui/app.ts --outdir public --target browser",
     "test": "bun test src/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

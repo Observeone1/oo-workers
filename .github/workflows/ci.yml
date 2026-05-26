@@ -1,15 +1,21 @@
 name: CI
 
-# Static checks only (typecheck, format, lint, knip).
-# Integration suite runs locally via `bun run test:integration`.
-# Docker publish lives in cd.yml and triggers on version-tag pushes.
+# Static checks (typecheck, format, lint, knip) + integration suite
+# (testcontainers Postgres + Redis). Docker publish lives in cd.yml
+# and triggers on version-tag pushes.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch: # manual integration run
+  workflow_dispatch:
+
+env:
+  # Opt into Node 24 runtime for actions packaged on Node 20. The default
+  # flips on 2026-06-02; setting this now keeps behaviour identical before
+  # and after the cutover.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   typecheck:
@@ -51,3 +57,18 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run knip
+
+  integration:
+    # Runs the testcontainers-backed integration suite. Adds ~2 min to
+    # the gating path but catches regressions like the v1.24.0 scheduler
+    # colon-count bug that slipped through unit + static checks.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Run integration tests
+        run: bun run test:integration

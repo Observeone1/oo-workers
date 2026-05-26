@@ -170,7 +170,7 @@ A starter example you can adapt lives in [`examples/`](./examples).
 
 ## Releases
 
-Every `v*` git tag auto-publishes to Docker Hub (`observeone/oo-workers`) as three tags from one build: `:<version>` (e.g. `:1.6.0`), `:<major>.<minor>` (e.g. `:1.6`), and `:latest`. Pull `:latest` for the newest stable, or pin an exact `:<version>`. Browse [all tags](https://github.com/Observeone1/oo-workers/tags).
+Every `v*` git tag auto-publishes to Docker Hub (`observeone/oo-workers`) as three tags from one build: `:<version>` (e.g. `:1.24.1`), `:<major>.<minor>` (e.g. `:1.24`), and `:latest`. Pull `:latest` for the newest stable, or pin an exact `:<version>`. Browse [all tags](https://github.com/Observeone1/oo-workers/tags).
 
 ## Contributing
 
