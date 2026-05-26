@@ -41,4 +41,13 @@ export function registerStaticRoutes(app: Hono): void {
   app.get('/tokens.css', serveCss('tokens.css'));
   app.get('/dashboard.css', serveCss('dashboard.css'));
   app.get('/docs.css', serveCss('docs.css'));
+  app.get('/favicon.svg', (c) => {
+    const svg = loadText('favicon.svg');
+    return svg
+      ? c.body(svg, 200, {
+          'content-type': 'image/svg+xml',
+          'cache-control': 'public, max-age=86400',
+        })
+      : c.text('not built', 404);
+  });
 }
