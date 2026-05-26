@@ -105,12 +105,14 @@ See [docs/backup-restore.md](docs/backup-restore.md).
 
 Two defaults shipped on day one:
 
-Write endpoints (`POST/PATCH/DELETE` on `/api/monitors/*`, plus `/api/import` and `/run`) require auth; reads stay open. Two ways to authenticate:
+All `/api/*` endpoints require auth. Two ways to authenticate:
 
 - **Dashboard** - email/password. First visit runs a setup wizard to create the admin account; the server keeps an HttpOnly session cookie after login. Sign out from the header.
 - **Programmatic** (CLI, agents, CI) - an API key sent as `Authorization: Bearer oo_…`. Manage keys in the dashboard under **Keys** (create with a one-time reveal, revoke anytime) or via the script below.
 
 The UI port binds to `127.0.0.1`. Only your own machine reaches it until you change that.
+
+The only intentionally-public surfaces are `GET /status/<slug>` (the public status pages you curate) and `POST /heartbeat/:token` (where your cron jobs ping). Everything else under `/api/*` returns 401 without a valid key or session cookie — safe to put behind the Caddy overlay without leaking your monitor inventory.
 
 ### Get an API key
 

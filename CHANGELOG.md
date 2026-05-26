@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.25.0] - 2026-05-26
+
+### Changed (behavior change)
+
+- **All `/api/*` endpoints now require authentication.** Previously, `GET` on `/api/monitors`, `/api/channels`, `/api/regions`, `/api/status-pages`, `/api/availability` (and a few others) returned full operator config to anyone who could reach the dashboard port. For a self-host product whose value is "monitor my private services," that's the wrong default — the moment the UI is bound to a public IP, the inventory leaks. Now every `/api/*` path requires either a Bearer API key or a dashboard session cookie. ([#PR])
+
+  **Public surfaces left intentionally unauthed:**
+  - `GET /status/<slug>` — public status pages (operators curate which monitors appear)
+  - `POST /heartbeat/:token` — heartbeat ingest (the token is the auth)
+  - Static UI assets, `/api/auth/setup-status`, login/setup bootstrap endpoints
+
+  **Impact on existing scripts.** Anyone scripting against the previously-public reads (e.g. a Grafana scraper hitting `/api/monitors` without a key) will get 401 after upgrading. The fix is one line: add `-H "Authorization: Bearer oo_..."`. The previous behavior was a description in the README, not a documented API contract.
+
+### Internal
+
+- `requireAuth('read')` is now wired in `server.ts` as `methodScoped` middleware. Read endpoints accept both `read` and `write` scopes (write implies read).
+
+[#PR]: https://github.com/Observeone1/oo-workers/pull/
+
+---
+
 ## [1.24.2] - 2026-05-26
 
 ### Added

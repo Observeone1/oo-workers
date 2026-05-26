@@ -1,6 +1,6 @@
 {
   "name": "oo-workers",
-  "version": "1.24.2",
+  "version": "1.25.0",
   "description": "Self-hosted distributed monitoring workers — HTTP, API, and Playwright browser checks. The OSS engine behind ObserveOne.",
   "private": true,
   "type": "module",
