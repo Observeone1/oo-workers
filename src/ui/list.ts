@@ -37,6 +37,12 @@ export function setActiveTab(t: MonType) {
   page = 1;
 }
 
+/** Active tab in the list view. Read by the add-monitor dialog so a fresh
+ * "+ Add monitor" click pre-selects the type tile matching the visible tab. */
+export function getActiveTab(): MonType {
+  return activeTab;
+}
+
 function targetFor(m: Monitor): string {
   if (m.type === 'heartbeat') {
     // Heartbeats have no target host/url — show last-ping status + age.
@@ -337,7 +343,7 @@ export async function renderList() {
         ? `<div class="empty" data-testid="list-empty">${
             search
               ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search data-testid="search-clear-link">Clear search</a>.`
-              : `No ${activeTab.toUpperCase()} monitors yet. Click <b>Add monitor</b> to create one.`
+              : `No ${activeTab.toUpperCase()} monitors yet. <a href="#" class="empty-cta" data-tab-add="${activeTab}" data-testid="empty-state-add-link">Add a ${activeTab.toUpperCase()} monitor</a> to create one.`
           }</div>`
         : `<div class="tbl-wrap">
           <table>
@@ -484,9 +490,14 @@ function rowFor(m: Monitor): string {
           <button class="btn sm" data-edit data-type="${m.type}" data-id="${m.id}" data-testid="monitor-row-edit" title="Edit">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
-          <button class="btn sm" data-run data-type="${m.type}" data-id="${m.id}" title="Run now">
+          ${
+            // Heartbeats are push-based (services ping us). No probe to "run".
+            m.type === 'heartbeat'
+              ? ''
+              : `<button class="btn sm" data-run data-type="${m.type}" data-id="${m.id}" title="Run now">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          </button>
+          </button>`
+          }
           <button class="btn sm" data-toggle data-type="${m.type}" data-id="${m.id}" data-enabled="${m.enabled}" title="${m.enabled ? 'Pause' : 'Resume'}">
             ${
               m.enabled
