@@ -300,7 +300,7 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
   const dotClass = statusClass(status);
 
   main.innerHTML = `
-    <a href="#/" class="back-link">← All monitors</a>
+    <a href="#/" class="back-link">← back</a>
     <div class="page-head">
       <div>
         <h2 style="font-size:var(--fs-22)">${esc(name)} ${enabled ? iconActive : iconPaused}</h2>
