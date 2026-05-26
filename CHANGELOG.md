@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.24.1] - 2026-05-26
+
+### Fixed
+
+- **CRITICAL: scheduler tick broken on master path in v1.24.0.** The boot-nonce work (#79) joined `:${BOOT_NONCE}` onto the job ID, producing 4 colon-separated segments. BullMQ rejects custom IDs containing `:` unless they split into exactly 3 parts — so every master-path `queue.add()` threw `Custom Id cannot contain :`, the scheduler caught it, and no monitor was ever dispatched. Fresh installs of `:latest` showed every monitor stuck PENDING. Fix: switch the nonce separator from `:` to `-`. New format `url:${id}:${bucket}-${nonce}-r${regionId}` keeps the per-boot uniqueness but stays at 2 colons. Unit spec now asserts `colon count === 2` as an explicit regression guard. ([#PR])
+
+### Test gap
+
+The `scheduler.it.spec.ts` integration test would have caught this — it inserts a real monitor row, runs the actual scheduler, and expects executions to flip to SUCCESS. It didn't catch it because **CI doesn't run the integration suite**, only typecheck/lint/format/knip. Adding integration tests to CI gating is queued as a follow-up — out of scope for this hotfix.
+
+---
+
 ## [1.24.0] - 2026-05-25
 
 ### Added
