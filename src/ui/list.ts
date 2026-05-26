@@ -23,6 +23,24 @@ import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
 import { getActiveIncidents } from './incidents';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
+import { on as onStreamEvent } from './events';
+
+// Live updates from the /api/events SSE stream. When a monitor is created
+// or deleted anywhere (this tab's dialog, another operator's tab, the
+// API), the list view re-renders without waiting for the 5s background
+// poll. The execution event (status/latency updates) is still polled in
+// Phase 2; Phase 3 wires it through the stream and removes the poll.
+let liveSubscribed = false;
+function subscribeListLive(): void {
+  if (liveSubscribed) return;
+  liveSubscribed = true;
+  onStreamEvent('monitor-created', () => {
+    void renderList();
+  });
+  onStreamEvent('monitor-deleted', () => {
+    void renderList();
+  });
+}
 
 const main = $('#main');
 
@@ -138,6 +156,10 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
 }
 
 export async function renderList() {
+  // Subscribe lazily on first render — keeps list-view event handlers
+  // out of memory until the operator actually navigates here.
+  subscribeListLive();
+
   const searchWasFocused = document.activeElement?.id === 'search-input';
 
   const [data, regions, avail, incidentsResult] = await Promise.all([

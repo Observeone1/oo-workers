@@ -61,21 +61,15 @@ export function startEventStream(): void {
  *     const off = on('execution', (data) => patchRow(data));
  *     // later, on unmount:
  *     off();
- *
- * Phase 2/3 will consume this from list.ts, detail.ts, app.ts (regions
- * badge). Kept internal for Phase 1 — knip would flag it as unused
- * otherwise; the visibilitychange handler below already calls it via
- * the local closure.
  */
-function on(event: string, fn: Handler): () => void {
+export function on(event: string, fn: Handler): () => void {
   (handlers[event] ??= new Set()).add(fn);
   return () => handlers[event]?.delete(fn);
 }
 
 /**
  * Close the current stream. Used by the visibility-hidden pause and on
- * logout. The next startEventStream() reopens. Phase 2/3 will need this
- * publicly (logout button).
+ * logout. The next startEventStream() reopens.
  */
 function closeEventStream(): void {
   if (es) {
@@ -83,10 +77,6 @@ function closeEventStream(): void {
     es = null;
   }
 }
-
-// Touch `on` so its module-level reference isn't dead-code-eliminated by
-// the bundler. Phase 2 will turn this into a real subscription.
-void on;
 
 /**
  * Pause the stream when the tab is hidden. Operators commonly have many
