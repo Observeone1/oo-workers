@@ -2749,7 +2749,11 @@ dialog .dialog-actions {
   grid-template-columns: 1fr 1fr;
 }
 .field-grid.cols-3 {
-  grid-template-columns: 2fr 1fr 1fr;
+  /* Host stays widest (hostnames are the longest field). Port is the
+     narrowest — 5 digits max. Interval gets extra room so its
+     `<input> + "seconds"` addon doesn't crush the number into the
+     spinner controls. */
+  grid-template-columns: 1.6fr 0.9fr 1.5fr;
 }
 @media (max-width: 600px) {
   .field-grid.cols-2,
@@ -3538,8 +3542,12 @@ dialog .dialog-actions {
 
 /* ============== DIALOG v2 — sectioned w/ side-rail ============== */
 dialog.v2 {
-  min-width: 720px;
-  max-width: 880px;
+  /* Pinned to a single width so the dialog doesn't resize when the
+     operator switches monitor type. The TCP/UDP/DB/TLS forms include a
+     host+port two-column row that's wider than the URL or QA form;
+     under min/max bounds the dialog used to grow on those selections.
+     Use min(...) so small viewports still cap to ~95vw. */
+  width: min(880px, 95vw);
   padding: 0;
 }
 dialog.v2 .dialog-shell {

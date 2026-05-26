@@ -273,16 +273,18 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
 
   main.innerHTML = `
     <a href="#/" class="back-link">← All monitors</a>
-    <header class="detail-head">
-      <div class="detail-head-row">
-        <h1>${esc(name)} ${enabled ? iconActive : iconPaused}</h1>
+    <div class="page-head">
+      <div>
+        <h2 style="font-size:var(--fs-22)">${esc(name)} ${enabled ? iconActive : iconPaused}</h2>
+        ${description ? `<div class="sub">${esc(description)}</div>` : ''}
+      </div>
+      <div style="display:flex;gap:6px">
         <button id="detail-edit" class="btn" data-testid="detail-edit-btn" title="Edit monitor">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit
         </button>
       </div>
-      ${description ? `<p class="detail-desc">${esc(description)}</p>` : ''}
-    </header>
+    </div>
     <div class="detail-grid" data-testid="detail-meta-cards">
       <div class="meta-card">
         <span class="lbl">Status</span>
