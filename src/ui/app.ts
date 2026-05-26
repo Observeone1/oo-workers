@@ -215,6 +215,24 @@ async function boot() {
   // The scheduler's tickRegionStatus sweep emits these. No more polling.
   onStreamEvent('region', () => void refreshRegionBadge());
 
+  // Clock-tick re-render. SSE handles all *state* changes — new runs,
+  // status flips, lifecycle events — but does NOT advance relative
+  // timestamps. Without this, "Last run: 2s ago" stays frozen until
+  // the next event. A slow re-render every 10s walks the active view
+  // forward in time without burdening the server like the original 5s
+  // poll did (SSE absorbs the actual data changes, this only redraws).
+  setInterval(() => {
+    if (document.hidden) return;
+    if (document.activeElement?.id === 'search-input') return;
+    if (document.querySelector('dialog[open]')) return;
+    if (document.querySelector('.slideover')) return;
+    if (activeView.kind === 'list') {
+      void renderList();
+    } else if (activeView.kind === 'detail') {
+      void renderDetail(activeView.type, activeView.id);
+    }
+  }, 10_000);
+
   window.addEventListener('hashchange', route);
 }
 
