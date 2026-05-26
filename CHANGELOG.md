@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.25.2] - 2026-05-26
+
+### Added
+
+- **Per-assertion pass/fail breakdown on API monitor detail.** The processor already stored `assertion_results` (jsonb) per execution — every assertion's pass/fail + actual vs expected. The UI was throwing it away and showing the generic "One or more assertions failed". Now each API monitor run renders its assertion results inline as a small list with one line per result: pass/fail dot + the evaluator's message ("Expected status code to equal 200, but got 500" / "Header 'Content-Type' contains 'application/json' but got 'text/html'"). ([#86])
+
+### Fixed
+
+- **"Invalid or revoked key" wording for expired sessions.** `requireAuth` used to return the same generic error for both Bearer-key and session-cookie failures. Dashboard users whose session expired saw "invalid or revoked key" — confusing, because they never minted one. Now the middleware checks which credential source the request used and returns either `code: 'key_invalid'` (Bearer) or `code: 'session_expired'` (cookie). ([#87])
+- **Auto-redirect to login on session expiry.** The dashboard's central fetch wrapper (`apiFetch` in `src/ui/api.ts`) catches 401s with `code: 'session_expired'` and hash-routes to `#/login`. Without this, an expired session left the dashboard polling endlessly in a broken state. ([#87])
+- **"I've copied it" button on API-key reveal panel didn't dismiss.** The reveal-panel host's `innerHTML` was set when `oneTimeKey` was non-null but never cleared on the dismiss re-render. Explicit clear added. ([#88])
+- **Heartbeat detail back-link wording.** Was "← All monitors"; every other monitor-type detail page says "← back". Aligned. ([#88])
+- **Domain consistency.** Import JSON dialog used `www.observeone.com/cli`; README uses bare apex. Dropped the `www` so every operator-facing URL points at the same host. ([#88])
+
+[#86]: https://github.com/Observeone1/oo-workers/pull/86
+[#87]: https://github.com/Observeone1/oo-workers/pull/87
+[#88]: https://github.com/Observeone1/oo-workers/pull/88
+
+---
+
 ## [1.25.1] - 2026-05-26
 
 ### Fixed
