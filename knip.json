@@ -1,5 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/ui-server.ts", "src/ui/app.ts", "scripts/*.ts"],
+  "entry": [
+    "src/ui-server.ts",
+    "src/ui/app.ts",
+    "scripts/*.ts",
+    "tests/multi-region-e2e/playwright.config.ts"
+  ],
   "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
 }
