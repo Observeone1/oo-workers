@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.2] - 2026-05-31
+
+### Fixed
+
+- **The monitors list now updates status + latency live.** The 5s poll that drove the list's status dot, latency, and last-run columns was removed in v1.26.0, but the SSE wiring to replace it (the `execution` and `monitor-state` events) was never added to the list view — only to the detail view. So since v1.26.0 the list silently stopped reflecting check results live: a monitor would sit on its last-seen status/latency until you opened its detail page or clicked Run. The list now subscribes to `execution` + `monitor-state`, coalescing a burst of events into a single re-render ~1s later (and only while the list is the visible view, so it doesn't pull you off a detail/section page). Regression from v1.26.0.
+
+### Tests
+
+- **New e2e asserting the list reacts to a run** (`tests/ui/sse-live-updates.e2e.spec.ts`). Seeds a long-interval monitor, forces one run, and asserts the row's latency cell goes from the "—" placeholder to a real `…ms` value live — no reload. No spec asserted this before, which is why the regression shipped silent.
+
+---
+
 ## [1.28.1] - 2026-05-31
 
 ### Fixed

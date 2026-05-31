@@ -26,21 +26,37 @@ import { getActiveIncidents } from './incidents';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
 import { on as onStreamEvent } from './events';
 
-// Live updates from the /api/events SSE stream. When a monitor is created
-// or deleted anywhere (this tab's dialog, another operator's tab, the
-// API), the list view re-renders without waiting for the 5s background
-// poll. The execution event (status/latency updates) is still polled in
-// Phase 2; Phase 3 wires it through the stream and removes the poll.
+// Live updates from the /api/events SSE stream. The list re-renders on every
+// dashboard-visible change without waiting for a poll:
+//   - monitor-created / monitor-deleted: lifecycle, rare → render promptly.
+//   - execution / monitor-state: status + latency + last-run, fire on every
+//     monitor's interval → coalesce a burst into one render ~1s later.
+// The poll that used to drive status/latency was removed in v1.26.0 but the
+// execution/monitor-state wiring was never added, so the list silently stopped
+// updating live until v1.28.2 — this block.
 let liveSubscribed = false;
+let liveRenderTimer: ReturnType<typeof setTimeout> | null = null;
+// Only re-render while the list is the visible view. execution/monitor-state
+// keep arriving while the operator is on a detail or section page, and
+// renderList() writes into #main — re-rendering then would yank them away.
+function rerenderIfListVisible(): void {
+  if (!main.querySelector('[data-testid="monitors-tab-url"]')) return;
+  void renderList();
+}
 function subscribeListLive(): void {
   if (liveSubscribed) return;
   liveSubscribed = true;
-  onStreamEvent('monitor-created', () => {
-    void renderList();
-  });
-  onStreamEvent('monitor-deleted', () => {
-    void renderList();
-  });
+  onStreamEvent('monitor-created', rerenderIfListVisible);
+  onStreamEvent('monitor-deleted', rerenderIfListVisible);
+  const scheduleRender = () => {
+    if (liveRenderTimer) return;
+    liveRenderTimer = setTimeout(() => {
+      liveRenderTimer = null;
+      rerenderIfListVisible();
+    }, 1000);
+  };
+  onStreamEvent('execution', scheduleRender);
+  onStreamEvent('monitor-state', scheduleRender);
 }
 
 const main = $('#main');
