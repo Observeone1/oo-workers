@@ -1,29 +1,5 @@
 # Multi-region monitoring
 
-## Using the CLI
-
-```bash
-# Provision a region on the master — prints the one-time agent key
-obs region create --slug us-east --label "US East"
-
-# Rotate an agent key (zero-downtime — old key 401s, bindings preserved)
-obs region rotate-key us-east
-
-# List regions + their online/offline + last-seen timestamps
-obs region list
-
-# Delete a region (also clears every monitor's binding to it)
-obs region delete us-east
-```
-
-Agent deployment itself is `docker compose -f docker-compose.agent.yml up -d`
-on the regional box with `OO_MASTER_URL` + `OO_AGENT_KEY` + `OO_REGION_SLUG`
-in its `.env`. The default agent image is `observeone/oo-agent-light`
-(~360 MB, no Chromium); set `OO_AGENT_IMAGE=observeone/oo-agent-qa` if the
-region needs to run QA browser checks.
-
----
-
 Run probes from more than one location by attaching regional **agents** to your master. The master holds the schedule, fans jobs out per region, and aggregates results. Agents are stateless — they only need outbound HTTPS back to the master, no database, no Redis, no inbound ports. You can run agents on a $4 VPS, a home lab, or anywhere with outbound internet.
 
 ## Architecture

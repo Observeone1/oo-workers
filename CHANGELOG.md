@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.3] - 2026-05-31
+
+### Fixed
+
+- **Reverted the fabricated CLI documentation from v1.28.0.** The v1.28.0 "CLI-first" docs claimed the `obs` CLI manages a self-hosted oo-workers instance — `obs create tls/tcp/udp/db`, `obs region …`, `obs channel …`, `obs --host …`, and a per-type flag reference. **None of those commands exist.** The `obs` CLI targets the hosted ObserveOne SaaS; its only real relationship to self-hosted oo-workers is `obs export` (produce a SaaS snapshot, then import it with `scripts/import-from-saas.ts`). Self-hosted oo-workers is managed through the dashboard UI and its REST API (`POST /api/monitors/<type>`, etc.). The in-app `/docs` `#cli` and `#resources` sections and the "Using the CLI" blocks in all 9 `docs/*.md` are reverted to their accurate pre-v1.28.0 (dashboard/API) content. The `/docs` routing changes from v1.28.0 (redirect to the SPA shell, `/docs.html` source route) are correct and retained.
+
+---
+
 ## [1.28.2] - 2026-05-31
 
 ### Fixed
