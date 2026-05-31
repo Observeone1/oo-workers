@@ -175,3 +175,40 @@ test('list view updates live when a monitor is deleted elsewhere', async ({ page
   // Row should disappear without a manual refresh.
   await expect(row).toBeHidden({ timeout: 2_500 });
 });
+
+// The list view must reflect a *check run* live — status + latency, not just
+// create/delete. This is the regression that shipped from v1.26.0: the poll
+// that drove status/latency was removed but the execution-event wiring was
+// never added, so the list went stale until you clicked into a monitor or
+// hit run. No spec asserted it, which is why it shipped silent. Fixed v1.28.2.
+test('list view updates a row live when its check runs', async ({ page, request }) => {
+  const name = `e2e-sse-list-exec-${uniqueSuffix()}`;
+  const createRes = await request.post('/api/monitors/url', {
+    data: {
+      name,
+      url: 'https://example.com',
+      intervalSeconds: 300, // long, so only the forced run drives the update
+      timeoutMs: 10_000,
+      assertions: [{ operator: 'equals', statusCode: 200 }],
+    },
+  });
+  const created = (await createRes.json()) as { id: number };
+
+  await page.goto('/');
+  await waitForList(page);
+  await page.getByTestId('monitors-tab-url').click();
+  const row = page.locator('tr[data-open][data-type="url"]', { hasText: name });
+  await expect(row).toBeVisible({ timeout: 5_000 });
+
+  // Fresh monitor: no run yet, so the latency cell shows the "—" placeholder.
+  const latency = row.locator('.cell-num');
+  await expect(latency).toHaveText('—');
+
+  // Force a run. The execution event must update the row's latency live —
+  // no reload, no navigation. Before the fix the list ignored execution
+  // events entirely and this cell stayed "—".
+  await request.post(`/api/monitors/url/${created.id}/run`);
+  await expect(latency).toContainText('ms', { timeout: 10_000 });
+
+  await deleteMonitorViaApi(request, 'url', created.id);
+});
