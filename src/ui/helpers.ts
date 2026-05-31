@@ -19,6 +19,20 @@ export const fmtAge = (iso?: string | null) => {
   return `${Math.floor(d / 86400)}d ago`;
 };
 
+// Relative age that the clock-tick (src/ui/app.ts) advances in place.
+// Stamps the ISO on a span so the tick can rewrite just this text node —
+// no view re-render, no flicker. tickRelativeAges() re-reads data-iso.
+export const fmtAgeLive = (iso?: string | null) =>
+  `<span class="rel-age" data-iso="${iso ?? ''}">${fmtAge(iso)}</span>`;
+
+// Walk every fmtAgeLive() span and refresh its text from the stamped ISO.
+// Cheap enough to run every second — it touches only text nodes.
+export const tickRelativeAges = () => {
+  for (const el of $$('.rel-age')) {
+    el.textContent = fmtAge(el.dataset.iso || null);
+  }
+};
+
 // Map an execution status string to the CSS class used by .dot styles.
 // Unknown values fall back to the gray "unknown" dot.
 const STATUS_CLASS: Record<string, string> = {

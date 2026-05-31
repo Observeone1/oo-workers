@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.1] - 2026-05-31
+
+### Fixed
+
+- **SSE live updates now work in the default two-process deployment.** The shipped `docker-compose` runs the scheduler/processors (`worker`) and the dashboard + `/api/events` SSE stream (`ui`) as separate processes, but the event bus was a bare in-process `EventEmitter`. So every worker-originated event — live check results (url/api/tcp/udp/db/tls/qa), heartbeat OVERDUE flips, and region online/offline — was emitted in the worker and never reached the SSE stream in the ui process. Master-only self-hosters got live create/delete but no live check results at all. The bus is now bridged over Redis pub/sub: `emit()` still delivers to local listeners synchronously and additionally publishes to a Redis channel; a dedicated subscriber in each process re-dispatches incoming events locally, skipping its own (origin dedup, no double-delivery). Regression from v1.26.0.
+- **Relative timestamps no longer flicker.** The "Xs ago" column was kept current by re-rendering the entire list/detail view every 10s, which flashed the table and could reset scroll/focus. Replaced with a text-only tick (`fmtAgeLive` + `tickRelativeAges`) that rewrites just the timestamp spans every 5s. Regression from the v1.27.1 timestamp fix.
+
+### Tests
+
+- **Un-skipped the heartbeat OVERDUE-flip e2e** (`tests/ui/sse-live-updates.e2e.spec.ts`). It runs against the real two-process stack and is the only spec that asserts a scheduler-originated event reaching the browser — it would have caught the bug above, but was wrongly skipped in v1.27.1 with a "headless throttling" excuse that masked a true failure. The skip comment is corrected to record what actually happened.
+- **New cross-process bridge regression test** (`tests/integration/exec-events-bridge.it.spec.ts`). Asserts emit() publishes to the Redis channel, a foreign-origin publish reaches local listeners (the half that was broken), and a local emit delivers exactly once (dedup). Fails immediately if the bus is ever reverted to a bare `EventEmitter`.
+
+---
+
 ## [1.28.0] - 2026-05-26
 
 ### Added

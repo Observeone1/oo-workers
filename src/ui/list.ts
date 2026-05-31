@@ -4,6 +4,7 @@ import {
   $$,
   esc,
   fmtAge,
+  fmtAgeLive,
   statusClass,
   paginate,
   paginationFooter,
@@ -494,8 +495,11 @@ function rowFor(m: Monitor): string {
       ? `every ${m.periodSeconds ?? '?'}s + ${m.graceSeconds ?? 0}s grace`
       : `every ${m.intervalSeconds}s`;
   // Last-event cell: heartbeats show lastPingAt; others use latest.startTime.
+  // fmtAgeLive so the clock-tick advances "Xs ago" without re-rendering.
   const lastEvent =
-    m.type === 'heartbeat' ? fmtAge(m.lastPingAt ?? undefined) : fmtAge(m.latest?.startTime);
+    m.type === 'heartbeat'
+      ? fmtAgeLive(m.lastPingAt ?? undefined)
+      : fmtAgeLive(m.latest?.startTime);
   return `
     <tr class="clickable${m.enabled ? '' : ' disabled'}" data-open data-type="${m.type}" data-id="${m.id}">
       <td class="col-status"><span class="dot ${cls}"></span></td>

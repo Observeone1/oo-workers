@@ -19,10 +19,14 @@ export async function startWorkers(redisUrl: string): Promise<() => Promise<void
   const { dbMonitorProcessor } = await import('./processors/db-monitor.processor.ts');
   const { tlsMonitorProcessor } = await import('./processors/tls-monitor.processor.ts');
   const { startScheduler } = await import('./scheduler.ts');
+  const { initEventBus, resetEventBus } = await import('./services/exec-events.ts');
 
   const connection = new Redis(redisUrl, {
     maxRetriesPerRequest: null,
   });
+  // Bridge the SSE event bus across processes: this worker emits scheduler
+  // and processor events; the ui process serves /api/events to browsers.
+  initEventBus(connection);
 
   const apiCheckWorker = new Worker('api-check', apiCheckProcessor, {
     connection,
@@ -106,6 +110,12 @@ export async function startWorkers(redisUrl: string): Promise<() => Promise<void
       dbMonitorWorker.close(),
       tlsMonitorWorker.close(),
     ]);
+    // Unwire the event bus before closing the connection it publishes on.
+    // Symmetric with the initEventBus() above; in production the process
+    // is exiting anyway, but in tests (which call this stop() in afterAll)
+    // it stops a closed connection from dangling as the global publisher
+    // and polluting the next file in the shared bun-test process.
+    resetEventBus();
     connection.quit();
   };
 }

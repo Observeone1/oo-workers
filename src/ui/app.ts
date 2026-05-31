@@ -29,16 +29,7 @@ import { renderLogin } from './login';
 import { renderSetup } from './setup';
 import { iconSignOut } from './icons';
 import { closeSlideover } from './slideover';
-
-// Track the active view so the background poll can decide what to refresh
-// without re-parsing the hash. route() is the single writer; the poll is
-// the single reader. Adding a new monitor type only requires updating the
-// regex in route() — the poll picks up the change automatically.
-type ActiveView =
-  | { kind: 'list' }
-  | { kind: 'detail'; type: MonType; id: number }
-  | { kind: 'section' };
-let activeView: ActiveView = { kind: 'list' };
+import { tickRelativeAges } from './helpers';
 
 interface AuthState {
   name: string;
@@ -93,37 +84,31 @@ function route() {
   closeSlideover();
   const h = location.hash;
   if (h === '#/regions' || h.startsWith('#/regions/')) {
-    activeView = { kind: 'section' };
     setActiveNav('regions');
     renderRegions();
     return;
   }
   if (h === '#/channels' || h.startsWith('#/channels/')) {
-    activeView = { kind: 'section' };
     setActiveNav('channels');
     renderChannels();
     return;
   }
   if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
-    activeView = { kind: 'section' };
     setActiveNav('status-pages');
     renderStatusPages();
     return;
   }
   if (h === '#/incidents' || h.startsWith('#/incidents/')) {
-    activeView = { kind: 'section' };
     setActiveNav('incidents');
     renderIncidents();
     return;
   }
   if (h === '#/settings') {
-    activeView = { kind: 'section' };
     setActiveNav(null);
     renderSettings();
     return;
   }
   if (h === '#/docs' || h.startsWith('#/docs/')) {
-    activeView = { kind: 'section' };
     setActiveNav('docs');
     const section = h.startsWith('#/docs/') ? h.slice('#/docs/'.length) : null;
     renderDocs(section);
@@ -131,11 +116,9 @@ function route() {
   }
   const m = h.match(/^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/);
   if (m) {
-    activeView = { kind: 'detail', type: m[1] as MonType, id: Number(m[2]) };
     setActiveNav(null);
     renderDetail(m[1] as MonType, Number(m[2]));
   } else {
-    activeView = { kind: 'list' };
     setActiveNav('list');
     renderList();
   }
@@ -215,23 +198,18 @@ async function boot() {
   // The scheduler's tickRegionStatus sweep emits these. No more polling.
   onStreamEvent('region', () => void refreshRegionBadge());
 
-  // Clock-tick re-render. SSE handles all *state* changes — new runs,
-  // status flips, lifecycle events — but does NOT advance relative
-  // timestamps. Without this, "Last run: 2s ago" stays frozen until
-  // the next event. A slow re-render every 10s walks the active view
-  // forward in time without burdening the server like the original 5s
-  // poll did (SSE absorbs the actual data changes, this only redraws).
+  // Clock-tick. SSE handles all *state* changes — new runs, status flips,
+  // lifecycle events — but does NOT advance relative timestamps. Without
+  // this, "Last run: 2s ago" stays frozen until the next event. Rather
+  // than re-render the whole view (which flickers and resets scroll/focus),
+  // tickRelativeAges() rewrites only the text inside fmtAgeLive() spans —
+  // invisible apart from the digits moving. 5s keeps "Xs ago" feeling live
+  // without per-second churn. No server load: SSE already absorbed the
+  // actual data changes.
   setInterval(() => {
     if (document.hidden) return;
-    if (document.activeElement?.id === 'search-input') return;
-    if (document.querySelector('dialog[open]')) return;
-    if (document.querySelector('.slideover')) return;
-    if (activeView.kind === 'list') {
-      void renderList();
-    } else if (activeView.kind === 'detail') {
-      void renderDetail(activeView.type, activeView.id);
-    }
-  }, 10_000);
+    tickRelativeAges();
+  }, 5_000);
 
   window.addEventListener('hashchange', route);
 }

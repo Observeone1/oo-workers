@@ -1,5 +1,5 @@
 import type { MonType, RunLite } from './types';
-import { $, esc, fmtAge, statusClass } from './helpers';
+import { $, esc, fmtAgeLive, statusClass } from './helpers';
 import { iconActive, iconPaused } from './icons';
 import { getDetail, getRegions, runMonitor, type RegionLite } from './api';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
@@ -270,7 +270,7 @@ function renderWithFilter(
                 : `<td class="cell-meta">${esc((r.errorMessage ?? '').slice(0, 120))}</td>`;
             return `<tr>
             <td><span class="dot ${cls}"></span></td>
-            <td class="cell-meta">${fmtAge(r.startTime)}</td>
+            <td class="cell-meta">${fmtAgeLive(r.startTime)}</td>
             ${regionCell}
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
             <td class="cell-meta">${latency != null ? `${latency}ms` : '—'}</td>
@@ -369,7 +369,7 @@ function renderHeartbeatDetail(m: Record<string, unknown>) {
       </div>
       <div class="meta-card">
         <span class="lbl">Last ping</span>
-        <span class="val">${lastPingAt ? esc(fmtAge(lastPingAt)) : 'never'}</span>
+        <span class="val">${lastPingAt ? fmtAgeLive(lastPingAt) : 'never'}</span>
       </div>
     </div>
 

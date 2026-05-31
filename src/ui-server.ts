@@ -7,6 +7,7 @@
 import { Redis } from 'ioredis';
 import { logger } from './utils/logger.ts';
 import { startServer } from './server.ts';
+import { initEventBus } from './services/exec-events.ts';
 
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 const port = Number(process.env.PORT ?? 3001);
@@ -14,6 +15,9 @@ const port = Number(process.env.PORT ?? 3001);
 logger.info('🌐 Starting oo-workers (ui)');
 
 const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+// Bridge the SSE event bus across processes: this ui process serves
+// /api/events, the worker process emits scheduler/processor events.
+initEventBus(connection);
 const stopServer = startServer(connection, port);
 
 process.on('SIGTERM', async () => {
