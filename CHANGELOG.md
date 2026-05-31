@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.4] - 2026-05-31
+
+### Fixed
+
+- **In-app "?" docs hint links now open the docs.** The v1.28.0 docs-routing change rewrote the dialog hint anchors to `#/docs#<section>`, but the SPA router only recognizes the slash form `#/docs/<section>` — so the 6 hint links (in the URL/API/UDP/TCP add-monitor dialogs) silently fell through to the monitors list instead of opening docs. Rewrote them to `#/docs/<section>`. Four jump to their section (assertions-url, assertions-api, playwright, multi-region); the TCP/UDP payload-field hints now open the docs page (the in-app docs have no dedicated tcp/udp section to scroll to — pre-existing content gap, tracked separately). Verified in a browser. Regression from v1.28.0.
+
+---
+
 ## [1.28.3] - 2026-05-31
 
 ### Fixed
