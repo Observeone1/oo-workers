@@ -1,21 +1,5 @@
 # Backup & restore
 
-## Using the CLI
-
-```bash
-# Export this instance — config + 90d history + browser run artifacts
-obs export --include-scripts --include-artifacts > snapshot.oodump.tar.gz
-
-# Restore onto another instance (same or different host)
-obs --host https://master-b.example.com import snapshot.oodump.tar.gz
-```
-
-The dashboard's **Backup** button under `#/settings/backup` covers the same
-flow with a checkbox UI for the artifact toggle. CLI is the right path for
-automated nightly backups: pipe the output to S3, cron it, done.
-
----
-
 A full logical snapshot of an oo-workers instance — configuration **and**
 execution history — that you can move to a new host, keep for disaster
 recovery, or use to clone an instance for staging.

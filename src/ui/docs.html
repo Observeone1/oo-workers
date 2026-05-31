@@ -33,152 +33,14 @@
       <nav class="toc">
         <strong>Contents</strong>
         <ul>
-          <li><a href="#cli">Manage with the CLI</a></li>
-          <li><a href="#resources">Resource reference</a></li>
           <li><a href="#assertions-url">URL monitor assertions</a></li>
           <li><a href="#assertions-api">API assertions</a></li>
           <li><a href="#jsonpath">JSONPath quick reference</a></li>
           <li><a href="#playwright">Playwright script reference</a></li>
-          <li>
-            <a href="#import">Bulk JSON / <code>obs apply</code></a>
-          </li>
+          <li><a href="#import">Bulk JSON import</a></li>
           <li><a href="#multi-region">Multi-region</a></li>
         </ul>
       </nav>
-
-      <!-- ============================== CLI overview ============================== -->
-      <section id="cli">
-        <h2>Manage with the CLI</h2>
-        <p class="lead">
-          The <a href="https://observeone.com/cli" target="_blank"><code>obs</code> CLI</a> is the
-          canonical interface for self-hosted oo-workers. The dashboard is a real-time observation
-          surface; <code>obs</code> is how you script monitor creation, capture configuration in
-          git, and integrate alert routing into your own playbooks.
-        </p>
-
-        <h3>Install</h3>
-        <pre><code>npm install -g @observeone/cli</code></pre>
-
-        <h3>Connect to your master</h3>
-        <pre><code># Interactive — opens your browser for OAuth/SSO if your master has SSO,
-# or prompts for an existing API key.
-obs login --host http://localhost:3001
-
-# Or pass a Bearer key directly (good for CI):
-OO_KEY=oo_… obs --host http://localhost:3001 monitor list</code></pre>
-
-        <h3>Create monitors</h3>
-        <pre><code># HTTP uptime
-obs create url --name homepage --url https://example.com
-
-# API check with assertions
-obs create api --name payments --url https://api.example.com/health \
-  --assert status=200 --assert json:$.ok=true
-
-# TCP / UDP / DB / TLS / Heartbeat — same shape, type-specific flags
-obs create tcp       --name pg-reachable --host db.internal --port 5432
-obs create db        --name pg-protocol  --host db.internal --port 5432 --protocol postgres
-obs create tls       --name edge-cert    --host api.example.com --port 443 --warn-days 30
-obs create heartbeat --name nightly-backup --period 60 --grace 30</code></pre>
-
-        <h3>Capture + restore configuration</h3>
-        <pre><code># Export everything (config + 90 days of history) to a portable bundle.
-obs export --include-scripts > monitors.json
-
-# Apply a bundle on the same or a different instance. Idempotent —
-# re-running with the same JSON makes no changes.
-obs apply monitors.json</code></pre>
-
-        <h3>Programmatic API key</h3>
-        <pre><code># From inside the worker container
-docker compose exec worker bun scripts/create-api-key.ts --name ci
-# → copy the oo_… key; send it as Authorization: Bearer oo_…</code></pre>
-
-        <p class="form-help muted">
-          The dashboard's <em>+ Add monitor</em> dialog covers the same operations for ad-hoc work.
-          The CLI scales better when you're managing more than a handful of monitors or want them
-          version-controlled.
-        </p>
-      </section>
-
-      <!-- ============================== Resource reference ============================== -->
-      <section id="resources">
-        <h2>Resource reference</h2>
-        <p class="lead">
-          One row per monitor type with its <code>obs create</code> shape. Click a row's
-          <em>type</em>
-          link to jump to the assertion / configuration details that apply to it.
-        </p>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>What it does</th>
-              <th>Required flags</th>
-              <th>Type-specific extras</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <a href="#assertions-url"><code>url</code></a>
-              </td>
-              <td>HEAD a URL, assert status code</td>
-              <td><code>--name --url</code></td>
-              <td><code>--assert</code> (multiple OK)</td>
-            </tr>
-            <tr>
-              <td>
-                <a href="#assertions-api"><code>api</code></a>
-              </td>
-              <td>Full request + body/header/JSONPath assertions</td>
-              <td><code>--name --url</code></td>
-              <td><code>--method --header --body --assert</code></td>
-            </tr>
-            <tr>
-              <td>
-                <a href="#playwright"><code>qa</code></a>
-              </td>
-              <td>
-                Inline Playwright <code>.spec.ts</code> run with trace + screenshots on failure
-              </td>
-              <td><code>--name --target-url --script</code></td>
-              <td>Script body from <code>-</code> stdin or file path</td>
-            </tr>
-            <tr>
-              <td><code>tcp</code></td>
-              <td>Open a TCP socket; optional payload + banner assertion</td>
-              <td><code>--name --host --port</code></td>
-              <td><code>--payload-hex --expect-banner</code></td>
-            </tr>
-            <tr>
-              <td><code>udp</code></td>
-              <td>Send a datagram; optional response match</td>
-              <td><code>--name --host --port</code></td>
-              <td><code>--payload-hex --expect-response</code></td>
-            </tr>
-            <tr>
-              <td><code>db</code></td>
-              <td>Liveness handshake against Postgres / MySQL / Redis</td>
-              <td><code>--name --host --port --protocol</code></td>
-              <td><code>--tls</code></td>
-            </tr>
-            <tr>
-              <td><code>tls</code></td>
-              <td>TLS handshake + cert near-expiry + optional CN/SAN regex</td>
-              <td><code>--name --host --port</code></td>
-              <td><code>--warn-days --verify-chain --verify-hostname --expect-cn-regex</code></td>
-            </tr>
-            <tr>
-              <td><code>heartbeat</code></td>
-              <td>Push-direction: your service POSTs a token URL on every successful run</td>
-              <td><code>--name --period</code></td>
-              <td><code>--grace</code></td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
 
       <!-- ============================== URL ============================== -->
       <section id="assertions-url">
@@ -410,25 +272,11 @@ test(<span class="str">'add to cart + checkout'</span>, <span class="kw">async</
 
       <!-- ============================== Import ============================== -->
       <section id="import">
-        <h2>Bulk JSON / <code>obs apply</code></h2>
+        <h2>Bulk JSON import</h2>
         <p class="lead">
-          Primary path: <code>obs apply &lt;file.json&gt;</code> from the CLI. The CLI handles the
-          schema, id-anchor remap, and embedded resources for you. Round-trip with
-          <code>obs export --include-scripts &gt; monitors.json</code> for backup or migration
-          between instances.
+          Paste a JSON payload into the <strong>Import JSON</strong> dialog on the dashboard. Schema
+          version 1 below.
         </p>
-        <pre><code># Export from one instance, apply to another
-obs --host https://master-a.example.com export --include-scripts &gt; monitors.json
-obs --host https://master-b.example.com apply monitors.json</code></pre>
-
-        <p>
-          The dashboard's <strong>Import JSON</strong> button accepts the same payload for one-off
-          imports. The schema below is the wire format the CLI emits — bring your own at your own
-          risk; the CLI handles bindings between monitors, channels, and status pages via id anchors
-          that hand-rolled JSON typically misses.
-        </p>
-
-        <h3>Schema (v1, advanced reference)</h3>
 
         <pre><code>{
   <span class="str">"version"</span>: <span class="num">1</span>,

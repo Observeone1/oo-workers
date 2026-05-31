@@ -1,25 +1,5 @@
 # Status-page incidents
 
-## Using the CLI
-
-```bash
-# Create an incident on a status page
-obs incident create --slug status --title "API degraded" \
-  --severity major --body "Investigating elevated 5xx errors on /payments"
-
-# Update an existing incident (post a new timeline entry)
-obs incident update <incident-id> \
-  --status monitoring --body "Identified, rolling out fix"
-
-# Close it
-obs incident close <incident-id> --body "Resolved — patch deployed"
-```
-
-The dashboard's `#/incidents` page is the alt path. Markdown is supported in
-`--body`; the renderer is escape-first (XSS-safe).
-
----
-
 Public status pages (`/status/<slug>`) show monitor uptime. **Incidents**
 add the human-written layer on top — the operator narrating an outage as
 it unfolds, like statuspage.io / GitHub status:
