@@ -11,6 +11,7 @@ import { test, expect } from '../ui/fixtures';
 
 const SLUG = process.env.OO_E2E_REGION_SLUG ?? 'e2e-mr';
 const MON_ID = process.env.OO_E2E_MON_ID ?? '';
+const MON_TYPE = process.env.OO_E2E_MON_TYPE ?? '';
 
 test('[9] regions page shows the agent region online', async ({ page }) => {
   await page.goto('/#/regions');
@@ -28,7 +29,7 @@ test('[9] navbar region badge reports at least one online', async ({ page }) => 
 });
 
 test('[10] monitor detail surfaces the regional run', async ({ page }) => {
-  test.skip(!MON_ID, 'OO_E2E_MON_ID not provided');
+  test.skip(MON_TYPE !== 'url' || !MON_ID, 'only the URL case asserts the detail view');
   await page.goto(`/#/url/${MON_ID}`);
   // A regional execution produces a per-region chip/label on the detail view.
   // Accept either the region label ("MR E2E") or its slug.

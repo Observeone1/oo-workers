@@ -2,144 +2,175 @@
 #
 # Multi-region end-to-end harness.
 #
-# Stands up a REAL regional agent container against the locally-running master
-# stack and proves the full multi-region path that no unit/integration test can
-# (those run single-process): a region-bound monitor's job is dispatched to the
-# agent over HTTP long-poll, the agent runs the probe with no master DB/Redis
-# access, posts the result back, and the master surfaces it live.
+# Stands up the REAL published dedicated agent images against the locally-running
+# master stack and proves the full multi-region path that no unit/integration
+# test can (those run single-process): a region-bound job is dispatched to the
+# agent over HTTP long-poll, the agent runs the work locally with no master
+# DB/Redis access, posts the result back, and the master surfaces it.
 #
-# This is a one-off, operator/LLM-run harness — NOT wired into CI (it needs
-# Docker, the running master stack, and ~30-90s of agent polling). See README.md
-# for the why and the step-by-step.
+# Both dedicated images are first-class, run as explicit cases — no env toggles:
 #
-# Usage:
-#   bash tests/multi-region-e2e/run.sh              # light image, items 9/10/13
-#   WITH_QA=1 bash tests/multi-region-e2e/run.sh    # also oo-agent-qa, item 14 (pulls/builds ~3.5GB)
-#   KEEP=1 bash tests/multi-region-e2e/run.sh       # leave region/monitor/agent up for inspection
-#   SKIP_BROWSER=1 bash tests/multi-region-e2e/run.sh   # data-layer only, skip Playwright
-#   REBUILD=1 bash tests/multi-region-e2e/run.sh    # force-rebuild the agent image from source
+#   bash tests/multi-region-e2e/run.sh          # BOTH: oo-agent-light + oo-agent-qa
+#   bash tests/multi-region-e2e/run.sh light     # just oo-agent-light  (URL probe)
+#   bash tests/multi-region-e2e/run.sh qa         # just oo-agent-qa    (real Playwright QA check)
+#
+# Each case pulls its published image from Docker Hub and runs THAT artifact.
+# The qa image is ~3.5 GB — the first `qa`/both run pulls it.
+#
+# One-off, operator/LLM-run — NOT wired into CI. See README.md.
 #
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# ---- config (override via env) ----
-HOST_API="${OO_MASTER_HOST:-http://localhost:3010}"     # script -> master, from the host
+WHICH="${1:-both}"
+case "$WHICH" in light | qa | both) ;; *) echo "usage: run.sh [light|qa|both]"; exit 2 ;; esac
+
+HOST_API="${OO_MASTER_HOST:-http://localhost:3010}"       # script -> master, from host
 AGENT_MASTER_URL="${OO_AGENT_MASTER_URL:-http://ui:3001}" # agent container -> master, in-network
 NETWORK="${OO_MASTER_NETWORK:-oo-workers_default}"
-AGENT_CONTAINER="${OO_AGENT_CONTAINER:-oo-agent-e2e}"
-REGION_SLUG="${OO_E2E_REGION_SLUG:-e2e-mr}"
-AGENT_IMAGE="${OO_AGENT_IMAGE:-observeone/oo-agent-light:dev}"
-WITH_QA="${WITH_QA:-0}"
-KEEP="${KEEP:-0}"
+LIGHT_IMAGE="observeone/oo-agent-light:${OO_AGENT_TAG:-latest}"
+QA_IMAGE="observeone/oo-agent-qa:${OO_AGENT_TAG:-latest}"
 
 log() { printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
-fail() { printf '\033[1;31mFAIL: %s\033[0m\n' "$*" >&2; [ -n "${AGENT_CONTAINER:-}" ] && docker logs "$AGENT_CONTAINER" 2>&1 | tail -25 || true; exit 1; }
+ok() { printf '   \033[1;32m✓ %s\033[0m\n' "$*"; }
+fail() {
+  printf '\033[1;31mFAIL: %s\033[0m\n' "$*" >&2
+  exit 1
+}
 psql_q() { docker compose exec -T postgres psql -U oo -d oo_workers -tAc "$1" | tr -d '[:space:]'; }
 apidel() { curl -fsS -X DELETE -H "Authorization: Bearer $API_KEY" "$1" >/dev/null 2>&1 || true; }
+apipost() { curl -fsS -X POST -H "Authorization: Bearer $API_KEY" -H 'content-type: application/json' -d "$2" "$1" >/dev/null; }
+apiput() { curl -fsS -X PUT -H "Authorization: Bearer $API_KEY" -H 'content-type: application/json' -d "$2" "$1" >/dev/null; }
 
+CONTAINERS=()
+REGION_IDS=()
 cleanup() {
   log "Teardown"
-  docker rm -f "$AGENT_CONTAINER" >/dev/null 2>&1 || true
-  if [ "$KEEP" = "1" ]; then echo "KEEP=1 — region #${REGION_ID:-?} and monitor #${MON_ID:-?} left in place"; return; fi
-  [ -n "${MON_ID:-}" ] && apidel "$HOST_API/api/monitors/url/$MON_ID"
-  [ -n "${REGION_ID:-}" ] && apidel "$HOST_API/api/regions/$REGION_ID"
-  echo "cleaned up agent container, monitor, region"
+  for c in "${CONTAINERS[@]:-}"; do [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true; done
+  [ -n "${LIGHT_MON:-}" ] && apidel "$HOST_API/api/monitors/url/$LIGHT_MON"
+  [ -n "${QA_MON:-}" ] && apidel "$HOST_API/api/monitors/qa/$QA_MON"
+  for r in "${REGION_IDS[@]:-}"; do [ -n "$r" ] && apidel "$HOST_API/api/regions/$r"; done
+  echo "removed agent containers, e2e monitors, and e2e regions"
 }
 trap cleanup EXIT
 
-# ---- 0. preconditions ----
+# ---- preconditions + API key ----
 log "Checking master stack + network"
 curl -fsS "$HOST_API/" -o /dev/null || fail "master not reachable at $HOST_API (is the stack up?)"
 docker network inspect "$NETWORK" >/dev/null 2>&1 || fail "docker network '$NETWORK' not found"
-
 if [ -n "${OO_E2E_API_KEY:-}" ]; then
   API_KEY="$OO_E2E_API_KEY"
 else
-  log "Minting an admin API key"
   API_KEY=$(docker compose exec -T worker bun scripts/create-api-key.ts --name mr-e2e 2>/dev/null | grep -oE 'oo_[A-Za-z0-9_-]+' | tail -1)
 fi
 [ -n "${API_KEY:-}" ] || fail "no API key"
 
-# ---- 1. build agent image from current source ----
-if [ "$WITH_QA" = "1" ]; then AGENT_IMAGE=observeone/oo-agent-qa:dev; TARGET=agent-qa; else TARGET=agent-light; fi
-if ! docker image inspect "$AGENT_IMAGE" >/dev/null 2>&1 || [ "${REBUILD:-0}" = "1" ]; then
-  log "Building $AGENT_IMAGE (--target $TARGET)"
-  docker build --target "$TARGET" -t "$AGENT_IMAGE" . >/dev/null
-fi
+# Start a region + agent for a case. $1=variant $2=image. Sets REGION_ID/SLUG/CONTAINER.
+start_agent() {
+  local variant="$1" image="$2"
+  SLUG="e2e-mr-$variant"
+  CONTAINER="oo-agent-e2e-$variant"
 
-# ---- 2. (re)create the region (mints the agent key) ----
-log "Creating region '$REGION_SLUG'"
-EXIST=$(psql_q "SELECT id FROM regions WHERE slug='$REGION_SLUG'")
-[ -n "$EXIST" ] && apidel "$HOST_API/api/regions/$EXIST"
-CR_OUT=$(docker compose exec -T worker bun scripts/create-region.ts --slug "$REGION_SLUG" --label "MR E2E")
-AGENT_KEY=$(echo "$CR_OUT" | grep -oE 'OO_AGENT_KEY=[A-Za-z0-9_-]+' | cut -d= -f2)
-REGION_ID=$(psql_q "SELECT id FROM regions WHERE slug='$REGION_SLUG'")
-[ -n "$AGENT_KEY" ] && [ -n "$REGION_ID" ] || { echo "$CR_OUT"; fail "could not create region / parse agent key"; }
-echo "region #$REGION_ID, agent key minted"
+  log "[$variant] Pulling $image"
+  docker pull "$image" >/dev/null || fail "could not pull $image"
 
-# ---- 3. create a URL monitor and bind it to the region ----
-log "Creating URL monitor + binding to region"
-curl -fsS -X POST -H "Authorization: Bearer $API_KEY" -H 'content-type: application/json' \
-  -d '{"name":"mr-e2e-url","url":"https://example.com","intervalSeconds":30,"assertions":[{"operator":"equals","statusCode":200}]}' \
-  "$HOST_API/api/monitors/url" >/dev/null
-MON_ID=$(psql_q "SELECT id FROM url_monitors WHERE name='mr-e2e-url' ORDER BY id DESC LIMIT 1")
-[ -n "$MON_ID" ] || fail "monitor not created"
-curl -fsS -X PUT -H "Authorization: Bearer $API_KEY" -H 'content-type: application/json' \
-  -d "{\"regionIds\":[$REGION_ID]}" "$HOST_API/api/monitors/url/$MON_ID/regions" >/dev/null
-echo "monitor #$MON_ID bound to region #$REGION_ID"
+  log "[$variant] Creating region '$SLUG'"
+  local exist
+  exist=$(psql_q "SELECT id FROM regions WHERE slug='$SLUG'")
+  [ -n "$exist" ] && apidel "$HOST_API/api/regions/$exist"
+  local out
+  out=$(docker compose exec -T worker bun scripts/create-region.ts --slug "$SLUG" --label "MR E2E $variant")
+  AGENT_KEY=$(echo "$out" | grep -oE 'OO_AGENT_KEY=[A-Za-z0-9_-]+' | cut -d= -f2)
+  REGION_ID=$(psql_q "SELECT id FROM regions WHERE slug='$SLUG'")
+  [ -n "$AGENT_KEY" ] && [ -n "$REGION_ID" ] || {
+    echo "$out"
+    fail "[$variant] region/key creation failed"
+  }
+  REGION_IDS+=("$REGION_ID")
 
-# ---- 4. start the agent container on the master network ----
-log "Starting agent ($AGENT_IMAGE) on $NETWORK -> $AGENT_MASTER_URL"
-docker rm -f "$AGENT_CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$AGENT_CONTAINER" --network "$NETWORK" \
-  -e OO_WORKER_ROLE=agent -e OO_MASTER_URL="$AGENT_MASTER_URL" \
-  -e OO_AGENT_KEY="$AGENT_KEY" -e OO_REGION_SLUG="$REGION_SLUG" \
-  -e OO_AGENT_POLL_WAIT_SEC=10 \
-  "$AGENT_IMAGE" bun src/index.ts >/dev/null
+  log "[$variant] Starting agent ($image) on $NETWORK -> $AGENT_MASTER_URL"
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker run -d --name "$CONTAINER" --network "$NETWORK" \
+    -e OO_WORKER_ROLE=agent -e OO_MASTER_URL="$AGENT_MASTER_URL" \
+    -e OO_AGENT_KEY="$AGENT_KEY" -e OO_REGION_SLUG="$SLUG" -e OO_AGENT_POLL_WAIT_SEC=10 \
+    "$image" bun src/index.ts >/dev/null
+  CONTAINERS+=("$CONTAINER")
 
-# ---- 5. region must come online (agent's first poll refreshes last_seen_at) ----
-log "Waiting for region online"
-ONLINE=
-for _ in $(seq 1 24); do
-  ONLINE=$(psql_q "SELECT (last_seen_at > now() - interval '90 seconds') FROM regions WHERE id=$REGION_ID")
-  [ "$ONLINE" = "t" ] && break
-  sleep 5
-done
-[ "$ONLINE" = "t" ] || fail "region never came online (agent could not reach master?)"
-echo "region online ✓"
+  log "[$variant] Waiting for region online"
+  local online=
+  for _ in $(seq 1 24); do
+    online=$(psql_q "SELECT (last_seen_at > now() - interval '90 seconds') FROM regions WHERE id=$REGION_ID")
+    [ "$online" = "t" ] && break
+    sleep 5
+  done
+  [ "$online" = "t" ] || {
+    docker logs "$CONTAINER" 2>&1 | tail -20
+    fail "[$variant] region never came online"
+  }
+  ok "region '$SLUG' online (item 9)"
+}
 
-# ---- 6. a regional execution must be recorded (agent ran the probe + posted back) ----
-log "Waiting for a probe result from the agent"
-CNT=0
-for _ in $(seq 1 30); do
-  CNT=$(psql_q "SELECT count(*) FROM url_monitor_executions WHERE url_monitor_id=$MON_ID AND region_id=$REGION_ID")
-  [ "${CNT:-0}" -ge 1 ] && break
-  sleep 5
-done
-[ "${CNT:-0}" -ge 1 ] || fail "no regional execution recorded (job not dispatched / agent not probing)"
-echo "regional execution recorded ✓ (count=$CNT)"
+run_browser() {
+  log "[$1] Browser assertions"
+  OO_E2E_API_KEY="$API_KEY" OO_E2E_REGION_SLUG="e2e-mr-$1" OO_E2E_MON_ID="${2:-}" OO_E2E_MON_TYPE="${3:-}" \
+    DATABASE_URL=postgres://oo:oo@localhost:5442/oo_workers REDIS_URL=redis://localhost:6479 \
+    bunx playwright test --config=tests/multi-region-e2e/playwright.config.ts || fail "[$1] browser assertions failed"
+}
 
-# Prove the light image truly has no Chromium (item 13).
-if [ "$WITH_QA" != "1" ]; then
-  if docker exec "$AGENT_CONTAINER" sh -c 'command -v chromium || command -v chromium-browser || ls /root/.cache/ms-playwright 2>/dev/null' >/dev/null 2>&1; then
-    echo "NOTE: Chromium present in light image (unexpected, not fatal)"
+# ============================ LIGHT ============================
+if [ "$WHICH" = "light" ] || [ "$WHICH" = "both" ]; then
+  start_agent light "$LIGHT_IMAGE"
+  log "[light] Creating URL monitor + binding to region"
+  apipost "$HOST_API/api/monitors/url" '{"name":"mr-e2e-light","url":"https://example.com","intervalSeconds":30,"assertions":[{"operator":"equals","statusCode":200}]}'
+  LIGHT_MON=$(psql_q "SELECT id FROM url_monitors WHERE name='mr-e2e-light' ORDER BY id DESC LIMIT 1")
+  apiput "$HOST_API/api/monitors/url/$LIGHT_MON/regions" "{\"regionIds\":[$REGION_ID]}"
+  log "[light] Waiting for a URL probe result from the agent"
+  cnt=0
+  for _ in $(seq 1 30); do
+    cnt=$(psql_q "SELECT count(*) FROM url_monitor_executions WHERE url_monitor_id=$LIGHT_MON AND region_id=$REGION_ID")
+    [ "${cnt:-0}" -ge 1 ] && break
+    sleep 5
+  done
+  [ "${cnt:-0}" -ge 1 ] || {
+    docker logs "oo-agent-e2e-light" 2>&1 | tail -20
+    fail "[light] no regional URL execution"
+  }
+  ok "regional URL execution recorded (item 10)"
+  if docker exec oo-agent-e2e-light sh -c 'command -v chromium || command -v chromium-browser || ls /root/.cache/ms-playwright' >/dev/null 2>&1; then
+    echo "   NOTE: Chromium present in light image (unexpected)"
   else
-    echo "oo-agent-light has no Chromium ✓"
+    ok "oo-agent-light has NO Chromium (item 13)"
   fi
+  run_browser light "$LIGHT_MON" url
 fi
 
-log "DATA-LAYER PASS"
-echo "  [9]  region '$REGION_SLUG' online (last_seen_at fresh via agent polls)"
-echo "  [10] execution row with region_id=$REGION_ID — agent result surfaced on master"
-echo "  [13] oo-agent-light ran a real URL probe with no Chromium"
-[ "$WITH_QA" = "1" ] && echo "  [14] oo-agent-qa image ran the bound monitor"
-
-# ---- 7. browser layer (Playwright) ----
-if [ "${SKIP_BROWSER:-0}" != "1" ]; then
-  log "Browser assertions (Playwright)"
-  OO_E2E_API_KEY="$API_KEY" OO_E2E_REGION_SLUG="$REGION_SLUG" OO_E2E_MON_ID="$MON_ID" \
-  DATABASE_URL=postgres://oo:oo@localhost:5442/oo_workers REDIS_URL=redis://localhost:6479 \
-    bunx playwright test --config=tests/multi-region-e2e/playwright.config.ts || fail "browser assertions failed"
+# ============================= QA ==============================
+if [ "$WHICH" = "qa" ] || [ "$WHICH" = "both" ]; then
+  start_agent qa "$QA_IMAGE"
+  log "[qa] Creating QA project (real Playwright script) + binding to region"
+  QA_SCRIPT=$'import { test, expect } from \'@playwright/test\';\ntest(\'mr e2e qa check\', async ({ page }) => {\n  await page.goto(\'https://example.com\');\n  await expect(page.locator(\'h1\')).toBeVisible();\n});\n'
+  # JSON-encode the script via the shell -> python-free: escape backslash, quote, newline.
+  QA_JSON=$(printf '%s' "$QA_SCRIPT" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+  apipost "$HOST_API/api/monitors/qa" "{\"name\":\"mr-e2e-qa\",\"targetUrl\":\"https://example.com\",\"tests\":[{\"name\":\"loads-h1\",\"script\":\"$QA_JSON\"}]}"
+  QA_MON=$(psql_q "SELECT id FROM qa_projects WHERE name='mr-e2e-qa' ORDER BY id DESC LIMIT 1")
+  [ -n "$QA_MON" ] || fail "[qa] QA project not created"
+  apiput "$HOST_API/api/monitors/qa/$QA_MON/regions" "{\"regionIds\":[$REGION_ID]}"
+  log "[qa] Waiting for the QA browser-check to RUN TO COMPLETION (Playwright ~10-40s)"
+  status=
+  for _ in $(seq 1 48); do
+    status=$(psql_q "SELECT status FROM qa_test_executions WHERE project_id=$QA_MON AND region_id=$REGION_ID ORDER BY id DESC LIMIT 1")
+    case "$status" in SUCCESS | FAILED) break ;; esac
+    sleep 5
+  done
+  case "$status" in
+    SUCCESS) ok "regional QA browser-check COMPLETED status=SUCCESS — oo-agent-qa ran Playwright to a passing terminal state (item 14)" ;;
+    FAILED) ok "regional QA browser-check COMPLETED status=FAILED — agent ran Playwright to completion (script asserts h1 on example.com; investigate if unexpected) (item 14)" ;;
+    *)
+      docker logs "oo-agent-e2e-qa" 2>&1 | tail -25
+      fail "[qa] QA execution never reached a terminal status (got '${status:-none}') — qa image did not complete the browser check"
+      ;;
+  esac
+  run_browser qa "" qa
 fi
 
-log "ALL PASS"
+log "ALL PASS ($WHICH)"

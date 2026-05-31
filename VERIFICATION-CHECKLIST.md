@@ -25,10 +25,10 @@ Legend: ✅ confirmed live in a browser · 🟡 covered by a green automated tes
 
 ## Docker images (v1.27.0)
 
-| #   | Behavior                                                | Status | Notes                                                                            |
-| --- | ------------------------------------------------------- | ------ | -------------------------------------------------------------------------------- |
-| 13  | `oo-agent-light` runs probes without Chromium (~360 MB) | ✅     | proven by harness — light image ran a real URL probe, no Chromium present        |
-| 14  | `oo-agent-qa` runs QA browser checks                    | 🟡     | `WITH_QA=1` boots the qa image + probes; full QA-check path is a documented TODO |
+| #   | Behavior                                                | Status | Notes                                                                                                                    |
+| --- | ------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| 13  | `oo-agent-light` runs probes without Chromium (~360 MB) | ✅     | proven by harness — light image ran a real URL probe, no Chromium present                                                |
+| 14  | `oo-agent-qa` runs QA browser checks                    | ✅     | `tests/multi-region-e2e/run.sh qa` — published qa image ran a real Playwright check to status=SUCCESS, region-attributed |
 
 ## Docs (v1.28.0)
 
@@ -47,6 +47,6 @@ Legend: ✅ confirmed live in a browser · 🟡 covered by a green automated tes
 
 ## What's left
 
-- **14 (partial)** — `oo-agent-qa` boots + probes via `tests/multi-region-e2e` `WITH_QA=1`; the full QA browser-check path is a documented TODO in that harness's README.
 - **4, 6, 15, 16 (🟡)** — green in automated tests, just never hand-eyeballed; low value.
-- Everything else (1–3, 5, 7–13) is ✅ confirmed; 17/18 were fabricated and reverted.
+- Everything else (1–14) is ✅ confirmed; 17/18 were fabricated and reverted.
+- Agent images (9, 10, 13, 14) are proven by `tests/multi-region-e2e` against the **published** `oo-agent-light` + `oo-agent-qa`.
