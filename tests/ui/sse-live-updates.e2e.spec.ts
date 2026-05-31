@@ -85,26 +85,35 @@ test('detail view bounces to list when the monitor is deleted elsewhere', async 
   await expect.poll(() => page.evaluate(() => location.hash), { timeout: 2_500 }).toBe('#/');
 });
 
-// Heartbeat OVERDUE-flip e2e — SKIPPED.
+// Heartbeat OVERDUE-flip e2e.
 //
-// The behaviour is verified at the bus layer by the existing
-// sse-events / sse-monitor-lifecycle integration specs (monitor-state
-// fires on tickHeartbeats OVERDUE transition), and the DB confirms
-// the heartbeat does flip on schedule. But the browser-level assertion
-// is flaky under headless Chromium: even with the 10s setInterval
-// re-render that v1.27.1 added, the OVERDUE state doesn't reach the
-// DOM within a reasonable Playwright timeout. Likely cause is headless
-// tab throttling reducing setInterval cadence + SSE keepalive jitter
-// over a 30-90s window. Not a regression in shipped behaviour — the
-// non-headless dev experience updates correctly within ~5s.
+// This is the ONLY spec in the suite that asserts a *scheduler-originated*
+// event (the worker's tickHeartbeats OVERDUE sweep) reaching the *browser*.
+// Every other SSE spec asserts create/delete, which fire in the ui process
+// and reach the SSE stream trivially. Because the e2e runs against the real
+// two-process stack (baseURL = the docker `ui` container; the worker is a
+// separate process), this spec exercises the worker → Redis → ui → browser
+// path end to end.
 //
-// Follow-up paths: either bump the OVERDUE timeout well past 90s,
-// run this spec in headed-mode (PWDEBUG=1), or expose a scheduler
-// tick env that lets the test set TICK_MS=500ms.
-test.skip('heartbeat status flips UP → OVERDUE → UP live as pings arrive', async ({
+// It was wrongly skipped in v1.27.1 with a "headless throttling" excuse. The
+// real cause was a shipped bug: the event bus was an in-process EventEmitter,
+// so the OVERDUE event emitted in the worker never crossed to the ui process
+// and never reached the DOM. The skip hid a true failure. Fixed in v1.28.1
+// by bridging the bus over Redis pub/sub (see
+// tests/integration/exec-events-bridge.it.spec.ts for the fast layer); this
+// spec is the end-to-end guard that it stays fixed in the deployed topology.
+test('heartbeat status flips UP → OVERDUE → UP live as pings arrive', async ({
   page,
   request,
 }) => {
+  // The OVERDUE flip needs period (30s, the tightest the validators
+  // accept) + up to one scheduler sweep (5s), then a recovery ping +
+  // round-trip. That is well past Playwright's default 30s per-test
+  // budget — which is what actually doomed this spec before (the test
+  // timed out ~4s BEFORE the heartbeat even went OVERDUE, never giving
+  // the 90s assertion a chance). Give it real headroom.
+  test.setTimeout(150_000);
+
   // Period 30s + grace 0s is the tightest the API accepts
   // (validators reject periodSeconds < 30). The sweep only OVERDUEs
   // heartbeats already in UP state, so we ping first to get there.
