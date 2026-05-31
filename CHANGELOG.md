@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.5] - 2026-05-31
+
+### Added
+
+- **In-app docs now have TCP and UDP sections.** The "?" hints on the TCP and UDP add-monitor dialogs pointed at `#tcp` / `#udp`, which didn't exist (so they opened the docs at the top). Added both sections to the in-app docs, written from the actual probe behaviour: TCP connect + optional payload/banner-grab with the 256-byte first-packet substring match and the TLS-port caveat; UDP datagram send with the `Expect response` semantics (fire-and-forget when off, exact-source reply match when on). The two hint links now land on their section.
+
+---
+
 ## [1.28.4] - 2026-05-31
 
 ### Fixed
