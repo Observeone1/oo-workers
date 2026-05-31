@@ -39,6 +39,8 @@
           <li><a href="#playwright">Playwright script reference</a></li>
           <li><a href="#import">Bulk JSON import</a></li>
           <li><a href="#multi-region">Multi-region</a></li>
+          <li><a href="#tcp">TCP checks</a></li>
+          <li><a href="#udp">UDP checks</a></li>
         </ul>
       </nav>
 
@@ -538,6 +540,123 @@ docker compose -f docker-compose.agent.yml logs -f agent</code></pre>
           on each agent box. Agents share the master's image, so version drift between them is worth
           avoiding.
         </div>
+      </section>
+
+      <section id="tcp">
+        <h2>TCP checks</h2>
+        <p class="lead">
+          A TCP monitor opens a socket to <code>host:port</code> and records the connect latency,
+          which tells you the port is open. To also confirm the right service is behind it, add a
+          payload to send on connect and a banner substring the response has to contain.
+        </p>
+
+        <h3>Fields</h3>
+        <ul>
+          <li>
+            <strong>Payload (hex)</strong>, optional. Bytes sent the moment the socket connects.
+            <code>50494e470d0a</code> is <code>PING\r\n</code>.
+          </li>
+          <li>
+            <strong>Expect banner contains</strong>, optional. A case-sensitive substring the
+            response has to contain. If it doesn't, the check is <strong>FAILED</strong>.
+          </li>
+        </ul>
+        <p>Leave both empty for a plain connect check. Existing monitors keep working unchanged.</p>
+
+        <h3>Examples</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Service</th>
+              <th>Payload (hex)</th>
+              <th>Expect banner</th>
+              <th>Proves</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Redis</td>
+              <td><code>50494e470d0a</code> (<code>PING\r\n</code>)</td>
+              <td><code>PONG</code></td>
+              <td>Redis is answering, not just open</td>
+            </tr>
+            <tr>
+              <td>SSH</td>
+              <td><em>(none)</em></td>
+              <td><code>SSH-2.0</code></td>
+              <td>It's really an SSH daemon</td>
+            </tr>
+            <tr>
+              <td>SMTP</td>
+              <td><em>(none)</em></td>
+              <td><code>220</code></td>
+              <td>The MTA greeted</td>
+            </tr>
+            <tr>
+              <td>IMAP</td>
+              <td><em>(none)</em></td>
+              <td><code>* OK</code></td>
+              <td>IMAP is up</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          SSH, SMTP and IMAP send a banner on connect, so they need no payload. Just set the
+          expected substring.
+        </p>
+
+        <h3>Behaviour and limits</h3>
+        <ul>
+          <li>
+            The match is a case-sensitive substring against the first response packet, capped at 256
+            bytes (kept small so a chatty server can't bloat the high-volume executions table). The
+            captured banner is stored on the execution, truncated to that cap.
+          </li>
+          <li>
+            If a payload is sent and no banner arrives before the timeout, the check FAILs (<code
+              >No banner within …ms</code
+            >). Sending with no reply counts as a fault.
+          </li>
+          <li>
+            TLS-only ports won't work. Probing <code>:443</code>, or any port that expects a TLS
+            handshake first, returns no plaintext banner. Use a TLS-certificate monitor for those.
+          </li>
+        </ul>
+      </section>
+
+      <section id="udp">
+        <h2>UDP checks</h2>
+        <p class="lead">
+          UDP has no handshake, so connecting tells you nothing about whether a port is open. A UDP
+          monitor sends a datagram to <code>host:port</code> and optionally waits for a reply. The
+          <strong>Expect response</strong> toggle decides what counts as success.
+        </p>
+
+        <h3>Fields</h3>
+        <ul>
+          <li>
+            <strong>Payload (hex)</strong>, optional. The bytes to send, such as a DNS query or a
+            STUN binding request. If omitted, an empty datagram goes out.
+          </li>
+          <li>
+            <strong>Expect response</strong>. Off: the run passes once the datagram is sent without
+            a socket error. UDP gives no delivery guarantee, so that only tells you the send worked,
+            not that anything received it. On: the run passes only when a datagram comes back from
+            the same host and port within the timeout, otherwise it is
+            <strong>FAILED</strong> (<code>No response within …ms</code>).
+          </li>
+        </ul>
+
+        <h3>Behaviour and limits</h3>
+        <ul>
+          <li>With Expect response off, a passing check means "we sent it", nothing more.</li>
+          <li>
+            With Expect response on, only a reply from the exact target host and port counts. A
+            datagram from anything else is ignored, so a stray packet can't pass the check by
+            accident. Give it a payload the service actually answers, like a DNS query or a STUN
+            request.
+          </li>
+        </ul>
       </section>
     </main>
   </body>
