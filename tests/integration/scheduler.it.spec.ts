@@ -93,17 +93,22 @@ describe('scheduler', () => {
 
       await sql.end();
 
-      await Bun.sleep(WAIT_MS);
-
       const sql2 = postgres(process.env.DATABASE_URL!);
-      const [urlRow] = await sql2`
-        SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE status = 'SUCCESS') AS ok
-        FROM url_monitor_executions WHERE url_monitor_id = ${createdUrlId!}
-      `;
-      const [apiRow] = await sql2`
-        SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE status = 'SUCCESS') AS ok
-        FROM api_executions WHERE api_check_id = ${createdApiId!}
-      `;
+      const deadline = Date.now() + WAIT_MS;
+      let urlRow: { n: string; ok: string } = { n: '0', ok: '0' };
+      let apiRow: { n: string; ok: string } = { n: '0', ok: '0' };
+      while (Date.now() < deadline) {
+        [urlRow] = await sql2`
+          SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE status = 'SUCCESS') AS ok
+          FROM url_monitor_executions WHERE url_monitor_id = ${createdUrlId!}
+        `;
+        [apiRow] = await sql2`
+          SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE status = 'SUCCESS') AS ok
+          FROM api_executions WHERE api_check_id = ${createdApiId!}
+        `;
+        if (Number(urlRow.n) >= WAIT_TICKS && Number(apiRow.n) >= WAIT_TICKS) break;
+        await Bun.sleep(2_000);
+      }
       await sql2.end();
 
       const urlN = Number(urlRow.n);

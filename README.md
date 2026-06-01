@@ -17,6 +17,16 @@ docker compose up -d
 
 This pulls the pre-built image from `observeone/oo-workers:latest` on Docker Hub. To build from source, use `docker compose -f docker-compose.build.yml up -d`.
 
+**Compose files at a glance:**
+
+| File                       | When to use                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `docker-compose.yml`       | Default self-host stack (worker, UI, Postgres, Redis, RustFS).                                         |
+| `docker-compose.build.yml` | Build the image from source instead of pulling from Docker Hub.                                        |
+| `docker-compose.agent.yml` | Start a regional agent. See [Multi-region](#multi-region).                                             |
+| `docker-compose.tls.yml`   | Overlay: Caddy TLS termination via Let's Encrypt. See [Expose to the network](#expose-to-the-network). |
+| `docker-compose.dev.yml`   | Contributor dev setup (Postgres + Redis only; worker/UI run via `bun --watch`).                        |
+
 Open **http://localhost:3001**. On first visit a setup wizard asks you to create an admin account (email + password); after that it's a normal email/password login. Click _+ Add monitor_ and you're going. To edit an existing monitor, click the pencil icon on any list row or the _Edit_ button on the monitor detail page.
 
 Need programmatic access (CLI, agents, CI)? Mint API keys in the dashboard under **Keys**, or from the shell:

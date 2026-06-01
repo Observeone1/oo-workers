@@ -32,7 +32,6 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 
 const execAsync = promisify(exec);
 
