@@ -381,7 +381,7 @@ async function isPlaywrightAvailable(): Promise<boolean> {
   if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
   try {
-    await execAsync('npx playwright --version', { timeout: 5000 });
+    await execAsync('node node_modules/.bin/playwright --version', { timeout: 5000 });
     _playwrightDetected = true;
   } catch {
     _playwrightDetected = false;

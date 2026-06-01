@@ -1,9 +1,12 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
   reporter: 'json',
   retries: 1,
+  // Chromium only — the Docker images install only Chromium. Scripts that
+  // explicitly set browserName: 'firefox' | 'webkit' will fail in production.
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   use: {
     headless: true,
     viewport: { width: 1920, height: 1080 },
