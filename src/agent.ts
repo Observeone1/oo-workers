@@ -28,12 +28,9 @@ import { classifyFetchError } from './utils/fetch-errors.ts';
 import { logger } from './utils/logger.ts';
 import { packageVersion } from './utils/version.ts';
 import type { AgentResultBody } from './services/agent-dispatch.ts';
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-
-const execAsync = promisify(exec);
+import os from 'node:os';
 
 export interface AgentConfig {
   masterUrl: string;
@@ -371,18 +368,29 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
 
 // ---- QA (browser) jobs — local Playwright + master-mediated artifact upload ----
 
-// One-time Playwright availability check. Light image returns false here;
-// QA image returns true. Cached on first call. OO_AGENT_FORCE_LIGHT=1
-// forces the rejection branch — used by the integration test, doubles as
-// an operator escape hatch to disable QA on a known-capable agent without
-// rebuilding the image.
+// One-time Playwright availability check. Detects an actual installed browser,
+// NOT the Playwright CLI: the CLI is a dependency present in every image
+// (including the light one), so a `playwright --version` probe reports a
+// version even where no browser exists and is therefore not a capability
+// check. The QA images install Chromium (the headless shell) under
+// PLAYWRIGHT_BROWSERS_PATH; the light image installs none. We look for an
+// installed `chromium*` browser directory there instead.
+//
+// OO_AGENT_FORCE_LIGHT=1 forces the rejection branch — set on the published
+// agent-light image so light-mode is declared rather than probed, and doubles
+// as an operator escape hatch to disable QA on a known-capable agent.
 let _playwrightDetected: boolean | null = null;
 async function isPlaywrightAvailable(): Promise<boolean> {
   if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
   try {
-    await execAsync('node node_modules/.bin/playwright --version', { timeout: 5000 });
-    _playwrightDetected = true;
+    // Playwright installs browsers under PLAYWRIGHT_BROWSERS_PATH (the QA
+    // images set /ms-playwright) or its default cache. An installed Chromium —
+    // full build or headless shell — appears as a `chromium*` directory.
+    const base =
+      process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache', 'ms-playwright');
+    const entries = await fs.readdir(base);
+    _playwrightDetected = entries.some((d) => d.startsWith('chromium'));
   } catch {
     _playwrightDetected = false;
   }
