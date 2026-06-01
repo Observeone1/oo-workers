@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.6] - 2026-06-01
+
+### Changed
+
+- **Docker images are much smaller.** `oo-workers` (master) and `oo-agent-qa` drop from ~3.49 GB to ~1.43 GB, and `oo-agent-light` from 363 MB to 226 MB. The images install only the Chromium headless shell (the QA runner sets `headless: true`) instead of the full three-browser Playwright bundle, ship production-only dependencies, and run as a non-root `ooworker` user. Real Node.js is installed alongside Bun in the browser images because Playwright's test runner spawns its worker processes with `node`; `playwright.service.ts` and the agent's capability check now invoke `node node_modules/.bin/playwright` directly (`npx` is not present in the Bun base).
+
+### Notes
+
+- Only the Chromium headless shell is installed. A script that explicitly targets Firefox or WebKit, or requests headed mode, will fail. The dashboard exposes no browser selection.
+- Validated against the deployed images: the full UI e2e suite plus the multi-region harness on both slim agent images (a real Playwright QA check ran to a passing terminal state). The multi-region harness gained an opt-in `OO_AGENT_USE_LOCAL=1` so a candidate build can be validated before it is published.
+
+---
+
 ## [1.28.5] - 2026-05-31
 
 ### Added
