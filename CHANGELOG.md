@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.7] - 2026-06-01
+
+### Fixed
+
+- **`oo-agent-light` no longer mis-detects itself as QA-capable.** The QA capability check used to run `playwright --version`, which only proves the CLI is present (it ships in every image), not that a browser is installed. After the v1.28.6 `npx`→`node` change the light image's Bun node-shim ran that command successfully and the agent wrongly took the QA path, failing at browser launch instead of returning the intended "redeploy with `oo-agent-qa`" message. The check now looks for an actually-installed `chromium*` browser under `PLAYWRIGHT_BROWSERS_PATH`, and the `oo-agent-light` image sets `OO_AGENT_FORCE_LIGHT=1` so light-mode is declared rather than probed.
+
+### Changed
+
+- Dockerfile: explicit `apt-get update` before installing `nodejs`, plus a comment recording that `playwright install` must run before `nodejs` (real `node` on PATH makes Playwright's browser download reject the CDN cert). Removed an unused build stage.
+
+---
+
 ## [1.28.6] - 2026-06-01
 
 ### Changed
