@@ -71,8 +71,17 @@ start_agent() {
   SLUG="e2e-mr-$variant"
   CONTAINER="oo-agent-e2e-$variant"
 
-  log "[$variant] Pulling $image"
-  docker pull "$image" >/dev/null || fail "could not pull $image"
+  # Default: pull the published artifact (the whole point of this harness — see
+  # README). Opt-in OO_AGENT_USE_LOCAL=1 uses a locally-built image instead, to
+  # validate a slim/candidate build BEFORE it is published. Without the opt-in we
+  # always pull, so a stale same-tagged local image can never silently shadow the
+  # real published one.
+  if [ "${OO_AGENT_USE_LOCAL:-0}" = "1" ] && docker image inspect "$image" >/dev/null 2>&1; then
+    log "[$variant] Using local image $image (OO_AGENT_USE_LOCAL=1, skipping pull)"
+  else
+    log "[$variant] Pulling $image"
+    docker pull "$image" >/dev/null || fail "could not pull $image"
+  fi
 
   log "[$variant] Creating region '$SLUG'"
   local exist

@@ -40,6 +40,26 @@ overrides (sensible defaults, not required): `OO_AGENT_TAG` (default `latest`),
 `OO_MASTER_HOST`, `OO_MASTER_NETWORK`, `OO_E2E_API_KEY` (reuse a key instead of
 minting one).
 
+### Validating a local build before publishing (`OO_AGENT_USE_LOCAL=1`)
+
+By default the harness always `docker pull`s, so a stale same-tagged local image
+can never silently shadow the real published one. To validate a **locally-built**
+candidate (e.g. a slim image not yet pushed to CD), tag it as the agent repo +
+tag the harness expects and set the opt-in flag:
+
+```bash
+# build + tag the candidate as the repo/tag the harness will look up
+docker build --target agent-light -t observeone/oo-agent-light:slim-mr .
+docker build --target agent-qa    -t observeone/oo-agent-qa:slim-mr .
+
+# run against the local images (no pull); falls back to pull if the tag is absent locally
+OO_AGENT_USE_LOCAL=1 OO_AGENT_TAG=slim-mr bash tests/multi-region-e2e/run.sh both
+```
+
+With `OO_AGENT_USE_LOCAL=1`, each case uses the local image if `docker image
+inspect` finds it, otherwise it pulls as usual. Without the flag (the default),
+behavior is unchanged — always pull the published artifact.
+
 ## What it asserts
 
 | Item | Image | Proven | How |
