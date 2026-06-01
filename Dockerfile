@@ -2,80 +2,116 @@
 #
 #   - `oo-workers`       (default target: `master`)
 #                        Full stack: master + UI + scheduler + workers.
-#                        Built on Playwright base for QA browser checks.
+#                        Ships Chromium headless shell only (playwright.config.ts
+#                        sets headless: true; Playwright uses the shell binary,
+#                        not the full Chrome). Scripts that explicitly target
+#                        Firefox/WebKit or headed mode will fail.
 #
 #   - `oo-agent-light`   (target: `agent-light`)
-#                        Regional agent without Chromium. Handles every
-#                        probe type except QA. ~250-400 MB. Built on
-#                        oven/bun:1-debian-slim.
+#                        Regional agent without browser support. Handles every
+#                        probe type except QA. Built on oven/bun:1-alpine.
 #
 #   - `oo-agent-qa`      (target: `agent-qa`)
-#                        Regional agent with Playwright. Handles all
-#                        probe types including QA. ~1.5 GB. Same base
-#                        as master, but agent-only (no UI build, no
-#                        migrations, no admin scripts).
+#                        Regional agent with Playwright (headless shell). Handles
+#                        all probe types including QA browser checks.
 #
 # Build the default master image with `docker build .` — kept as the
 # last FROM so existing source-build flows are unchanged. The two agent
-# images need `docker build --target agent-light .` / `--target
-# agent-qa .`.
+# images need `docker build --target agent-light .` / `--target agent-qa .`.
 
-# ---------- Stage 1: deps ----------
+# ---------- Stage 1: deps (full install — build-time use only) ----------
 FROM oven/bun:1-debian AS deps
 
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 
-# ---------- Stage 2: agent-light (no Chromium, slim Bun) ----------
-# Uses the alpine variant — ~60 MB base, ~250 MB total with node_modules.
-# Note: alpine ships musl libc instead of glibc; postgres-js + ioredis +
-# udp/tcp probes are pure-JS / TCP and work fine. If a future probe
-# depends on a glibc-only native binary, fall back to oven/bun:1-debian.
+# ---------- Stage 1b: prod-deps (production-only, no devDependencies) ----------
+FROM oven/bun:1-debian AS prod-deps
+
+WORKDIR /app
+COPY package.json bun.lock* ./
+# --ignore-scripts skips the prepare hook (husky) which isn't present without devDeps
+RUN bun install --frozen-lockfile --production --ignore-scripts
+
+# ---------- Stage 2: agent-light (no browser, slim alpine) ----------
 FROM oven/bun:1-alpine AS agent-light
 
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY src ./src
-COPY package.json tsconfig.json ./
+
+# Create user before COPY so --chown works without a separate chown layer
+RUN addgroup -S ooworker && adduser -S ooworker -G ooworker
+
+COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
+COPY --chown=ooworker:ooworker src ./src
+COPY --chown=ooworker:ooworker package.json tsconfig.json ./
 
 ENV NODE_ENV=production
 ENV OO_WORKER_ROLE=agent
 
+USER ooworker
 CMD ["bun", "src/index.ts"]
 
-# ---------- Stage 3: agent-qa (Playwright base, agent-only) ----------
-FROM mcr.microsoft.com/playwright:v1.57.0-jammy AS agent-qa
+# ---------- Stage 3: agent-qa (Chromium headless shell only, agent role) ----------
+FROM oven/bun:1-debian AS agent-qa
 
 WORKDIR /app
-COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
-COPY --from=deps /app/node_modules ./node_modules
-COPY src ./src
-COPY package.json tsconfig.json ./
+
+# Create user before COPY so --chown works without a separate chown layer
+RUN groupadd -r ooworker && useradd -r -g ooworker ooworker
+
+COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
+
+# Install headless shell only (headless: true in playwright.config.ts uses the shell,
+# not the full Chrome binary — saves ~357 MB vs installing chromium).
+# nodejs provides the real `node` binary playwright.service.ts needs to spawn
+# `node node_modules/.bin/playwright test`; bun:debian's node shim is not compatible
+# with Playwright's worker IPC.  Clean apt cache in the same layer.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN node_modules/.bin/playwright install chromium-headless-shell --with-deps && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    chown -R ooworker:ooworker /ms-playwright && \
+    mkdir -p /app/tests && chown ooworker:ooworker /app/tests
+
+COPY --chown=ooworker:ooworker src ./src
+COPY --chown=ooworker:ooworker package.json tsconfig.json ./
 
 ENV NODE_ENV=production
 ENV OO_WORKER_ROLE=agent
 
+USER ooworker
 CMD ["bun", "src/index.ts"]
 
 # ---------- Stage 4 (final, default): master ----------
-FROM mcr.microsoft.com/playwright:v1.57.0-jammy AS master
+FROM oven/bun:1-debian AS master
 
 WORKDIR /app
 
-# Copy Bun binary from stage 1 — no install needed on this layer
-COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
+# Create user before COPY so --chown works without a separate chown layer
+RUN groupadd -r ooworker && useradd -r -g ooworker ooworker
 
-# Copy node_modules from stage 1
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
 
-# Copy app source
-COPY . .
+# Install headless shell only — headless: true in playwright.config.ts uses the
+# headless shell, not the full Chrome binary. Saves ~357 MB vs full chromium install.
+# nodejs provides the real `node` binary for playwright.service.ts subprocess invocation.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN node_modules/.bin/playwright install chromium-headless-shell --with-deps && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    chown -R ooworker:ooworker /ms-playwright && \
+    mkdir -p /app/tests && chown ooworker:ooworker /app/tests
 
-# Bundle the UI into ./public so the server can serve it
-RUN bun run build:ui
+# Copy app source (.dockerignore excludes node_modules, .git, tests/, docs/, etc.)
+COPY --chown=ooworker:ooworker . .
+
+# Bundle the UI into ./public so the server can serve it.
+# Uses bun's native bundler — no devDependencies required.
+RUN bun run build:ui && chown -R ooworker:ooworker /app/public
 
 ENV NODE_ENV=production
 EXPOSE 3001
 
+USER ooworker
 CMD ["bun", "src/index.ts"]

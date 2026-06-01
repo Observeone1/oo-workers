@@ -1,0 +1,38 @@
+# Dependencies — always populated from the deps/prod-deps stage
+node_modules/
+
+# Version control
+.git/
+.github/
+.husky/
+
+# Test artifacts (runtime creates the dir if needed)
+tests/
+test-results/
+playwright-report/
+.e2e-baselines/
+
+# Secrets — never in image
+.env
+.env.local
+.env.*.local
+
+# Dev tooling config
+eslint.config.js
+.prettierrc.json
+.prettierignore
+knip.json
+playwright.ui.config.ts
+
+# Docs / examples
+docs/
+examples/
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+
+# UI build output — rebuilt inside the master stage
+public/
+
+.DS_Store
+*.log

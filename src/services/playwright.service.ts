@@ -96,7 +96,7 @@ export async function executePlaywrightTest(
     // page attached — for raw .spec.ts files we additionally rely on the
     // `screenshot: 'only-on-failure'` in playwright.config.ts.
     const outputArg = config?.outputDir ? ` --output "${config.outputDir}"` : '';
-    const command = `npx playwright test "${scriptPath}" --reporter json --trace retain-on-failure${outputArg}`;
+    const command = `node node_modules/.bin/playwright test "${scriptPath}" --reporter json --trace retain-on-failure${outputArg}`;
 
     logs.push(`Executing: ${command}`);
 
