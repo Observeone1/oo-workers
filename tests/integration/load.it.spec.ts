@@ -37,8 +37,12 @@ function poll<T>(
   return new Promise((resolve) => {
     const start = Date.now();
     const tick = async () => {
-      const v = await fn();
-      if (v !== null) return resolve(v);
+      try {
+        const v = await fn();
+        if (v !== null) return resolve(v);
+      } catch {
+        // transient DB error — keep polling until timeout
+      }
       if (Date.now() - start >= timeoutMs) return resolve(null);
       setTimeout(tick, 300);
     };

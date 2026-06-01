@@ -4,7 +4,7 @@
  * #/status-pages/<id>.
  */
 
-import { $, esc, fmtAge } from './helpers';
+import { $, esc } from './helpers';
 import {
   createStatusPage,
   deleteStatusPage,
@@ -85,8 +85,8 @@ async function renderList() {
               for (const m of all.qa) monitorNames.set(`qa:${m.id}`, m.name);
               for (const m of all.tcp) monitorNames.set(`tcp:${m.id}`, m.name);
               for (const m of all.udp) monitorNames.set(`udp:${m.id}`, m.name);
-              for (const m of (all as any).db ?? []) monitorNames.set(`db:${m.id}`, m.name);
-              for (const m of (all as any).tls ?? []) monitorNames.set(`tls:${m.id}`, m.name);
+              for (const m of all.db) monitorNames.set(`db:${m.id}`, m.name);
+              for (const m of all.tls) monitorNames.set(`tls:${m.id}`, m.name);
             } catch {
               /* non-fatal */
             }
