@@ -86,6 +86,21 @@ const ASSERTION_OPERATORS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'exists', label: 'exists' },
 ];
 
+const TARGET_ROW_VISIBILITY: Array<[string, (t: MonType) => boolean]> = [
+  ['url-row', (t) => t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls' || t === 'heartbeat'],
+  ['tcp-row', (t) => t !== 'tcp'],
+  ['udp-row', (t) => t !== 'udp'],
+  ['db-row', (t) => t !== 'db'],
+  ['tls-row', (t) => t !== 'tls'],
+];
+
+function applyTargetRowVisibility(type: MonType): void {
+  for (const [id, shouldHide] of TARGET_ROW_VISIBILITY) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = shouldHide(type);
+  }
+}
+
 function showFieldsForType(type: MonType): void {
   const dlg = document.getElementById('add-dialog') as HTMLElement | null;
   if (!dlg) return;
@@ -96,16 +111,7 @@ function showFieldsForType(type: MonType): void {
   dlg.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
     el.hidden = el.dataset.for !== type;
   });
-  const urlRow = document.getElementById('url-row');
-  if (urlRow) urlRow.hidden = ['tcp', 'udp', 'db', 'tls', 'heartbeat'].includes(type);
-  const tcpRow = document.getElementById('tcp-row');
-  if (tcpRow) tcpRow.hidden = type !== 'tcp';
-  const udpRow = document.getElementById('udp-row');
-  if (udpRow) udpRow.hidden = type !== 'udp';
-  const dbRow = document.getElementById('db-row');
-  if (dbRow) dbRow.hidden = type !== 'db';
-  const tlsRow = document.getElementById('tls-row');
-  if (tlsRow) tlsRow.hidden = type !== 'tls';
+  applyTargetRowVisibility(type);
   syncRegionsRow();
 }
 
@@ -209,15 +215,7 @@ export function initAddDialog(): void {
     addDialog.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
       el.hidden = el.dataset.for !== t;
     });
-    // The shared URL row is for url/api/qa; TCP/UDP/DB/TLS swap in their
-    // own rows; heartbeat has no target at all (service pings us).
-    $('#url-row').hidden =
-      t === 'tcp' || t === 'udp' || t === 'db' || t === 'tls' || t === 'heartbeat';
-    $('#tcp-row').hidden = t !== 'tcp';
-    $('#udp-row').hidden = t !== 'udp';
-    $('#db-row').hidden = t !== 'db';
-    const tlsRow = document.getElementById('tls-row');
-    if (tlsRow) tlsRow.hidden = t !== 'tls';
+    applyTargetRowVisibility(t);
     // Update type pill and check section title
     const pill = document.getElementById('dlg-type-pill');
     if (pill) pill.textContent = t.toUpperCase();
