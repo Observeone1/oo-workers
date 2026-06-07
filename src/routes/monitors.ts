@@ -45,6 +45,20 @@ const VALID_ASSERTION_OPERATORS = new Set([
   'exists',
 ]);
 
+function badPort(port: number): boolean {
+  return !Number.isInteger(port) || port < 1 || port > 65535;
+}
+
+function validatePayloadHex(hex: unknown): string | null {
+  if (!hex) return null;
+  try {
+    parseHexPayload(hex as string);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : 'invalid payloadHex';
+  }
+}
+
 export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   const { urlQ, apiQ, qaQ, tcpQ, udpQ, dbQ, tlsQ } = deps;
 
@@ -237,16 +251,10 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/tcp', async (c) => {
     const body = await c.req.json();
     const port = Number(body.port);
-    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    if (!body.name || !body.host || badPort(port))
       return c.json({ error: 'name + host + port (1-65535) required' }, 400);
-    }
-    if (body.payloadHex) {
-      try {
-        parseHexPayload(body.payloadHex);
-      } catch (err) {
-        return c.json({ error: err instanceof Error ? err.message : 'invalid payloadHex' }, 400);
-      }
-    }
+    const hexErr = validatePayloadHex(body.payloadHex);
+    if (hexErr) return c.json({ error: hexErr }, 400);
     const [m] = await tcpMonitorRepo.create({
       name: body.name,
       host: body.host,
@@ -264,16 +272,10 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/udp', async (c) => {
     const body = await c.req.json();
     const port = Number(body.port);
-    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    if (!body.name || !body.host || badPort(port))
       return c.json({ error: 'name + host + port (1-65535) required' }, 400);
-    }
-    if (body.payloadHex) {
-      try {
-        parseHexPayload(body.payloadHex);
-      } catch (err) {
-        return c.json({ error: err instanceof Error ? err.message : 'invalid payloadHex' }, 400);
-      }
-    }
+    const hexErr = validatePayloadHex(body.payloadHex);
+    if (hexErr) return c.json({ error: hexErr }, 400);
     const [m] = await udpMonitorRepo.create({
       name: body.name,
       host: body.host,
@@ -292,9 +294,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
     const body = await c.req.json();
     const port = Number(body.port);
     const protocol = body.protocol;
-    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    if (!body.name || !body.host || badPort(port))
       return c.json({ error: 'name + host + port (1-65535) required' }, 400);
-    }
     if (protocol !== 'postgres' && protocol !== 'mysql' && protocol !== 'redis') {
       return c.json({ error: 'protocol must be postgres, mysql, or redis' }, 400);
     }
@@ -315,9 +316,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/tls', async (c) => {
     const body = await c.req.json();
     const port = body.port == null ? 443 : Number(body.port);
-    if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    if (!body.name || !body.host || badPort(port))
       return c.json({ error: 'name + host (+ optional port 1-65535) required' }, 400);
-    }
     const warnDays = body.warnDays == null ? 30 : Number(body.warnDays);
     if (!Number.isInteger(warnDays) || warnDays < 0) {
       return c.json({ error: 'warnDays must be a non-negative integer' }, 400);
