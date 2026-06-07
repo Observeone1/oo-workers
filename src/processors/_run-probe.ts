@@ -10,7 +10,6 @@ interface ProbeResult {
   errorMessage?: string;
 }
 
- 
 type AnyRepo = { updateExecution(id: number, fields: any): Promise<unknown> };
 
 /**
