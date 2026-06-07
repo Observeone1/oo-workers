@@ -53,12 +53,8 @@ afterAll(() => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('agent-tls', () => {
+describe.skipIf(SKIP)('agent-tls', () => {
   test('tlsInsecure=false + self-signed master → REJECTED', async () => {
-    if (SKIP) {
-      console.warn('SKIP: openssl not found');
-      return;
-    }
     let threw = false;
     try {
       await pollJob({ ...cfg, tlsInsecure: false });
@@ -69,10 +65,6 @@ describe('agent-tls', () => {
   });
 
   test('tlsInsecure=true + self-signed master → SUCCEEDS (204 → null)', async () => {
-    if (SKIP) {
-      console.warn('SKIP: openssl not found');
-      return;
-    }
     let result: unknown = 'unset';
     let err = '';
     try {

@@ -33,6 +33,8 @@ import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { DEFAULTS } from './constants.ts';
 
+import { makeNonce, jobIdSuffix } from './scheduler-jobid.ts';
+import type { FanOutTarget } from './scheduler-jobid.ts';
 // Random 4-char suffix stamped on every job ID at boot time. BullMQ silently
 // deduplicates by jobId — without this, a hard-killed process leaves stale
 // waiting jobs in Redis, and on the next boot the scheduler generates the same
@@ -40,7 +42,7 @@ import { DEFAULTS } from './constants.ts';
 // never runs again until the stale job is manually cleared). A per-boot nonce
 // makes every boot's IDs distinct, so the drain below can clear the slate and
 // fresh IDs never collide with the previous boot's artifacts.
-const BOOT_NONCE = Math.random().toString(36).slice(2, 6);
+const BOOT_NONCE = makeNonce();
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
 import { execEvents } from './services/exec-events.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
@@ -56,11 +58,6 @@ import { logger } from './utils/logger.ts';
 
 const TICK_MS = Number(process.env.SCHEDULER_TICK_MS ?? DEFAULTS.SCHEDULER_TICK_MS);
 
-interface FanOutTarget {
-  regionId: number | null;
-  regionSlug: string | null;
-}
-
 async function fanOutTargets(type: MonitorType, monitorId: number): Promise<FanOutTarget[]> {
   const rows = await monitorRegionRepo.forMonitor(type, monitorId);
   if (rows.length === 0) return [{ regionId: null, regionSlug: null }];
@@ -75,15 +72,6 @@ async function fanOutTargets(type: MonitorType, monitorId: number): Promise<FanO
  */
 function regionalListKey(slug: string): string {
   return `oo:jobs:${slug}`;
-}
-
-// BullMQ rejects custom job IDs containing ':' unless they split into exactly 3 parts
-// (split(':').length === 3). Our master-path IDs use ':' as the primary separator —
-// `<type>:<monitorId>:<bucket>`. The boot nonce and region suffix are joined with '-'
-// so the total colon count stays at 2, satisfying BullMQ. The previous v1.24.0 format
-// used ':' as the nonce separator, which produced 4-part IDs and broke every tick.
-function jobIdSuffix(target: FanOutTarget): string {
-  return target.regionSlug === null ? '' : `-r${target.regionId}`;
 }
 
 type QueueFactory = (name: string) => Queue;

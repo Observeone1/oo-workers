@@ -42,8 +42,6 @@ let masterUrl = '';
 let region: Awaited<ReturnType<typeof createRegionWithKey>> | null = null;
 let altRegion: Awaited<ReturnType<typeof createRegionWithKey>> | null = null;
 let projectId = -1;
-let canRun = false;
-
 let failingTestId = -1;
 let passingTestId = -1;
 let lightTestId = -1;
@@ -66,11 +64,6 @@ test('passing run produces no artifacts', async ({ page }) => {
 `.trim();
 
 beforeAll(async () => {
-  if (!isStorageConfigured()) {
-    console.warn('[qa-on-agents] SKIPPED: OO_OBJECT_STORAGE_* not configured');
-    return;
-  }
-
   redisCtx = await acquireRedisDb();
   serverCtx = await startTestServer(redisCtx.redisUrl);
   masterUrl = serverCtx.url;
@@ -118,8 +111,6 @@ beforeAll(async () => {
   await db
     .insert(monitorRegions)
     .values({ monitorType: 'qa', monitorId: projectId, regionId: region.region.id });
-
-  canRun = true;
 }, 60_000);
 
 afterAll(async () => {
@@ -146,9 +137,8 @@ function agentCtx() {
   };
 }
 
-describe('qa-on-agents', () => {
+describe.skipIf(!isStorageConfigured())('qa-on-agents', () => {
   test('NEG. alt region creating exec for unbound project → 403', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
     const res = await fetch(`${masterUrl}/api/agent/qa/executions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${altRegion!.cleartextKey}`, 'content-type': 'application/json' },
@@ -158,7 +148,7 @@ describe('qa-on-agents', () => {
   });
 
   test('A-C. failing test → FAILED status row attributed to region', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     await handleQaJob(agentCtx(), {
       jobId: `qa-test:${projectId}:${ts}`,
       type: 'qa',
@@ -177,7 +167,7 @@ describe('qa-on-agents', () => {
   }, 60_000);
 
   test('D-E. failing test artifacts: trace_url + screenshot_urls populated', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     const [exec] = await db.select().from(qaTestExecutions)
       .where(and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, failingTestId)));
     expect(exec).toBeDefined();
@@ -187,7 +177,7 @@ describe('qa-on-agents', () => {
   });
 
   test('F. trace.zip retrievable from object storage', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     const [exec] = await db.select().from(qaTestExecutions)
       .where(and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, failingTestId)));
     const body = await getObject(exec.traceUrl!);
@@ -195,7 +185,7 @@ describe('qa-on-agents', () => {
   });
 
   test('G-J. passing test → SUCCESS, null artifact columns', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     await handleQaJob(agentCtx(), {
       jobId: `qa-test-pass:${projectId}:${ts}`,
       type: 'qa',
@@ -215,7 +205,7 @@ describe('qa-on-agents', () => {
   }, 60_000);
 
   test('K-M. OO_AGENT_FORCE_LIGHT=1 → ERROR with redeploy message', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     process.env.OO_AGENT_FORCE_LIGHT = '1';
     try {
       await handleQaJob(agentCtx(), {
@@ -239,7 +229,7 @@ describe('qa-on-agents', () => {
   }, 30_000);
 
   test('N-O. dispatcher round-trip: lpush → popJobForRegion → handleQaJob', async () => {
-    if (!canRun) { console.warn('SKIP'); return; }
+
     const connection = new Redis(redisCtx.redisUrl, { maxRetriesPerRequest: null });
 
     await connection.del(`oo:jobs:${REGION_SLUG}`);
