@@ -29,9 +29,22 @@ const EXEC_TABLES = ['url_monitor_executions','api_executions','tcp_executions',
 const ALL_TABLES = [...CONFIG_TABLES, ...EXEC_TABLES];
 const SIBS = ['oo_br_src','oo_br_all','oo_br_win','oo_br_split'];
 
-let BASE_URL: string;
+// Probe whether CREATE DATABASE is available at collection time so describe.skipIf
+// can gate the whole suite. Uses a short-lived connection to the admin DB.
+const BASE_URL = process.env.DATABASE_URL!;
+const _probeUrl = new URL(BASE_URL);
+_probeUrl.pathname = '/postgres';
+const _probe = postgres(_probeUrl.toString(), { max: 1, onnotice: () => {} });
+let CAN_CREATE_DB = false;
+try {
+  await _probe.unsafe('DROP DATABASE IF EXISTS oo_br_probe');
+  await _probe.unsafe('CREATE DATABASE oo_br_probe');
+  await _probe.unsafe('DROP DATABASE oo_br_probe');
+  CAN_CREATE_DB = true;
+} catch {}
+await _probe.end();
+
 let admin: ReturnType<typeof postgres> | null = null;
-let canCreateDb = false;
 let tmp = '';
 
 function dbUrl(name: string): string {
@@ -137,22 +150,9 @@ function diff(a: Record<string, number>, b: Record<string, number>): string {
 }
 
 beforeAll(async () => {
-  BASE_URL = process.env.DATABASE_URL!;
   const u = new URL(BASE_URL);
   u.pathname = '/postgres';
   admin = postgres(u.toString(), { max: 1, onnotice: () => {} });
-
-  try {
-    await admin`SELECT 1`;
-    await admin.unsafe('DROP DATABASE IF EXISTS oo_br_probe');
-    await admin.unsafe('CREATE DATABASE oo_br_probe');
-    await admin.unsafe('DROP DATABASE oo_br_probe');
-    canCreateDb = true;
-  } catch (e) {
-    console.warn(`[backup-restore] SKIPPED: cannot CREATE DATABASE (${e instanceof Error ? e.message : e})`);
-  }
-
-  if (!canCreateDb) return;
 
   for (const db of SIBS) {
     await admin.unsafe(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`);
@@ -163,7 +163,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  if (admin && canCreateDb) {
+  if (admin) {
     for (const db of SIBS) {
       await admin.unsafe(`DROP DATABASE IF EXISTS ${db} WITH (FORCE)`).catch(() => {});
     }
@@ -174,9 +174,9 @@ afterAll(async () => {
   if (tmp) rmSync(tmp, { recursive: true, force: true });
 }, 30_000);
 
-describe('backup-restore round-trip', () => {
+describe.skipIf(!CAN_CREATE_DB)('backup-restore round-trip', () => {
   test('migrate 4 sibling DBs', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     for (const db of SIBS) {
       const m = await run(['bun', MIGRATE_SCRIPT], db);
       expect(m.code).toBe(0);
@@ -184,7 +184,7 @@ describe('backup-restore round-trip', () => {
   }, 60_000);
 
   test('seed oo_br_src (one row per config table + recent/old exec rows + 1 heartbeat)', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     await seed('oo_br_src');
     const c = await counts('oo_br_src');
     expect(c.heartbeat_monitors).toBe(1);
@@ -192,7 +192,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('export all / window / split from src', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const allGz = resolve(tmp, 'all.oodump.gz');
     const winGz = resolve(tmp, 'win.oodump.gz');
     const splitDir = resolve(tmp, 'split');
@@ -207,7 +207,7 @@ describe('backup-restore round-trip', () => {
   }, 60_000);
 
   test('round-trip scope=all: counts identical', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const allGz = resolve(tmp, 'all.oodump.gz');
     const r = await run(['bun', IMPORT_SCRIPT, '--from', allGz], 'oo_br_all');
     expect(r.code).toBe(0);
@@ -217,7 +217,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('window scope: each exec table drops exactly its >120d row', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const winGz = resolve(tmp, 'win.oodump.gz');
     const r = await run(['bun', IMPORT_SCRIPT, '--from', winGz], 'oo_br_win');
     expect(r.code).toBe(0);
@@ -228,7 +228,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('single-file == split (counts identical)', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const splitDir = resolve(tmp, 'split');
     const r = await run(['bun', IMPORT_SCRIPT, '--from', splitDir], 'oo_br_split');
     expect(r.code).toBe(0);
@@ -238,7 +238,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('restore refuses non-empty target without --force', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const allGz = resolve(tmp, 'all.oodump.gz');
     const r = await run(['bun', IMPORT_SCRIPT, '--from', allGz], 'oo_br_all');
     expect(r.code).not.toBe(0);
@@ -246,7 +246,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('--force wipes + restores (counts back to src)', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const allGz = resolve(tmp, 'all.oodump.gz');
     const r = await run(['bun', IMPORT_SCRIPT, '--from', allGz, '--force'], 'oo_br_all');
     expect(r.code).toBe(0);
@@ -256,7 +256,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('FK + jsonb + text[] fidelity', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const probe = postgres(dbUrl('oo_br_all'), { max: 1, onnotice: () => {} });
     try {
       const [{ mx }] = await probe`SELECT COALESCE(MAX(id),0)::int AS mx FROM url_monitors`;
@@ -274,7 +274,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('--include-artifacts produces a valid tar.gz envelope', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const tgz = resolve(tmp, 'art.oodump.tar.gz');
     const r = await run(['bun', EXPORT_SCRIPT, '--scope', 'all', '--include-artifacts', '-o', tgz], 'oo_br_src');
     expect(r.code).toBe(0);
@@ -286,7 +286,7 @@ describe('backup-restore round-trip', () => {
   }, 30_000);
 
   test('tar.gz envelope restores (DB rows round-trip)', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const tgz = resolve(tmp, 'art.oodump.tar.gz');
     await admin!.unsafe('DROP DATABASE IF EXISTS oo_br_tar WITH (FORCE)');
     await admin!.unsafe('CREATE DATABASE oo_br_tar');
@@ -298,9 +298,7 @@ describe('backup-restore round-trip', () => {
     expect(eq(src, tar)).toBe(true);
   }, 60_000);
 
-  test('real-S3 round-trip: seed → export → wipe → restore → SHA-256 byte equality', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
-    if (!isStorageConfigured()) { console.warn('SKIP: OO_OBJECT_STORAGE_* not configured'); return; }
+  test.skipIf(!isStorageConfigured())('real-S3 round-trip: seed → export → wipe → restore → SHA-256 byte equality', async () => {
 
     const prefix = `e2e-backup-${randomBytes(4).toString('hex')}/`;
     const objs = [
@@ -341,7 +339,7 @@ describe('backup-restore round-trip', () => {
   }, 60_000);
 
   test('schema-head guard refuses + leaves target untouched', async () => {
-    if (!canCreateDb) { console.warn('SKIP'); return; }
+
     const allGz = resolve(tmp, 'all.oodump.gz');
     const badGz = resolve(tmp, 'bad.oodump.gz');
     const raw = gunzipSync(readFileSync(allGz)).toString('utf8');

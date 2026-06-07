@@ -58,6 +58,18 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run knip
 
+  unit:
+    # Fast unit gate: no containers, no DB. Catches regressions in pure-logic
+    # modules (scheduler-jobid, etc.) without waiting for testcontainers.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
   integration:
     # Runs the testcontainers-backed integration suite. Adds ~2 min to
     # the gating path but catches regressions like the v1.24.0 scheduler

@@ -54,9 +54,8 @@ afterAll(() => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('tls-cert probe', () => {
+describe.skipIf(SKIP)('tls-cert probe', () => {
   test('far-future cert → SUCCESS, cert parsed', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
     const srv = await serve(genCert('long', 825));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30 });
     srv.close();
@@ -66,7 +65,7 @@ describe('tls-cert probe', () => {
   });
 
   test('in-window cert FAILS but is parsed', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('short', 2));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30 });
     srv.close();
@@ -77,7 +76,7 @@ describe('tls-cert probe', () => {
   });
 
   test('warnDays=0 tolerates the 2-day cert', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('short2', 2));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 0 });
     srv.close();
@@ -86,7 +85,7 @@ describe('tls-cert probe', () => {
   });
 
   test('closed port FAILS cleanly (no hang)', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const r = await tlsProbe({ host: '127.0.0.1', port: 1, timeoutMs: 2000, warnDays: 30 });
     expect(r.ok).toBe(false);
     expect(r.errorMessage).toBeTruthy();
@@ -94,7 +93,7 @@ describe('tls-cert probe', () => {
   });
 
   test('verify_chain OFF + self-signed → SUCCESS (no-regression)', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('vc', 825));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, verifyChain: false, verifyHostname: false });
     srv.close();
@@ -102,7 +101,7 @@ describe('tls-cert probe', () => {
   });
 
   test('verify_chain ON + self-signed → FAIL', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('vc2', 825));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, verifyChain: true });
     srv.close();
@@ -111,7 +110,7 @@ describe('tls-cert probe', () => {
   });
 
   test('verify_hostname ON + matching SAN → SUCCESS', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('vh', 825, { cn: 'oo-cn', sans: ['match.oo.test'] }));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, servername: 'match.oo.test', verifyHostname: true });
     srv.close();
@@ -119,7 +118,7 @@ describe('tls-cert probe', () => {
   });
 
   test('verify_hostname ON + non-matching SNI → FAIL', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('vh2', 825, { cn: 'oo-cn', sans: ['match.oo.test'] }));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, servername: 'other.oo.test', verifyHostname: true });
     srv.close();
@@ -128,7 +127,7 @@ describe('tls-cert probe', () => {
   });
 
   test('expect_cn_regex matching CN → SUCCESS', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('cn', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^svc\\.prod\\.oo$' });
     srv.close();
@@ -136,7 +135,7 @@ describe('tls-cert probe', () => {
   });
 
   test('expect_cn_regex no match → FAIL', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('cn2', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^nope\\.' });
     srv.close();
@@ -145,7 +144,7 @@ describe('tls-cert probe', () => {
   });
 
   test('expect_cn_regex matches a DNS SAN (not CN) → SUCCESS', async () => {
-    if (SKIP) { console.warn('SKIP: openssl not found'); return; }
+
     const srv = await serve(genCert('cn3', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
     const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^api\\.prod\\.oo$' });
     srv.close();
