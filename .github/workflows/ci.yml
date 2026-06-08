@@ -74,13 +74,16 @@ jobs:
     # Runs the testcontainers-backed integration suite. Adds ~2 min to
     # the gating path but catches regressions like the v1.24.0 scheduler
     # colon-count bug that slipped through unit + static checks.
+    # Playwright chromium is required for the qa-on-agents specs.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - name: Install Playwright chromium
+        run: bunx playwright install --with-deps chromium
       - name: Run integration tests
         run: bun run test:integration
