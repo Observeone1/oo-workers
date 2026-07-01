@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.28.8] - 2026-07-01
+
+### Security
+
+- **Fixed a remote code execution vulnerability in `json_path` assertions.** The `jsonpath` package evaluates script/filter expressions (`$[(...)]`, `$[?(...)]`) via `static-eval`, which allows arbitrary code execution (CVE-2026-1615). `assertion.path` is a freeform, user-editable field on an API check, so any user who could edit a check's `json_path` assertion could trigger RCE on the worker process. Any path containing `(` or `)` is now rejected before evaluation — neither vulnerable syntax exists without parentheses, so ordinary dot/bracket/wildcard/slice/union JSONPath paths are unaffected.
+
 ## [1.28.7] - 2026-06-01
 
 ### Fixed
