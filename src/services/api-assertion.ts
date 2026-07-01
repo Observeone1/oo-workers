@@ -111,10 +111,28 @@ const evaluateResponseTime = (assertion: ApiAssertion, actualTime: number): Asse
   };
 };
 
+// jsonpath's script/filter expressions ($[(...)], $[?(...)]) are evaluated via
+// static-eval and allow arbitrary code execution (CVE-2026-1615). Neither
+// syntax exists without a parenthesized expression, so rejecting any path
+// containing '(' or ')' closes the eval path without limiting ordinary
+// dot/bracket/wildcard/slice/union JSONPath syntax.
+const UNSAFE_JSON_PATH_PATTERN = /[()]/;
+
 const evaluateJsonPath = (assertion: ApiAssertion, responseBody: string): AssertionResult => {
   try {
-    const json = JSON.parse(responseBody);
     const path = assertion.path || '$';
+
+    if (UNSAFE_JSON_PATH_PATTERN.test(path)) {
+      return {
+        type: 'json_path',
+        passed: false,
+        message: `JSONPath '${path}' is not allowed: script/filter expressions are unsafe and disallowed`,
+        expected: assertion.value,
+        actual: null,
+      };
+    }
+
+    const json = JSON.parse(responseBody);
     const matches = jsonpath.query(json, path);
 
     if (assertion.operator === 'exists') {
