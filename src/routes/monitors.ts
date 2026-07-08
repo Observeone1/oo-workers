@@ -552,16 +552,13 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       });
       if (!m) return c.json({ error: 'not found' }, 404);
       if (Array.isArray(body.assertions)) {
-        await urlMonitorRepo.deleteAssertionsByMonitorId(id);
-        if (body.assertions.length > 0) {
-          await urlMonitorRepo.createAssertions(
-            id,
-            (body.assertions as Array<{ operator: string; statusCode: number }>).map((a) => ({
-              operator: a.operator,
-              statusCode: Number(a.statusCode),
-            })),
-          );
-        }
+        await urlMonitorRepo.replaceAssertions(
+          id,
+          (body.assertions as Array<{ operator: string; statusCode: number }>).map((a) => ({
+            operator: a.operator,
+            statusCode: Number(a.statusCode),
+          })),
+        );
       }
       return c.json(m);
     }
@@ -570,6 +567,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const rawAssertions = Array.isArray(body.assertions) ? body.assertions : [];
       for (let i = 0; i < rawAssertions.length; i++) {
         const a = rawAssertions[i] as { type?: unknown; operator?: unknown };
+        if (!a || typeof a !== 'object')
+          return c.json({ error: `assertions[${i}] must be an object` }, 400);
         if (typeof a.type !== 'string' || !VALID_ASSERTION_TYPES.has(a.type))
           return c.json({ error: `assertions[${i}].type invalid` }, 400);
         if (typeof a.operator !== 'string' || !VALID_ASSERTION_OPERATORS.has(a.operator))
@@ -599,6 +598,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const port = Number(body.port);
       if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
         return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const hexErr = validatePayloadHex(body.payloadHex);
+      if (hexErr) return c.json({ error: hexErr }, 400);
       const [m] = await tcpMonitorRepo.update(id, {
         name: body.name,
         host: body.host,
@@ -614,6 +615,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const port = Number(body.port);
       if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
         return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const hexErr = validatePayloadHex(body.payloadHex);
+      if (hexErr) return c.json({ error: hexErr }, 400);
       const [m] = await udpMonitorRepo.update(id, {
         name: body.name,
         host: body.host,

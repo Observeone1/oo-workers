@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { extractStderrSummary } from './playwright.service.ts';
+import { buildCredentialEnv, extractStderrSummary } from './playwright.service.ts';
 
 describe('extractStderrSummary', () => {
   test('strips ANSI colour codes', () => {
@@ -38,5 +38,54 @@ describe('extractStderrSummary', () => {
 
   test('empty string in → empty string out (no spurious newline)', () => {
     expect(extractStderrSummary('')).toBe('');
+  });
+});
+
+describe('buildCredentialEnv', () => {
+  test('passes conventional login credential keys through as env vars', () => {
+    expect(buildCredentialEnv({ LOGIN_EMAIL: 'a@b.com', LOGIN_PASSWORD: 'secret' })).toEqual({
+      LOGIN_EMAIL: 'a@b.com',
+      LOGIN_PASSWORD: 'secret',
+    });
+  });
+
+  test('returns an empty object when no credentials are supplied', () => {
+    expect(buildCredentialEnv(undefined)).toEqual({});
+  });
+
+  test('drops process-hijacking keys (PATH / NODE_OPTIONS / LD_*) even if supplied', () => {
+    const env = buildCredentialEnv({
+      PATH: '/evil/bin',
+      NODE_OPTIONS: '--require /evil.js',
+      LD_PRELOAD: '/evil.so',
+      LOGIN_EMAIL: 'a@b.com',
+    });
+    expect(env).toEqual({ LOGIN_EMAIL: 'a@b.com' });
+  });
+
+  test('drops the PLAYWRIGHT_* contract vars this service sets itself', () => {
+    expect(buildCredentialEnv({ PLAYWRIGHT_TARGET_URL: 'http://evil' })).toEqual({});
+  });
+
+  test('drops the whole NODE_/BUN_/LD_/DYLD_ runtime+loader prefix families', () => {
+    expect(
+      buildCredentialEnv({
+        NODE_PATH: '/evil',
+        NODE_EXTRA_CA_CERTS: '/evil.pem',
+        BUN_INSTALL: '/evil',
+        DYLD_FRAMEWORK_PATH: '/evil',
+        LOGIN_EMAIL: 'a@b.com',
+      }),
+    ).toEqual({ LOGIN_EMAIL: 'a@b.com' });
+  });
+
+  test('ignores keys that are not valid env-var identifiers', () => {
+    expect(buildCredentialEnv({ 'not a var': 'x', '1STARTS_NUM': 'y', OK_KEY: 'z' })).toEqual({
+      OK_KEY: 'z',
+    });
+  });
+
+  test('ignores non-string values', () => {
+    expect(buildCredentialEnv({ GOOD: 'v', BAD: 123 as unknown as string })).toEqual({ GOOD: 'v' });
   });
 });

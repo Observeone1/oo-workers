@@ -61,6 +61,53 @@ export function extractStderrSummary(stderr: string, maxLines = 20): string {
     .join('\n');
 }
 
+// Env var names we refuse to let a stored credential overwrite. A QA
+// project's `credentials` map is operator-supplied, but its keys become
+// env vars in the spawned Playwright process, so a key like NODE_OPTIONS
+// or LD_PRELOAD would be arbitrary code execution. We also protect the
+// PLAYWRIGHT_* / BASE_URL contract vars this function sets itself.
+const CREDENTIAL_ENV_DENYLIST = new Set([
+  'PATH',
+  'HOME',
+  'SHELL',
+  'USER',
+  'NODE_OPTIONS',
+  'LD_PRELOAD',
+  'LD_LIBRARY_PATH',
+  'DYLD_INSERT_LIBRARIES',
+  'PLAYWRIGHT_HEADLESS',
+  'PLAYWRIGHT_TARGET_URL',
+]);
+
+// Env var name prefixes that steer the Node/Bun runtime, the dynamic loader,
+// or this function's own Playwright contract. Any credential key starting
+// with one of these is dropped, so the whole NODE_OPTIONS / NODE_PATH /
+// LD_PRELOAD / DYLD_* family is covered without enumerating each name.
+const CREDENTIAL_ENV_DENY_PREFIXES = ['NODE_', 'BUN_', 'LD_', 'DYLD_', 'PLAYWRIGHT_'];
+
+/**
+ * Turn a QA project's `credentials` map into env vars the spawned test can
+ * read (e.g. `process.env.LOGIN_EMAIL`). Only conventional env-var names
+ * (`^[A-Za-z_][A-Za-z0-9_]*$`) are honoured, and names that would hijack the
+ * process (PATH, the NODE_ / LD_ / DYLD_ runtime+loader vars, our PLAYWRIGHT_
+ * contract vars) are dropped, so an operator can wire login secrets without
+ * being able to escalate a credential into arbitrary code in the runner.
+ */
+export function buildCredentialEnv(
+  credentials: Record<string, string> | undefined,
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (!credentials) return env;
+  for (const [key, value] of Object.entries(credentials)) {
+    if (typeof value !== 'string') continue;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (CREDENTIAL_ENV_DENYLIST.has(key)) continue;
+    if (CREDENTIAL_ENV_DENY_PREFIXES.some((p) => key.startsWith(p))) continue;
+    env[key] = value;
+  }
+  return env;
+}
+
 /**
  * Run a Playwright `.spec.ts` against `playwright test`, capture artifacts
  * (trace + screenshots on failure), parse the JSON reporter output, and
@@ -72,11 +119,16 @@ export function extractStderrSummary(stderr: string, maxLines = 20): string {
  * so scripts can `page.goto(process.env.PLAYWRIGHT_TARGET_URL!)` instead
  * of hard-coding the URL inline. Always set (empty string when the caller
  * has none), so scripts can detect absence with a plain truthy check.
+ *
+ * `credentials` (a QA project's stored login secrets) are injected as env
+ * vars by their own key names — matching the documented convention that
+ * authenticated scripts read `process.env.LOGIN_EMAIL` / `LOGIN_PASSWORD`.
+ * See buildCredentialEnv for the safety filtering.
  */
 export async function executePlaywrightTest(
   scriptPath: string,
   targetUrl: string,
-  _credentials?: Record<string, string>,
+  credentials?: Record<string, string>,
   config?: TestConfig,
 ): Promise<PlaywrightTestResult> {
   const logs: string[] = [];
@@ -110,6 +162,8 @@ export async function executePlaywrightTest(
         cwd: process.cwd(),
         env: {
           ...process.env,
+          ...buildCredentialEnv(credentials),
+          // Contract vars set last so a credential key can never clobber them.
           PLAYWRIGHT_HEADLESS: 'true',
           PLAYWRIGHT_TARGET_URL: targetUrl ?? '',
         },

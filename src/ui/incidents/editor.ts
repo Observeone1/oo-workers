@@ -23,7 +23,7 @@ export async function renderEditor(id: number): Promise<void> {
     return;
   }
   const page = pages.find((p) => p.id === inc.statusPageId);
-  const publicUrl = page ? `/status/${page.slug}` : null;
+  const publicUrl = page ? `/status/${esc(page.slug)}` : null;
   const resolved = inc.resolvedAt != null;
 
   main.innerHTML = `
