@@ -105,6 +105,9 @@ export const TABLES: TableSpec[] = [
   { table: schema.udpExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.dbExecutions, serial: true, timeCol: 'startTime' },
   { table: schema.tlsExecutions, serial: true, timeCol: 'startTime' },
+  // qa_runs before qa_test_executions: the latter's run_id FKs to it, so it
+  // must restore first. Its own deps (qa_projects, regions) are above.
+  { table: schema.qaRuns, serial: true, timeCol: 'startedAt' },
   { table: schema.qaTestExecutions, serial: true, timeCol: 'startedAt' },
 ];
 

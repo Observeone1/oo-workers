@@ -118,12 +118,16 @@ export const apiCheckRepo = {
     apiCheckId: number,
     rows: Array<{ type: string; operator: string; path?: string | null; value?: string | null }>,
   ) {
-    await db.delete(apiAssertions).where(eq(apiAssertions.apiCheckId, apiCheckId));
-    if (rows.length === 0) return [];
-    return db
-      .insert(apiAssertions)
-      .values(rows.map((r) => ({ apiCheckId, ...r })))
-      .returning();
+    // delete + insert in one transaction: without it, an insert failure after
+    // the delete commits would leave the check with zero assertions.
+    return db.transaction(async (tx) => {
+      await tx.delete(apiAssertions).where(eq(apiAssertions.apiCheckId, apiCheckId));
+      if (rows.length === 0) return [];
+      return tx
+        .insert(apiAssertions)
+        .values(rows.map((r) => ({ apiCheckId, ...r })))
+        .returning();
+    });
   },
 
   updateEnabled(id: number, enabled: boolean) {

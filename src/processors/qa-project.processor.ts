@@ -96,11 +96,25 @@ export const createQaProjectProcessor = (redis: Redis) => {
     }
 
     try {
+      // A master run (region_id NULL) groups these executions so run-level
+      // alerting compares this run against the previous master run.
+      const [run] = await qaProjectRepo.createRun({
+        projectId,
+        regionId: null,
+        expectedTests: tests.length,
+      });
+
       const testPromises = tests.map(async (test) => {
         // INSERT execution row
         let executionId: number;
         try {
-          const [row] = await qaProjectRepo.createExecution(test.id, projectId, 'running');
+          const [row] = await qaProjectRepo.createExecution(
+            test.id,
+            projectId,
+            'running',
+            null,
+            run.id,
+          );
           executionId = row.id;
         } catch (createError) {
           const msg = createError instanceof Error ? createError.message : String(createError);
@@ -252,7 +266,13 @@ export const createQaProjectProcessor = (redis: Redis) => {
       // any failed/errored = down) vs the previous run's aggregate.
       // Best-effort — never blocks run completion.
       const aggregateOutcome = errors > 0 || failed > 0 ? 'FAILED' : 'SUCCESS';
-      await maybeAlertOnQaRunTransition(projectId, new Date(startTime), aggregateOutcome);
+      // Record the run outcome and fire the transition alert once. claimRunAlert
+      // is the same one-shot guard the region path uses; the master path always
+      // wins it (no concurrent completor) but going through it keeps qa_runs the
+      // single source of truth for "this run already alerted".
+      if (await qaProjectRepo.claimRunAlert(run.id, aggregateOutcome)) {
+        await maybeAlertOnQaRunTransition(run.id);
+      }
 
       const completionData = {
         type: 'run_completed',

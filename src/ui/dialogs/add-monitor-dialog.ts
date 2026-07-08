@@ -101,6 +101,44 @@ function applyTargetRowVisibility(type: MonType): void {
   }
 }
 
+// Module-level so both the create flow (syncFields) and the edit flow
+// (showFieldsForType) render the same type-pill / section-title / name
+// placeholder. Previously these lived inside initAddDialog and only the
+// create flow updated them, so opening the edit dialog showed a stale pill.
+const CHECK_TITLE: Record<MonType, string> = {
+  url: 'Check',
+  api: 'Assertions',
+  qa: 'Script',
+  tcp: 'Check',
+  udp: 'Check',
+  db: 'Check',
+  tls: 'Certificate',
+  // Heartbeats are inverted-direction (the service pings us). "Check"
+  // would be misleading — operator inputs the expected period, not
+  // what to check.
+  heartbeat: 'Schedule',
+};
+
+const NAME_PLACEHOLDER: Record<MonType, string> = {
+  url: 'My website',
+  api: 'Payment API',
+  tcp: 'Postgres 5432',
+  udp: 'DNS resolver',
+  db: 'Production DB',
+  tls: 'api.example.com',
+  qa: 'Checkout flow',
+  heartbeat: 'Nightly backup',
+};
+
+function syncDialogChrome(type: MonType, dlg: HTMLElement): void {
+  const pill = document.getElementById('dlg-type-pill');
+  if (pill) pill.textContent = type.toUpperCase();
+  const checkTitle = document.getElementById('check-title');
+  if (checkTitle) checkTitle.textContent = CHECK_TITLE[type] ?? 'Check';
+  const nameInput = dlg.querySelector<HTMLInputElement>('input[name="name"]');
+  if (nameInput) nameInput.placeholder = NAME_PLACEHOLDER[type];
+}
+
 function showFieldsForType(type: MonType): void {
   const dlg = document.getElementById('add-dialog') as HTMLElement | null;
   if (!dlg) return;
@@ -112,6 +150,7 @@ function showFieldsForType(type: MonType): void {
     el.hidden = el.dataset.for !== type;
   });
   applyTargetRowVisibility(type);
+  syncDialogChrome(type, dlg);
   syncRegionsRow();
 }
 
@@ -170,31 +209,6 @@ export function initAddDialog(): void {
   const addDialog = $<HTMLDialogElement>('#add-dialog');
   const addForm = $<HTMLFormElement>('#add-form');
 
-  const CHECK_TITLE: Record<MonType, string> = {
-    url: 'Check',
-    api: 'Assertions',
-    qa: 'Script',
-    tcp: 'Check',
-    udp: 'Check',
-    db: 'Check',
-    tls: 'Certificate',
-    // Heartbeats are inverted-direction (the service pings us). "Check"
-    // would be misleading — operator inputs the expected period, not
-    // what to check.
-    heartbeat: 'Schedule',
-  };
-
-  const NAME_PLACEHOLDER: Record<MonType, string> = {
-    url: 'My website',
-    api: 'Payment API',
-    tcp: 'Postgres 5432',
-    udp: 'DNS resolver',
-    db: 'Production DB',
-    tls: 'api.example.com',
-    qa: 'Checkout flow',
-    heartbeat: 'Nightly backup',
-  };
-
   function resetAssertionRows(): void {
     const container = $('#api-assertion-rows');
     container.innerHTML = '';
@@ -216,13 +230,8 @@ export function initAddDialog(): void {
       el.hidden = el.dataset.for !== t;
     });
     applyTargetRowVisibility(t);
-    // Update type pill and check section title
-    const pill = document.getElementById('dlg-type-pill');
-    if (pill) pill.textContent = t.toUpperCase();
-    const checkTitle = document.getElementById('check-title');
-    if (checkTitle) checkTitle.textContent = CHECK_TITLE[t] ?? 'Check';
-    const nameInput = addDialog.querySelector<HTMLInputElement>('input[name="name"]');
-    if (nameInput) nameInput.placeholder = NAME_PLACEHOLDER[t];
+    // Update type pill, check section title, and name placeholder.
+    syncDialogChrome(t, addDialog);
     // Update rail active step
     syncRailToSection('type');
     syncRegionsRow();

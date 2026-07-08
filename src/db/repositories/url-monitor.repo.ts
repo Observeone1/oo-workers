@@ -93,6 +93,24 @@ export const urlMonitorRepo = {
       .returning();
   },
 
+  // Atomic delete+insert: replaces a monitor's assertions in one transaction so
+  // an insert failure can't leave it with zero assertions (the delete alone).
+  async replaceAssertions(
+    urlMonitorId: number,
+    rows: Array<{ operator: string; statusCode: number }>,
+  ) {
+    return db.transaction(async (tx) => {
+      await tx
+        .delete(urlMonitorAssertions)
+        .where(eq(urlMonitorAssertions.urlMonitorId, urlMonitorId));
+      if (rows.length === 0) return [];
+      return tx
+        .insert(urlMonitorAssertions)
+        .values(rows.map((r) => ({ urlMonitorId, ...r })))
+        .returning();
+    });
+  },
+
   createExecution(urlMonitorId: number, status: string, regionId: number | null = null) {
     return db.insert(urlMonitorExecutions).values({ urlMonitorId, status, regionId }).returning();
   },

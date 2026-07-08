@@ -333,6 +333,17 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
     await startDbRestore();
 
     const key = name.slice('artifacts/'.length);
+    // Tar-slip guard: a crafted .oodump.tar.gz could carry an entry name that
+    // escapes the artifacts/ prefix (e.g. ../ or a leading /). Reject those
+    // before the key reaches object storage.
+    if (!key || key.startsWith('/') || key.split('/').some((seg) => seg === '..')) {
+      failed += 1;
+      logger.warn(`restore: skipped artifact with unsafe key ${JSON.stringify(name)}`);
+      for await (const _ of entry) {
+        void _;
+      }
+      continue;
+    }
     const contentType = guessContentType(key);
     const chunks: Buffer[] = [];
     for await (const c of entry) chunks.push(c as Buffer);

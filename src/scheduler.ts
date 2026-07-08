@@ -219,6 +219,33 @@ export async function startScheduler(connection: Redis) {
   };
 }
 
+/**
+ * Run a dispatch, and if it throws (e.g. a Redis blip on queue.add / lpush),
+ * mark the just-created PENDING execution FAILED instead of leaving it orphaned.
+ * findDue() derives "due" from MAX(startTime) across all statuses, so an
+ * orphaned PENDING row would keep the monitor from running for a full interval.
+ * Returns true on success. Never throws — one bad dispatch can't abort the tick.
+ */
+async function dispatchOrMarkFailed(
+  execId: number,
+  markFailed: (msg: string) => Promise<unknown>,
+  run: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await run();
+    return true;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(
+      `dispatch failed for exec #${execId}; marking FAILED so the monitor stays due: ${msg}`,
+    );
+    await markFailed(`dispatch failed: ${msg}`).catch((e) =>
+      logger.error(`could not mark exec #${execId} FAILED: ${e instanceof Error ? e.message : e}`),
+    );
+    return false;
+  }
+}
+
 // ---------------- url-monitor ----------------
 async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await urlMonitorRepo.findDue();
@@ -232,26 +259,37 @@ async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await urlMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
-      await dispatch(
-        'url-monitor',
-        target,
-        {
-          jobId: `url:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'url',
-          executionId: exec.id,
-          regionId: target.regionId,
-          monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
-          assertions,
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          urlMonitorRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'url-monitor',
+            target,
+            {
+              jobId: `url:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'url',
+              executionId: exec.id,
+              regionId: target.regionId,
+              monitor: { id: m.id, url: m.url, timeoutMs: m.timeoutMs },
+              assertions,
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled url-monitor #${m.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled url-monitor #${m.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }
@@ -269,33 +307,44 @@ async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await apiCheckRepo.createExecution(c.id, 'PENDING', target.regionId);
-      await dispatch(
-        'api-check',
-        target,
-        {
-          jobId: `api:${c.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'api',
-          executionId: exec.id,
-          regionId: target.regionId,
-          apiCheck: {
-            id: c.id,
-            url: c.url,
-            method: c.method,
-            headers: c.headers,
-            body: c.body,
-            timeoutMs: c.timeoutMs,
-          },
-          assertions,
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          apiCheckRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'api-check',
+            target,
+            {
+              jobId: `api:${c.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'api',
+              executionId: exec.id,
+              regionId: target.regionId,
+              apiCheck: {
+                id: c.id,
+                url: c.url,
+                method: c.method,
+                headers: c.headers,
+                body: c.body,
+                timeoutMs: c.timeoutMs,
+              },
+              assertions,
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled api-check #${c.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled api-check #${c.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }
@@ -312,32 +361,43 @@ async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await tcpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
-      await dispatch(
-        'tcp-monitor',
-        target,
-        {
-          jobId: `tcp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'tcp',
-          executionId: exec.id,
-          regionId: target.regionId,
-          monitor: {
-            id: m.id,
-            host: m.host,
-            port: m.port,
-            payloadHex: m.payloadHex,
-            expectBanner: m.expectBanner,
-            timeoutMs: m.timeoutMs,
-          },
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          tcpMonitorRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'tcp-monitor',
+            target,
+            {
+              jobId: `tcp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'tcp',
+              executionId: exec.id,
+              regionId: target.regionId,
+              monitor: {
+                id: m.id,
+                host: m.host,
+                port: m.port,
+                payloadHex: m.payloadHex,
+                expectBanner: m.expectBanner,
+                timeoutMs: m.timeoutMs,
+              },
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled tcp-monitor #${m.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled tcp-monitor #${m.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }
@@ -354,32 +414,43 @@ async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await udpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
-      await dispatch(
-        'udp-monitor',
-        target,
-        {
-          jobId: `udp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'udp',
-          executionId: exec.id,
-          regionId: target.regionId,
-          monitor: {
-            id: m.id,
-            host: m.host,
-            port: m.port,
-            payloadHex: m.payloadHex,
-            expectResponse: m.expectResponse,
-            timeoutMs: m.timeoutMs,
-          },
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          udpMonitorRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'udp-monitor',
+            target,
+            {
+              jobId: `udp:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'udp',
+              executionId: exec.id,
+              regionId: target.regionId,
+              monitor: {
+                id: m.id,
+                host: m.host,
+                port: m.port,
+                payloadHex: m.payloadHex,
+                expectResponse: m.expectResponse,
+                timeoutMs: m.timeoutMs,
+              },
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled udp-monitor #${m.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled udp-monitor #${m.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }
@@ -396,32 +467,43 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await dbMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
-      await dispatch(
-        'db-monitor',
-        target,
-        {
-          jobId: `db:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'db',
-          executionId: exec.id,
-          regionId: target.regionId,
-          monitor: {
-            id: m.id,
-            protocol: m.protocol,
-            tls: m.tls,
-            host: m.host,
-            port: m.port,
-            timeoutMs: m.timeoutMs,
-          },
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          dbMonitorRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'db-monitor',
+            target,
+            {
+              jobId: `db:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'db',
+              executionId: exec.id,
+              regionId: target.regionId,
+              monitor: {
+                id: m.id,
+                protocol: m.protocol,
+                tls: m.tls,
+                host: m.host,
+                port: m.port,
+                timeoutMs: m.timeoutMs,
+              },
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled db-monitor #${m.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled db-monitor #${m.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }
@@ -437,35 +519,46 @@ async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
 
     for (const target of targets) {
       const [exec] = await tlsMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
-      await dispatch(
-        'tls-monitor',
-        target,
-        {
-          jobId: `tls:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
-          type: 'tls',
-          executionId: exec.id,
-          regionId: target.regionId,
-          monitor: {
-            id: m.id,
-            host: m.host,
-            port: m.port,
-            servername: m.servername,
-            warnDays: m.warnDays,
-            timeoutMs: m.timeoutMs,
-            verifyChain: m.verifyChain,
-            verifyHostname: m.verifyHostname,
-            expectCnRegex: m.expectCnRegex,
-          },
-        },
-        200,
-        getQueue,
-        connection,
+      const ok = await dispatchOrMarkFailed(
+        exec.id,
+        (msg) =>
+          tlsMonitorRepo.updateExecution(exec.id, {
+            status: 'FAILED',
+            errorMessage: msg,
+            endTime: new Date(),
+          }),
+        () =>
+          dispatch(
+            'tls-monitor',
+            target,
+            {
+              jobId: `tls:${m.id}:${bucket}-${BOOT_NONCE}${jobIdSuffix(target)}`,
+              type: 'tls',
+              executionId: exec.id,
+              regionId: target.regionId,
+              monitor: {
+                id: m.id,
+                host: m.host,
+                port: m.port,
+                servername: m.servername,
+                warnDays: m.warnDays,
+                timeoutMs: m.timeoutMs,
+                verifyChain: m.verifyChain,
+                verifyHostname: m.verifyHostname,
+                expectCnRegex: m.expectCnRegex,
+              },
+            },
+            200,
+            getQueue,
+            connection,
+          ),
       );
-      logger.info(
-        `scheduled tls-monitor #${m.id} → exec #${exec.id}${
-          target.regionSlug ? ` [${target.regionSlug}]` : ''
-        }`,
-      );
+      if (ok)
+        logger.info(
+          `scheduled tls-monitor #${m.id} → exec #${exec.id}${
+            target.regionSlug ? ` [${target.regionSlug}]` : ''
+          }`,
+        );
     }
   }
 }

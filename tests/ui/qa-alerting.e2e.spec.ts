@@ -94,10 +94,11 @@ test('QA monitor fires email (Mailpit) + Discord on outage and recovery', async 
     expect(dc.ok(), `create discord channel: ${dc.status()}`).toBeTruthy();
     channelIds.push((await dc.json()).id);
 
-    // --- QA project: enabled:false so the scheduler never injects a
-    // rogue run that poisons the detector's ±30s previous-run bucket;
-    // run-now ignores `enabled`. Huge interval as belt-and-suspenders.
-    // Two tests so the per-run N-row aggregation is exercised. ---
+    // --- QA project: enabled:false so the scheduler never injects an extra
+    // qa_runs row between the manual runs (which would become the detector's
+    // "previous run"); run-now ignores `enabled`. Huge interval as
+    // belt-and-suspenders. Two tests so the per-run N-row aggregation is
+    // exercised (a run is FAILED if any test is down). ---
     const stable = `import { test, expect } from '@playwright/test';
 test('t-stable', async () => { expect(1 + 1).toBe(2); });
 `;
@@ -128,9 +129,9 @@ test('t-toggle', async ({ request }) => {
     expect(bind.ok(), `bind channels: ${bind.status()}`).toBeTruthy();
 
     // Trigger run #n and block until its 2-row batch is fully settled
-    // (no row 'running' AND ≥ 2*n settled rows), so the next run's
-    // anchor sees a complete prior run. Then pause so consecutive
-    // startedAt values are ordered vs the detector's lt(runStartTime).
+    // (no row 'running' AND ≥ 2*n settled rows), so each run's qa_runs row
+    // completes before the next starts. Then pause so consecutive runs'
+    // started_at values are ordered for the detector's previous-run lookup.
     let runNo = 0;
     async function runOnce(label: string) {
       runNo += 1;

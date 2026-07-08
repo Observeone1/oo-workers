@@ -327,7 +327,7 @@ async function renderEditor(id: number) {
   const main = $('#main');
   const [detail, allMonitors] = await Promise.all([getStatusPage(id), getMonitors()]);
   const bound = new Set(detail.monitors.map((b) => `${b.monitorType}:${b.monitorId}`));
-  const publicUrl = `/status/${detail.slug}`;
+  const publicUrl = `/status/${esc(detail.slug)}`;
 
   const sections: Array<{
     type: MonType;

@@ -356,6 +356,26 @@ export const qaGeneratedTests = pgTable(
   (t) => [index('idx_qa_generated_tests_project_id').on(t.projectId)],
 );
 
+// One QA project run (per project + region). region_id NULL = a master-run;
+// non-null = a region-dispatched run. Groups the per-test executions so a run
+// can be completion-detected by count, alerted exactly once (alerted_at), and
+// compared against the previous run for the SAME region.
+export const qaRuns = pgTable(
+  'qa_runs',
+  {
+    id: serial('id').primaryKey(),
+    projectId: integer('project_id')
+      .notNull()
+      .references(() => qaProjects.id, { onDelete: 'cascade' }),
+    regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    expectedTests: integer('expected_tests').notNull(),
+    outcome: varchar('outcome', { length: 20 }),
+    alertedAt: timestamp('alerted_at', { withTimezone: true }),
+  },
+  (t) => [index('idx_qa_runs_project_region_started').on(t.projectId, t.regionId, t.startedAt)],
+);
+
 export const qaTestExecutions = pgTable(
   'qa_test_executions',
   {
@@ -367,6 +387,7 @@ export const qaTestExecutions = pgTable(
       .notNull()
       .references(() => qaProjects.id, { onDelete: 'cascade' }),
     regionId: integer('region_id').references(() => regions.id, { onDelete: 'set null' }),
+    runId: integer('run_id').references(() => qaRuns.id, { onDelete: 'cascade' }),
     status: varchar('status', { length: 20 }).notNull(),
     errorMessage: text('error_message'),
     logs: text('logs'),
@@ -380,6 +401,7 @@ export const qaTestExecutions = pgTable(
     index('idx_qa_test_executions_test_id').on(t.testId),
     index('idx_qa_test_executions_project_id').on(t.projectId),
     index('idx_qa_test_executions_region_id').on(t.regionId),
+    index('idx_qa_test_executions_run_id').on(t.runId),
   ],
 );
 

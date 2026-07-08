@@ -455,6 +455,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.delete('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type') as MonitorType;
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     if (type === 'url') await urlMonitorRepo.deleteById(id);
     else if (type === 'api') await apiCheckRepo.deleteById(id);
     else if (type === 'qa') await qaProjectRepo.deleteById(id);
@@ -552,16 +553,13 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       });
       if (!m) return c.json({ error: 'not found' }, 404);
       if (Array.isArray(body.assertions)) {
-        await urlMonitorRepo.deleteAssertionsByMonitorId(id);
-        if (body.assertions.length > 0) {
-          await urlMonitorRepo.createAssertions(
-            id,
-            (body.assertions as Array<{ operator: string; statusCode: number }>).map((a) => ({
-              operator: a.operator,
-              statusCode: Number(a.statusCode),
-            })),
-          );
-        }
+        await urlMonitorRepo.replaceAssertions(
+          id,
+          (body.assertions as Array<{ operator: string; statusCode: number }>).map((a) => ({
+            operator: a.operator,
+            statusCode: Number(a.statusCode),
+          })),
+        );
       }
       return c.json(m);
     }
@@ -570,6 +568,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const rawAssertions = Array.isArray(body.assertions) ? body.assertions : [];
       for (let i = 0; i < rawAssertions.length; i++) {
         const a = rawAssertions[i] as { type?: unknown; operator?: unknown };
+        if (!a || typeof a !== 'object')
+          return c.json({ error: `assertions[${i}] must be an object` }, 400);
         if (typeof a.type !== 'string' || !VALID_ASSERTION_TYPES.has(a.type))
           return c.json({ error: `assertions[${i}].type invalid` }, 400);
         if (typeof a.operator !== 'string' || !VALID_ASSERTION_OPERATORS.has(a.operator))
@@ -599,6 +599,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const port = Number(body.port);
       if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
         return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const hexErr = validatePayloadHex(body.payloadHex);
+      if (hexErr) return c.json({ error: hexErr }, 400);
       const [m] = await tcpMonitorRepo.update(id, {
         name: body.name,
         host: body.host,
@@ -614,6 +616,8 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
       const port = Number(body.port);
       if (!body.name || !body.host || !Number.isInteger(port) || port < 1 || port > 65535)
         return c.json({ error: 'name + host + port (1-65535) required' }, 400);
+      const hexErr = validatePayloadHex(body.payloadHex);
+      if (hexErr) return c.json({ error: hexErr }, 400);
       const [m] = await udpMonitorRepo.update(id, {
         name: body.name,
         host: body.host,
@@ -701,6 +705,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.patch('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     const body = await c.req.json();
     if (typeof body.enabled !== 'boolean') return c.json({ error: 'enabled (bool) required' }, 400);
     if (type === 'url') await urlMonitorRepo.updateEnabled(id, body.enabled);
@@ -719,6 +724,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/:type/:id/run', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     if (type === 'url') {
       const [m] = await urlMonitorRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);

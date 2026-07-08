@@ -109,9 +109,22 @@ export function registerAgentRoutes(app: Hono, { blockingConn }: RouteDeps): voi
     if (unknown.length > 0) {
       return c.json({ error: `unknown testIds for this project: ${unknown.join(',')}` }, 400);
     }
+    // One qa_runs row per region dispatch groups these executions so the
+    // result-writer can detect completion by count and alert once per run.
+    const [run] = await qaProjectRepo.createRun({
+      projectId,
+      regionId: region.id,
+      expectedTests: testIds.length,
+    });
     const executions: { testId: number; executionId: number }[] = [];
     for (const testId of testIds) {
-      const [row] = await qaProjectRepo.createExecution(testId, projectId, 'running', region.id);
+      const [row] = await qaProjectRepo.createExecution(
+        testId,
+        projectId,
+        'running',
+        region.id,
+        run.id,
+      );
       executions.push({ testId, executionId: row.id });
     }
     logger.info(
