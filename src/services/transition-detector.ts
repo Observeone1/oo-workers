@@ -12,7 +12,7 @@
  * normalizeOutcome() folds both vocabularies into 'up' | 'down'.
  */
 
-import { and, desc, eq, gte, lt, lte, ne } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, lt, ne } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
   apiChecks,
@@ -20,6 +20,7 @@ import {
   dbExecutions,
   dbMonitors,
   qaProjects,
+  qaRuns,
   qaTestExecutions,
   regions,
   tcpExecutions,
@@ -260,84 +261,78 @@ export async function maybeAlertOnTransition(
  * test), so "did it flip?" is a per-*run* aggregate question that does
  * not fit maybeAlertOnTransition's single-row exclude.
  *
- * `aggregateOutcome` is this run's verdict (all tests passed = SUCCESS;
- * any failed/errored = FAILED). The previous run is found by anchoring
- * on the most recent exec row started before this run, then bucketing
- * every row within ±30s of that anchor — a QA run fires its tests
- * concurrently so they share a wall-clock bucket within a few seconds,
- * and QA intervals (minutes) are far wider than 30s so the bucket can't
- * bleed into the run before it. If the previous run's aggregate differs
- * from this one's, dispatch outage/recovery.
+ * Driven by the `qa_runs` row (id passed in): its `outcome` is this run's
+ * verdict (all tests passed = SUCCESS; any failed/errored = FAILED). The
+ * previous run is the most recent COMPLETED `qa_runs` row for the SAME
+ * (projectId, regionId) — so a region compares only against its own history
+ * (no cross-region blending) and a master run (region_id NULL) compares
+ * against master runs. If the previous run's outcome differs, dispatch
+ * outage/recovery. This replaces the old ±30s startedAt bucketing.
  *
- * Best-effort and isolated — never throws back into the processor, so a
- * busted alert path can't break run completion.
+ * Best-effort and isolated — never throws back into the caller, so a busted
+ * alert path can't break run completion.
  */
-export async function maybeAlertOnQaRunTransition(
-  projectId: number,
-  runStartTime: Date,
-  aggregateOutcome: 'SUCCESS' | 'FAILED',
-): Promise<void> {
+export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> {
   try {
-    const curOutcome = normalizeOutcome(aggregateOutcome);
+    const [run] = await db
+      .select({
+        projectId: qaRuns.projectId,
+        regionId: qaRuns.regionId,
+        startedAt: qaRuns.startedAt,
+        outcome: qaRuns.outcome,
+      })
+      .from(qaRuns)
+      .where(eq(qaRuns.id, runId))
+      .limit(1);
+    if (!run || !run.outcome) return;
+    const curOutcome = normalizeOutcome(run.outcome);
     if (curOutcome === 'other') return;
 
-    // Anchor: the most recent test-exec row from before this run.
-    const [anchor] = await db
-      .select({ startedAt: qaTestExecutions.startedAt })
-      .from(qaTestExecutions)
+    // Previous completed run for the SAME (project, region). A NULL region
+    // (master run) only matches other master runs; a region only matches its
+    // own runs — region_id scoping is what stops cross-region mis-blending.
+    const [prev] = await db
+      .select({ outcome: qaRuns.outcome })
+      .from(qaRuns)
       .where(
         and(
-          eq(qaTestExecutions.projectId, projectId),
-          lt(qaTestExecutions.startedAt, runStartTime),
+          eq(qaRuns.projectId, run.projectId),
+          run.regionId === null ? isNull(qaRuns.regionId) : eq(qaRuns.regionId, run.regionId),
+          lt(qaRuns.startedAt, run.startedAt),
+          isNotNull(qaRuns.outcome),
         ),
       )
-      .orderBy(desc(qaTestExecutions.startedAt))
+      .orderBy(desc(qaRuns.startedAt))
       .limit(1);
-    if (!anchor) return; // first run — nothing to compare against
-
-    // The previous run's batch: every row within ±30s of the anchor.
-    // The `lt(runStartTime)` guard is load-bearing, not redundant: if an
-    // operator sets a QA interval ≤ ~30s the current run's own rows fall
-    // inside [anchor-30s, anchor+30s] and would poison the "previous"
-    // bucket, making prevOutcome === curOutcome and silently suppressing
-    // every transition. Excluding rows at/after this run's start keeps
-    // the heuristic correct for any configurable interval.
-    const lo = new Date(anchor.startedAt.getTime() - 30_000);
-    const hi = new Date(anchor.startedAt.getTime() + 30_000);
-    const prevRows = await db
-      .select({ status: qaTestExecutions.status })
-      .from(qaTestExecutions)
-      .where(
-        and(
-          eq(qaTestExecutions.projectId, projectId),
-          lt(qaTestExecutions.startedAt, runStartTime),
-          gte(qaTestExecutions.startedAt, lo),
-          lte(qaTestExecutions.startedAt, hi),
-        ),
-      );
-    if (prevRows.length === 0) return;
-
-    const prevOutcome: 'up' | 'down' = prevRows.some((r) => normalizeOutcome(r.status) === 'down')
-      ? 'down'
-      : 'up';
-    if (prevOutcome === curOutcome) return; // no transition
+    if (!prev?.outcome) return; // first run for this (project, region)
+    const prevOutcome = normalizeOutcome(prev.outcome);
+    if (prevOutcome === 'other' || prevOutcome === curOutcome) return; // no transition
 
     const event: 'outage' | 'recovery' = curOutcome === 'down' ? 'outage' : 'recovery';
-    const meta = await monitorMeta('qa', projectId);
+    const meta = await monitorMeta('qa', run.projectId);
     if (!meta) return;
+    let regionSlug: string | null = null;
+    if (run.regionId !== null) {
+      const [r] = await db
+        .select({ slug: regions.slug })
+        .from(regions)
+        .where(eq(regions.id, run.regionId))
+        .limit(1);
+      regionSlug = r?.slug ?? null;
+    }
     await dispatchAlert({
-      monitor: { type: 'qa', id: projectId, name: meta.name, target: meta.target },
+      monitor: { type: 'qa', id: run.projectId, name: meta.name, target: meta.target },
       event,
-      status: aggregateOutcome,
+      status: run.outcome,
       statusCode: null,
       errorMessage: null,
       durationMs: null,
-      startTime: runStartTime.toISOString(),
-      regionSlug: null,
+      startTime: run.startedAt.toISOString(),
+      regionSlug,
     });
   } catch (err) {
     logger.error(
-      `transition-detector: qa-run#${projectId}: ${err instanceof Error ? err.message : err}`,
+      `transition-detector: qa-run#${runId}: ${err instanceof Error ? err.message : err}`,
     );
   }
 }

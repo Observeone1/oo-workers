@@ -21,8 +21,9 @@ import {
 } from '../db/schema.ts';
 import type { MonitorType } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
-import { maybeAlertOnTransition } from './transition-detector.ts';
+import { maybeAlertOnQaRunTransition, maybeAlertOnTransition } from './transition-detector.ts';
 import { emitExecution } from './exec-events.ts';
+import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
 
 const REGION_LIST = (slug: string) => `oo:jobs:${slug}`;
 
@@ -304,8 +305,24 @@ export async function writeAgentResult(
         .where(
           and(eq(qaTestExecutions.id, executionId), eq(qaTestExecutions.regionId, agentRegionId)),
         )
-        .returning({ id: qaTestExecutions.id });
-      return rows.length === 1 ? { updated: true } : { updated: false, reason: 'no_match' };
+        .returning({ id: qaTestExecutions.id, runId: qaTestExecutions.runId });
+      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+
+      // Count-based run completion: a region run reports each test result
+      // separately, so once every expected test has a completedAt we compute
+      // the aggregate, claim the one-shot alert (atomic, wins the concurrent
+      // last-two-results race), and fire the region-scoped transition alert.
+      const runId = rows[0].runId;
+      if (runId !== null) {
+        const progress = await qaProjectRepo.runProgress(runId);
+        if (progress && progress.completed >= progress.expectedTests) {
+          const outcome = progress.downCount > 0 ? 'FAILED' : 'SUCCESS';
+          if (await qaProjectRepo.claimRunAlert(runId, outcome)) {
+            void maybeAlertOnQaRunTransition(runId);
+          }
+        }
+      }
+      return { updated: true };
     }
     default: {
       const _exhaustive: never = type;

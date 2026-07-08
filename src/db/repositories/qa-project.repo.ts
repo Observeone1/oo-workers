@@ -1,6 +1,12 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
-import { monitorRegions, qaGeneratedTests, qaProjects, qaTestExecutions } from '../schema.ts';
+import {
+  monitorRegions,
+  qaGeneratedTests,
+  qaProjects,
+  qaRuns,
+  qaTestExecutions,
+} from '../schema.ts';
 import { projectStalled } from '../../services/exec-projection.ts';
 import {
   deleteObject,
@@ -185,8 +191,59 @@ export const qaProjectRepo = {
     projectId: number,
     status: string,
     regionId: number | null = null,
+    runId: number | null = null,
   ) {
-    return db.insert(qaTestExecutions).values({ testId, projectId, status, regionId }).returning();
+    return db
+      .insert(qaTestExecutions)
+      .values({ testId, projectId, status, regionId, runId })
+      .returning();
+  },
+
+  // A QA run groups the per-test executions. region_id NULL = master-run.
+  createRun(data: { projectId: number; regionId: number | null; expectedTests: number }) {
+    return db.insert(qaRuns).values(data).returning();
+  },
+
+  async findRunById(runId: number) {
+    const [r] = await db.select().from(qaRuns).where(eq(qaRuns.id, runId)).limit(1);
+    return r ?? null;
+  },
+
+  /**
+   * Progress for the count-based completion trigger: how many of the run's
+   * expected tests have a completedAt, and how many of those are "down"
+   * (FAILED/FAILURE/ERROR — the normalizeOutcome down set). A run is done
+   * once `completed >= expectedTests`.
+   */
+  async runProgress(
+    runId: number,
+  ): Promise<{ expectedTests: number; completed: number; downCount: number } | null> {
+    const [row] = await db
+      .select({
+        expectedTests: qaRuns.expectedTests,
+        completed: sql<number>`COUNT(${qaTestExecutions.id}) FILTER (WHERE ${qaTestExecutions.completedAt} IS NOT NULL)::int`,
+        downCount: sql<number>`COUNT(${qaTestExecutions.id}) FILTER (WHERE ${qaTestExecutions.completedAt} IS NOT NULL AND UPPER(${qaTestExecutions.status}) IN ('FAILED','FAILURE','ERROR'))::int`,
+      })
+      .from(qaRuns)
+      .leftJoin(qaTestExecutions, eq(qaTestExecutions.runId, qaRuns.id))
+      .where(eq(qaRuns.id, runId))
+      .groupBy(qaRuns.id, qaRuns.expectedTests);
+    return row ?? null;
+  },
+
+  /**
+   * Atomically claim the one-shot alert for a run: sets outcome + alertedAt
+   * only if alertedAt was still NULL. Returns true iff THIS call won the
+   * claim, so exactly one caller (even under the concurrent last-two-results
+   * race) proceeds to fire the transition alert.
+   */
+  async claimRunAlert(runId: number, outcome: 'SUCCESS' | 'FAILED'): Promise<boolean> {
+    const rows = await db
+      .update(qaRuns)
+      .set({ outcome, alertedAt: new Date() })
+      .where(and(eq(qaRuns.id, runId), isNull(qaRuns.alertedAt)))
+      .returning({ id: qaRuns.id });
+    return rows.length === 1;
   },
 
   /**
