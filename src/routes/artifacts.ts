@@ -9,6 +9,7 @@
 import type { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth.ts';
 import { getObjectResponse } from '../services/object-storage.ts';
+import { logger } from '../utils/logger.ts';
 
 const ARTIFACT_KEY_RE = /^qa-projects\/\d+-[a-z0-9-]+\/runs\/\d+\/[\w.-]+$/;
 
@@ -24,7 +25,12 @@ export function registerArtifactsRoutes(app: Hono): void {
       res = await getObjectResponse(key);
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
-      return c.json({ error: 'fetch failed', detail: String(err) }, status === 404 ? 404 : 502);
+      // Keep storage internals (endpoint/path/driver detail) out of the client
+      // response; log them instead.
+      logger.error(
+        `artifact fetch failed for key ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return c.json({ error: 'fetch failed' }, status === 404 ? 404 : 502);
     }
     const filename = key.split('/').pop() ?? 'artifact';
     const contentType = res.headers.get('content-type') ?? 'application/octet-stream';

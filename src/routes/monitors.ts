@@ -455,6 +455,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.delete('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type') as MonitorType;
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     if (type === 'url') await urlMonitorRepo.deleteById(id);
     else if (type === 'api') await apiCheckRepo.deleteById(id);
     else if (type === 'qa') await qaProjectRepo.deleteById(id);
@@ -704,6 +705,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.patch('/api/monitors/:type/:id', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     const body = await c.req.json();
     if (typeof body.enabled !== 'boolean') return c.json({ error: 'enabled (bool) required' }, 400);
     if (type === 'url') await urlMonitorRepo.updateEnabled(id, body.enabled);
@@ -722,6 +724,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.post('/api/monitors/:type/:id/run', async (c) => {
     const type = c.req.param('type');
     const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     if (type === 'url') {
       const [m] = await urlMonitorRepo.findById(id);
       if (!m) return c.json({ error: 'not found' }, 404);
