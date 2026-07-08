@@ -15,6 +15,11 @@ export const DEFAULTS = {
   SCHEDULER_TICK_MS: 5_000,
   UI_POLL_MS: 5_000,
   RESPONSE_BODY_TRUNCATE_CHARS: 5_000,
+  // Hard cap on bytes read from an API-check response body. The read is
+  // bounded (and covered by the request timeout) so a huge or slow-drip
+  // response can't exhaust the worker's memory. Generous vs the 5k stored
+  // truncation so assertions still see plenty of body.
+  RESPONSE_BODY_MAX_BYTES: 2_000_000,
   // Hard cap on list-endpoint responses (incidents, status pages, API
   // keys). Listings used to return ALL rows unbounded — a long-lived
   // status page accumulating incidents would eventually OOM the worker.

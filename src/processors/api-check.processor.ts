@@ -7,12 +7,42 @@ import { evaluateAssertions } from '../services/api-assertion.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 import { emitExecution } from '../services/exec-events.ts';
 
+/**
+ * Read a response body as text, capped at `maxBytes`. Bounds memory on a huge
+ * response; combined with the still-armed abort timer in the caller, it also
+ * bounds a slow-drip one. Excess is discarded and the stream cancelled.
+ */
+async function readBodyCapped(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return response.text();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let text = '';
+  let total = 0;
+  try {
+    while (total < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.byteLength;
+        text += decoder.decode(value, { stream: true });
+      }
+    }
+  } finally {
+    text += decoder.decode();
+    await reader.cancel().catch(() => {});
+  }
+  return text;
+}
+
 export const apiCheckProcessor = async (job: Job) => {
   const { executionId, apiCheck, assertions } = job.data;
   const timeoutMs = apiCheck.timeoutMs || DEFAULTS.API_TIMEOUT_MS;
 
   logger.info(`Processing API Check job ${job.id} (Execution: ${executionId})`);
 
+  // Hoisted so the catch below can persist responseTimeMs on a FAILED/timed-out
+  // execution — the old code scoped startTime inside the try and wrote null.
+  const startTime = Date.now();
   try {
     const headers: Record<string, string> = { ...(apiCheck.headers ?? {}) };
 
@@ -34,12 +64,20 @@ export const apiCheckProcessor = async (job: Job) => {
       }
     }
 
-    const startTime = Date.now();
-    const response = await fetch(apiCheck.url, requestOptions);
-    clearTimeout(timeout);
+    let response: Response;
+    let body: string;
+    try {
+      response = await fetch(apiCheck.url, requestOptions);
+      // Read the body while the abort timer is still armed and cap the bytes,
+      // so a slow-drip or huge response can't hang or OOM the worker.
+      body = await readBodyCapped(response, DEFAULTS.RESPONSE_BODY_MAX_BYTES);
+    } finally {
+      // Always clear the timer — including on a non-abort fetch failure, which
+      // the old success-only clearTimeout() leaked until it fired.
+      clearTimeout(timeout);
+    }
 
     const responseTime = Date.now() - startTime;
-    const body = await response.text();
 
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
@@ -91,6 +129,7 @@ export const apiCheckProcessor = async (job: Job) => {
 
     return { success: true };
   } catch (error) {
+    const responseTime = Date.now() - startTime;
     const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
     const errorMessage = classifyFetchError(error, apiCheck.url, timeoutMs);
 
@@ -99,12 +138,14 @@ export const apiCheckProcessor = async (job: Job) => {
     const finalStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
     await apiCheckRepo.updateExecution(executionId, {
       status: finalStatus,
+      responseTimeMs: responseTime,
       errorMessage,
       endTime: new Date(),
     });
     emitExecution('api', apiCheck.id, {
       id: executionId,
       status: finalStatus,
+      responseTimeMs: responseTime,
       errorMessage,
     });
 
