@@ -8,6 +8,7 @@ public/
 .DS_Store
 playwright-report/
 test-results/
+coverage/
 tests/ui/screenshots/
 # qa-project worker writes generated specs to tests/<projectId>-<ts>/ at
 # runtime — never source. (Real e2e specs live in tests/ui/.)
