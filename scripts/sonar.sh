@@ -2,6 +2,9 @@
 # Runs a SonarQube scan against $SONAR_HOST_URL using $SONAR_TOKEN.
 # Locally: export SONAR_HOST_URL / SONAR_TOKEN yourself, or `source ../../tools/sonarqube/.env`
 # from the workspace root first. In CI these come from repo secrets.
+#
+# For coverage to be imported, generate both lcov files first:
+#   bun run test:coverage && bun run test:integration:coverage
 set -euo pipefail
 
 : "${SONAR_HOST_URL:?SONAR_HOST_URL is not set}"
