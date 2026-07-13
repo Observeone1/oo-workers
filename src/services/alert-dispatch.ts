@@ -16,11 +16,10 @@
 
 import { logger } from '../utils/logger.ts';
 import { sendEmail } from './email.ts';
-import {
-  monitorAlertChannelRepo,
-  type AlertChannelRow,
-  type ChannelType,
-  type MonitorType,
+import type {
+  AlertChannelRow,
+  ChannelType,
+  MonitorType,
 } from '../db/repositories/alert-channel.repo.ts';
 
 type AlertEvent = 'outage' | 'recovery' | 'test';
@@ -290,6 +289,11 @@ export async function sendToChannel(channel: AlertChannelRow, ctx: AlertContext)
 export async function dispatchAlert(ctx: AlertContext): Promise<void> {
   let channels: AlertChannelRow[];
   try {
+    // Lazy import: the repo pulls in config/db.ts, which requires DATABASE_URL
+    // at module scope. dispatchAlert is this module's only DB touchpoint, so
+    // deferring it keeps the formatters + sendToChannel importable in DB-less
+    // contexts (unit tests, agent role) — same posture as scheduler-jobid.
+    const { monitorAlertChannelRepo } = await import('../db/repositories/alert-channel.repo.ts');
     channels = await monitorAlertChannelRepo.forMonitor(ctx.monitor.type, ctx.monitor.id);
   } catch (err) {
     logger.error(`alert dispatch: lookup failed: ${err instanceof Error ? err.message : err}`);
