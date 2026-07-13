@@ -57,14 +57,14 @@ const recoveryCtx: AlertContext = {
 };
 
 function lastBody(): any {
-  return received[received.length - 1].body;
+  return received.at(-1)!.body;
 }
 
 describe('sendToChannel — webhook', () => {
   test('POSTs the full machine-readable payload as JSON', async () => {
     const ok = await sendToChannel(channel('webhook', { url: `${baseUrl}/hook` }), outageCtx);
     expect(ok).toBe(true);
-    const { contentType, body } = received[received.length - 1];
+    const { contentType, body } = received.at(-1)!;
     expect(contentType).toBe('application/json');
     expect(body).toEqual({
       event: 'outage',
