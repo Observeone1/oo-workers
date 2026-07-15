@@ -30,37 +30,37 @@ export async function startWorkers(redisUrl: string): Promise<() => Promise<void
 
   const apiCheckWorker = new Worker('api-check', apiCheckProcessor, {
     connection,
-    concurrency: parseInt(process.env.API_CHECK_CONCURRENCY || '10'),
+    concurrency: Number.parseInt(process.env.API_CHECK_CONCURRENCY || '10'),
   });
 
   const urlMonitorWorker = new Worker('url-monitor', urlMonitorProcessor, {
     connection,
-    concurrency: parseInt(process.env.URL_MONITOR_CONCURRENCY || '20'),
+    concurrency: Number.parseInt(process.env.URL_MONITOR_CONCURRENCY || '20'),
   });
 
   const qaProjectWorker = new Worker('qa-project', createQaProjectProcessor(connection), {
     connection,
-    concurrency: parseInt(process.env.QA_PROJECT_CONCURRENCY || '5'),
+    concurrency: Number.parseInt(process.env.QA_PROJECT_CONCURRENCY || '5'),
   });
 
   const tcpMonitorWorker = new Worker('tcp-monitor', tcpMonitorProcessor, {
     connection,
-    concurrency: parseInt(process.env.TCP_MONITOR_CONCURRENCY || '20'),
+    concurrency: Number.parseInt(process.env.TCP_MONITOR_CONCURRENCY || '20'),
   });
 
   const udpMonitorWorker = new Worker('udp-monitor', udpMonitorProcessor, {
     connection,
-    concurrency: parseInt(process.env.UDP_MONITOR_CONCURRENCY || '20'),
+    concurrency: Number.parseInt(process.env.UDP_MONITOR_CONCURRENCY || '20'),
   });
 
   const dbMonitorWorker = new Worker('db-monitor', dbMonitorProcessor, {
     connection,
-    concurrency: parseInt(process.env.DB_MONITOR_CONCURRENCY || '20'),
+    concurrency: Number.parseInt(process.env.DB_MONITOR_CONCURRENCY || '20'),
   });
 
   const tlsMonitorWorker = new Worker('tls-monitor', tlsMonitorProcessor, {
     connection,
-    concurrency: parseInt(process.env.TLS_MONITOR_CONCURRENCY || '20'),
+    concurrency: Number.parseInt(process.env.TLS_MONITOR_CONCURRENCY || '20'),
   });
 
   apiCheckWorker.on('completed', (job) => logger.info(`✅ api-check #${job.id} completed`));

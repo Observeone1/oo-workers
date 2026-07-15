@@ -84,7 +84,7 @@ const evaluateAssertion = async (
 };
 
 const evaluateStatusCode = (assertion: ApiAssertion, actualStatus: number): AssertionResult => {
-  const expectedValue = assertion.value ? parseInt(assertion.value) : 200;
+  const expectedValue = assertion.value ? Number.parseInt(assertion.value) : 200;
   const passed = compareValues(actualStatus, expectedValue, assertion.operator);
   return {
     type: 'status_code',
@@ -98,7 +98,7 @@ const evaluateStatusCode = (assertion: ApiAssertion, actualStatus: number): Asse
 };
 
 const evaluateResponseTime = (assertion: ApiAssertion, actualTime: number): AssertionResult => {
-  const expectedValue = assertion.value ? parseInt(assertion.value) : 1000;
+  const expectedValue = assertion.value ? Number.parseInt(assertion.value) : 1000;
   const passed = compareValues(actualTime, expectedValue, assertion.operator);
   return {
     type: 'response_time',

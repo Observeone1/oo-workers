@@ -102,7 +102,7 @@ function encodeKey(key: string): string {
   return key
     .split('/')
     .map((seg) =>
-      encodeURIComponent(seg).replace(
+      encodeURIComponent(seg).replaceAll(
         /[!'()*]/g,
         (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
       ),
@@ -264,11 +264,11 @@ export function isLegacyQaScriptKey(key: string): boolean {
 function slug(input: string): string {
   const normalized = input
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replaceAll(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  const capped = normalized.slice(0, 40).replace(/-+$/g, '');
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '');
+  const capped = normalized.slice(0, 40).replaceAll(/-+$/g, '');
   return capped || 'untitled';
 }
 

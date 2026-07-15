@@ -68,7 +68,7 @@ export async function renderEditor(id: number): Promise<void> {
                   .map(
                     (u) => `
               <div class="inc-upd">
-                <div class="inc-upd-dot" style="background:${SEV_COLOR[u.severity as Severity] ?? 'var(--up)'}"></div>
+                <div class="inc-upd-dot" style="background:${SEV_COLOR[u.severity] ?? 'var(--up)'}"></div>
                 <div class="inc-upd-body">
                   <div class="inc-upd-meta">
                     ${sevPill(u.severity)}

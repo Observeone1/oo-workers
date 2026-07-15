@@ -17,7 +17,7 @@
  */
 
 function escapeHtml(s: string): string {
-  return s.replace(
+  return s.replaceAll(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );
@@ -30,13 +30,13 @@ export function renderIncidentMarkdown(raw: string): string {
   // 2. Re-introduce only literal, known-safe tags into escaped text.
   //    Code first so `**` inside a code span is not bolded.
   const blocks = escaped
-    .replace(/\r\n/g, '\n')
+    .replaceAll(/\r\n/g, '\n')
     .split(/\n[ \t]*\n+/) // blank line → paragraph break
     .map((block) => {
       const inline = block
-        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n/g, '<br>'); // single newline → <br>
+        .replaceAll(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replaceAll(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replaceAll(/\n/g, '<br>'); // single newline → <br>
       return inline.trim() ? `<p>${inline.trim()}</p>` : '';
     })
     .filter(Boolean);

@@ -146,7 +146,7 @@ function formatFor(
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;');
 }
 
 // Email gets its own formatting (not the markdown headline/description the
@@ -165,7 +165,7 @@ const EMAIL_TONE = {
 
 function whenUtc(iso: string): string {
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
 function emailFields(ctx: AlertContext): Array<[string, string, boolean]> {
