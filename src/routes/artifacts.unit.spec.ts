@@ -87,7 +87,7 @@ describe('GET /api/artifacts', () => {
   });
 
   test('maps other storage failures to an opaque 502', async () => {
-    getObjectResponse.mockRejectedValue(new Error('endpoint http://rustfs:9000 down'));
+    getObjectResponse.mockRejectedValue(new Error('storage endpoint rustfs:9000 down'));
 
     const res = await makeApp().request(`/api/artifacts?key=${encodeURIComponent(GOOD_KEY)}`);
     expect(res.status).toBe(502);

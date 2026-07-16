@@ -338,10 +338,10 @@ describe('create validation per type', () => {
     await req('/api/monitors/tls', 'POST', {
       name: 'x',
       host: 'h',
-      expectCnRegex: '^\\*\\.example\\.com$',
+      expectCnRegex: String.raw`^\*\.example\.com$`,
     });
     expect(tlsRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ expectCnRegex: '^\\*\\.example\\.com$' }),
+      expect.objectContaining({ expectCnRegex: String.raw`^\*\.example\.com$` }),
     );
   });
 

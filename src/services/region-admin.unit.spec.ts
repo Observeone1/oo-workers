@@ -17,35 +17,43 @@ interface Op {
 const ops: Op[] = [];
 let nextId = 100;
 
-function makeTx() {
+// Chain links live at module level to keep function nesting flat (S2004).
+function txInsert(table: unknown) {
   return {
-    insert: (table: unknown) => ({
-      values: (values: Record<string, unknown>) => ({
-        returning: async () => {
-          const row = { id: nextId++, ...values };
-          ops.push({ op: 'insert', table, values: row });
-          return [row];
-        },
-      }),
-    }),
-    update: (table: unknown) => ({
-      set: (values: Record<string, unknown>) => ({
-        where: () => {
-          const done = ops.push({ op: 'update', table, values });
-          void done;
-          const result = Promise.resolve([]);
-          return Object.assign(result, {
-            returning: async () => [{ id: 1, ...values }],
-          });
-        },
-      }),
-    }),
-    delete: (table: unknown) => ({
-      where: async () => {
-        ops.push({ op: 'delete', table });
+    values: (values: Record<string, unknown>) => ({
+      returning: async () => {
+        const row = { id: nextId++, ...values };
+        ops.push({ op: 'insert', table, values: row });
+        return [row];
       },
     }),
   };
+}
+
+function txUpdate(table: unknown) {
+  return {
+    set: (values: Record<string, unknown>) => ({
+      where: () => {
+        ops.push({ op: 'update', table, values });
+        const result = Promise.resolve([]);
+        return Object.assign(result, {
+          returning: async () => [{ id: 1, ...values }],
+        });
+      },
+    }),
+  };
+}
+
+function txDelete(table: unknown) {
+  return {
+    where: async () => {
+      ops.push({ op: 'delete', table });
+    },
+  };
+}
+
+function makeTx() {
+  return { insert: txInsert, update: txUpdate, delete: txDelete };
 }
 
 import {
