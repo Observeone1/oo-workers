@@ -180,7 +180,7 @@ describe.skipIf(!isStorageConfigured())('qa-on-agents', () => {
 
     const [exec] = await db.select().from(qaTestExecutions)
       .where(and(eq(qaTestExecutions.projectId, projectId), eq(qaTestExecutions.testId, failingTestId)));
-    const body = await getObject(exec.traceUrl!);
+    const body = await getObject(exec.traceUrl);
     expect(body.length).toBeGreaterThan(0);
   });
 

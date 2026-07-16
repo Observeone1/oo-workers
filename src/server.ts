@@ -144,7 +144,7 @@ export function startServer(connection: Redis, port: number) {
     sessionRepo.deleteExpired().catch((err) => {
       logger.error(`session reap failed: ${err instanceof Error ? err.message : err}`);
     });
-  void reap();
+  reap();
   const reaper = setInterval(reap, 24 * 60 * 60 * 1000);
 
   return async () => {

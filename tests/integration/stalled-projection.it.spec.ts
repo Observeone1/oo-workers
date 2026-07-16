@@ -10,9 +10,8 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
-import { acquireRedisDb, startTestServer } from './_harness.ts';
+import { acquireRedisDb, startTestServer, connectDb } from './_harness.ts';
 import { db } from '../../src/config/db.ts';
 import { users, sessions } from '../../src/db/schema.ts';
 import { authService } from '../../src/services/auth.service.ts';
@@ -26,14 +25,14 @@ let serverCtx: Awaited<ReturnType<typeof startTestServer>>;
 let base = '';
 let hdr: Record<string, string>;
 let userId = -1;
-let sql: ReturnType<typeof postgres>;
+let sql: ReturnType<typeof connectDb>;
 let urlMonitorId = -1;
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
   serverCtx = await startTestServer(redisCtx.redisUrl);
   base = serverCtx.url;
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = connectDb();
 
   const u = await authService.register(EMAIL, PW, 'Stalled Projection Test');
   userId = u.id;

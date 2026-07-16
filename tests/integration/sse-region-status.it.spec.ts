@@ -15,21 +15,20 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { sql as drizzleSql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
-import postgres from 'postgres';
-import { acquireRedisDb } from './_harness.ts';
+import { acquireRedisDb, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 import { tickRegionStatus } from '../../src/scheduler.ts';
 
 const TAG = `sse-rs-${Date.now()}`;
 
 let redisCtx: Awaited<ReturnType<typeof acquireRedisDb>>;
-let sql: ReturnType<typeof postgres>;
+let sql: ReturnType<typeof connectDb>;
 let apiKeyIds: number[] = [];
 let regionIds: number[] = [];
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = connectDb();
 
   // Two regions: A starts online (last_seen_at = NOW()), B starts offline.
   for (const suffix of ['a', 'b']) {

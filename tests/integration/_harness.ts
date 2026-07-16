@@ -18,6 +18,16 @@ import type { IntegrationCtx } from './setup.ts';
 
 export { startWorkers };
 
+/**
+ * Connects to the shared testcontainer Postgres via DATABASE_URL (set by
+ * setup.ts before any spec runs). Centralised here so specs that talk to
+ * the shared container DB directly — rather than a per-test DB from
+ * createTestDb() — don't each repeat the same connection line.
+ */
+export function connectDb(): ReturnType<typeof postgres> {
+  return postgres(process.env.DATABASE_URL);
+}
+
 function ctx(): IntegrationCtx {
   const c = globalThis.__OO_IT_CTX__;
   if (!c)

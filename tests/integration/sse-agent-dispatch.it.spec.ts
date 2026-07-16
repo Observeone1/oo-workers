@@ -22,8 +22,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import postgres from 'postgres';
-import { acquireRedisDb } from './_harness.ts';
+import { acquireRedisDb, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 import { writeAgentResult } from '../../src/services/agent-dispatch.ts';
 
@@ -60,7 +59,7 @@ let apiKeyId = 0;
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = connectDb();
 
   // regions.api_key_id is NOT NULL with FK to api_keys. Seed a throwaway
   // key first so the region insert satisfies the constraint.

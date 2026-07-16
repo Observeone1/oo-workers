@@ -45,9 +45,8 @@ export async function signedFetchRaw(
   const amzDate = now.toISOString().replaceAll(/[-:]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
 
-  const payloadHash = isStream
-    ? 'UNSIGNED-PAYLOAD'
-    : sha256Hex((body as Buffer | null) ?? Buffer.alloc(0));
+  const bufferBody = body instanceof Buffer ? body : Buffer.alloc(0);
+  const payloadHash = isStream ? 'UNSIGNED-PAYLOAD' : sha256Hex(bufferBody);
 
   const baseHeaders: Record<string, string> = {
     host: url.host,
