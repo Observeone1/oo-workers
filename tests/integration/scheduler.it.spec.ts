@@ -15,8 +15,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import postgres from 'postgres';
-import { startWorkers } from './_harness.ts';
+import { startWorkers, connectDb } from './_harness.ts';
 
 const INTERVAL = 10; // seconds — tight so the test completes in ~35s
 const WAIT_TICKS = 2; // expect at least this many executions
@@ -56,7 +55,7 @@ afterAll(async () => {
   // Stop workers FIRST — prevents scheduler from re-enqueuing during DB deletes.
   if (stopWorkers) await stopWorkers();
 
-  const sql = postgres(process.env.DATABASE_URL);
+  const sql = connectDb();
   await cleanup(sql);
   await sql.end();
 
@@ -67,7 +66,7 @@ describe('scheduler', () => {
   test(
     `fires url-monitor and api-check within ${WAIT_MS / 1000}s (interval=${INTERVAL}s)`,
     async () => {
-      const sql = postgres(process.env.DATABASE_URL);
+      const sql = connectDb();
 
       const [urlMon] = await sql`
         INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
@@ -93,7 +92,7 @@ describe('scheduler', () => {
 
       await sql.end();
 
-      const sql2 = postgres(process.env.DATABASE_URL);
+      const sql2 = connectDb();
       const deadline = Date.now() + WAIT_MS;
       let urlRow: { n: string; ok: string } = { n: '0', ok: '0' };
       let apiRow: { n: string; ok: string } = { n: '0', ok: '0' };

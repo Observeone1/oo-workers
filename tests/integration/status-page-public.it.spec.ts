@@ -10,20 +10,19 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import postgres from 'postgres';
-import { acquireRedisDb, startTestServer } from './_harness.ts';
+import { acquireRedisDb, startTestServer, connectDb } from './_harness.ts';
 
 let redisCtx: Awaited<ReturnType<typeof acquireRedisDb>>;
 let serverCtx: Awaited<ReturnType<typeof startTestServer>>;
 let base = '';
 let slug = '';
-let sql: ReturnType<typeof postgres>;
+let sql: ReturnType<typeof connectDb>;
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
   serverCtx = await startTestServer(redisCtx.redisUrl);
   base = serverCtx.url;
-  sql = postgres(process.env.DATABASE_URL);
+  sql = connectDb();
 
   slug = `sp-${Date.now()}`;
 

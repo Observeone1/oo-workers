@@ -31,8 +31,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import postgres from 'postgres';
-import { startWorkers } from './_harness.ts';
+import { startWorkers, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 
 const INTERVAL = 10; // seconds — tight so the test completes within ~35s
@@ -40,7 +39,7 @@ const INTERVAL = 10; // seconds — tight so the test completes within ~35s
 let stopWorkers: (() => Promise<void>) | null = null;
 let httpServer: Server;
 let targetUrl = '';
-let sql: ReturnType<typeof postgres>;
+let sql: ReturnType<typeof connectDb>;
 const insertedIds: Record<string, number> = {};
 
 /** Subscribe once for a specific (type, monitorId), resolve on first match,
@@ -75,7 +74,7 @@ beforeAll(async () => {
   targetUrl = `http://127.0.0.1:${addr.port}`;
 
   stopWorkers = await startWorkers(process.env.REDIS_URL);
-  sql = postgres(process.env.DATABASE_URL);
+  sql = connectDb();
 }, 30_000);
 
 afterAll(async () => {
