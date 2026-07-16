@@ -9,17 +9,14 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
-const list = mock(async (): Promise<unknown[]> => []);
-const create = mock(async (_v: Record<string, unknown>): Promise<unknown[]> => []);
-const findById = mock(async (_id: number): Promise<unknown> => null);
-const deleteById = mock(async (_id: number): Promise<void> => {});
+import { alertChannelRepoMock, mockAlertChannelRepo } from '../test-support/shared-mocks.ts';
+
+const { list, create, findById, deleteById } = alertChannelRepoMock;
 const sendToChannel = mock(async (): Promise<boolean> => true);
 const isLocalMailpit = mock((): boolean => false);
 const findRecentTestMessage = mock(async (): Promise<unknown> => ({ delivered: false }));
 
-mock.module('../db/repositories/alert-channel.repo.ts', () => ({
-  alertChannelRepo: { list, create, findById, deleteById },
-}));
+mockAlertChannelRepo();
 mock.module('../services/alert-dispatch.ts', () => ({ sendToChannel }));
 mock.module('../services/mailpit.ts', () => ({ isLocalMailpit, findRecentTestMessage }));
 

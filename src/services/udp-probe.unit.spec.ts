@@ -131,17 +131,19 @@ describe('udpProbe', () => {
   });
 
   test('maps DNS failures to a host-not-found message', async () => {
+    // Generous budget: the NXDOMAIN answer itself can take seconds on a
+    // loaded resolver, and the probe folds DNS time into its one timeout.
     const result = await udpProbe({
       host: 'definitely-not-a-real-host.invalid',
       port: 53,
       payload: null,
       expectResponse: false,
-      timeoutMs: 2000,
+      timeoutMs: 10_000,
     });
 
     expect(result.ok).toBe(false);
     expect(result.errorMessage).toContain('DNS resolution failed');
-  });
+  }, 15_000);
 });
 
 describe('parseHexPayload', () => {

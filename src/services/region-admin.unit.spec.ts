@@ -48,20 +48,24 @@ function makeTx() {
   };
 }
 
-const findBySlug = mock(async (_slug: string): Promise<unknown> => null);
-const findById = mock(async (_id: number): Promise<unknown> => null);
+import {
+  KEY_PREFIX_LEN,
+  mockAuthMiddleware,
+  mockRegionRepo,
+  regionRepoMock,
+} from '../test-support/shared-mocks.ts';
+
+const { findBySlug, findById } = regionRepoMock;
 
 mock.module('../config/db.ts', () => ({
   db: { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()) },
   sql: {},
 }));
-mock.module('../db/repositories/region.repo.ts', () => ({
-  regionRepo: { findBySlug, findById },
-}));
+mockRegionRepo();
+mockAuthMiddleware();
 
 const { createRegionWithKey, deleteRegion, RegionAdminError, rotateRegionKey } =
   await import('./region-admin.ts');
-const { KEY_PREFIX_LEN } = await import('../middleware/auth.ts');
 const schema = await import('../db/schema.ts');
 
 beforeEach(() => {

@@ -10,36 +10,27 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
-const needsSetup = mock(async (): Promise<boolean> => false);
-const register = mock(async (_e: string, _p: string, _n: string): Promise<unknown> => ({}));
-const createSession = mock(async (_u: unknown): Promise<string> => 'tok');
-const login = mock(async (_e: string, _p: string): Promise<unknown> => null);
-const logoutSession = mock(async (_t: string): Promise<void> => {});
-const validateSession = mock(async (_t: string): Promise<unknown> => null);
-const updateProfile = mock(async (_id: number, _p: unknown): Promise<unknown> => ({}));
-const changePassword = mock(async (): Promise<{ ok: boolean; error?: string }> => ({ ok: true }));
-const validateKey = mock(async (_k: string): Promise<unknown> => null);
+import {
+  authMiddlewareMock,
+  authServiceMock,
+  mockAuthMiddleware,
+  mockAuthService,
+} from '../test-support/shared-mocks.ts';
 
-/** What extractKey should return for the current request. */
-const keyCtl = { value: null as string | null };
+const {
+  needsSetup,
+  register,
+  createSession,
+  login,
+  logoutSession,
+  validateSession,
+  updateProfile,
+  changePassword,
+} = authServiceMock;
+const { validateKey, keyCtl } = authMiddlewareMock;
 
-mock.module('../services/auth.service.ts', () => ({
-  SESSION_COOKIE: 'oo_session',
-  authService: {
-    needsSetup,
-    register,
-    createSession,
-    login,
-    logoutSession,
-    validateSession,
-    updateProfile,
-    changePassword,
-  },
-}));
-mock.module('../middleware/auth.ts', () => ({
-  extractKey: () => keyCtl.value,
-  validateKey,
-}));
+mockAuthService();
+mockAuthMiddleware();
 
 const { registerAuthRoutes } = await import('./auth.ts');
 

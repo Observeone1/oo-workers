@@ -16,7 +16,9 @@ const incidentRepo = {
   updateTitle: mock(async (_id: number, _t: string): Promise<void> => {}),
   deleteById: mock(async (_id: number): Promise<void> => {}),
 };
-const findById = mock(async (_id: number): Promise<unknown> => null);
+import { mockStatusPageRepo, statusPageRepoMock } from '../test-support/shared-mocks.ts';
+
+const { findById } = statusPageRepoMock;
 
 const SEVERITIES = ['investigating', 'identified', 'monitoring', 'resolved'] as const;
 
@@ -24,9 +26,7 @@ mock.module('../db/repositories/incident.repo.ts', () => ({
   incidentRepo,
   SEVERITIES,
 }));
-mock.module('../db/repositories/status-page.repo.ts', () => ({
-  statusPageRepo: { findById },
-}));
+mockStatusPageRepo();
 
 const { registerIncidentRoutes } = await import('./incidents.ts');
 

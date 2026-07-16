@@ -8,23 +8,13 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
-const pageRepo = {
-  list: mock(async (): Promise<unknown[]> => []),
-  create: mock(async (_v: Record<string, unknown>): Promise<unknown[]> => []),
-  findBySlug: mock(async (_s: string): Promise<unknown> => null),
-  findById: mock(async (_id: number): Promise<unknown> => null),
-  update: mock(async (_id: number, _p: Record<string, unknown>): Promise<void> => {}),
-  deleteById: mock(async (_id: number): Promise<void> => {}),
-};
-const monitorRepo = {
-  forPage: mock(async (_id: number): Promise<unknown[]> => []),
-  set: mock(async (_id: number, _b: unknown[]): Promise<void> => {}),
-};
+import {
+  mockStatusPageRepo,
+  statusPageMonitorRepoMock as monitorRepo,
+  statusPageRepoMock as pageRepo,
+} from '../test-support/shared-mocks.ts';
 
-mock.module('../db/repositories/status-page.repo.ts', () => ({
-  statusPageRepo: pageRepo,
-  statusPageMonitorRepo: monitorRepo,
-}));
+mockStatusPageRepo();
 
 const { registerStatusPageRoutes } = await import('./status-pages.ts');
 

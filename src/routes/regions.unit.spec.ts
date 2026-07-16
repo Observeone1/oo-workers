@@ -18,14 +18,14 @@ class FakeRegionAdminError extends Error {
   }
 }
 
-const list = mock(async (): Promise<unknown[]> => []);
+import { mockRegionRepo, regionRepoMock } from '../test-support/shared-mocks.ts';
+
+const { list } = regionRepoMock;
 const createRegionWithKey = mock(async (_s: string, _l: string): Promise<unknown> => ({}));
 const rotateRegionKey = mock(async (_id: number): Promise<unknown> => ({}));
 const deleteRegion = mock(async (_id: number): Promise<void> => {});
 
-mock.module('../db/repositories/region.repo.ts', () => ({
-  regionRepo: { list },
-}));
+mockRegionRepo();
 mock.module('../services/region-admin.ts', () => ({
   RegionAdminError: FakeRegionAdminError,
   createRegionWithKey,
