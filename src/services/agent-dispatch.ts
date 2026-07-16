@@ -182,22 +182,7 @@ export async function writeAgentResult(
         })
         .where(and(eq(tcpExecutions.id, executionId), eq(tcpExecutions.regionId, agentRegionId)))
         .returning({ id: tcpExecutions.id, monitorId: tcpExecutions.tcpMonitorId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('tcp', rows[0].monitorId, executionId, status, {
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('tcp', rows[0].monitorId, {
-        id: executionId,
-        status,
-        latencyMs: body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
+      return finishLatencyResult('tcp', rows, body, agentRegionId);
     }
     case 'udp': {
       const rows = await db
@@ -211,22 +196,7 @@ export async function writeAgentResult(
         })
         .where(and(eq(udpExecutions.id, executionId), eq(udpExecutions.regionId, agentRegionId)))
         .returning({ id: udpExecutions.id, monitorId: udpExecutions.udpMonitorId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('udp', rows[0].monitorId, executionId, status, {
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('udp', rows[0].monitorId, {
-        id: executionId,
-        status,
-        latencyMs: body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
+      return finishLatencyResult('udp', rows, body, agentRegionId);
     }
     case 'db': {
       const rows = await db
@@ -239,22 +209,7 @@ export async function writeAgentResult(
         })
         .where(and(eq(dbExecutions.id, executionId), eq(dbExecutions.regionId, agentRegionId)))
         .returning({ id: dbExecutions.id, monitorId: dbExecutions.dbMonitorId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('db', rows[0].monitorId, executionId, status, {
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('db', rows[0].monitorId, {
-        id: executionId,
-        status,
-        latencyMs: body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
+      return finishLatencyResult('db', rows, body, agentRegionId);
     }
     case 'tls': {
       const rows = await db
@@ -270,22 +225,7 @@ export async function writeAgentResult(
         })
         .where(and(eq(tlsExecutions.id, executionId), eq(tlsExecutions.regionId, agentRegionId)))
         .returning({ id: tlsExecutions.id, monitorId: tlsExecutions.tlsMonitorId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('tls', rows[0].monitorId, executionId, status, {
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('tls', rows[0].monitorId, {
-        id: executionId,
-        status,
-        latencyMs: body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
+      return finishLatencyResult('tls', rows, body, agentRegionId);
     }
     case 'qa': {
       // QA project runs create exec rows per-test inside the processor (master-run)
@@ -329,4 +269,35 @@ export async function writeAgentResult(
       throw new Error(`unhandled monitor type: ${_exhaustive}`);
     }
   }
+}
+
+/**
+ * Shared tail for the simple latency-style kinds (tcp/udp/db/tls): bail when
+ * the region-scoped UPDATE matched nothing, fire the transition detector on
+ * terminal statuses, and emit the live execution event. url/api keep their
+ * own tails because their alert/event payloads carry extra HTTP fields.
+ */
+function finishLatencyResult(
+  kind: 'tcp' | 'udp' | 'db' | 'tls',
+  rows: Array<{ id: number; monitorId: number }>,
+  body: AgentResultBody,
+  agentRegionId: number,
+): WriteResultOutcome {
+  const { executionId, status, errorMessage } = body;
+  if (rows.length !== 1) return { updated: false, reason: 'no_match' };
+  if (status === 'SUCCESS' || status === 'FAILED') {
+    void maybeAlertOnTransition(kind, rows[0].monitorId, executionId, status, {
+      durationMs: body.latencyMs ?? null,
+      errorMessage: errorMessage ?? null,
+      regionId: agentRegionId,
+    });
+  }
+  emitExecution(kind, rows[0].monitorId, {
+    id: executionId,
+    status,
+    latencyMs: body.latencyMs ?? null,
+    errorMessage: errorMessage ?? null,
+    regionId: agentRegionId,
+  });
+  return { updated: true };
 }
