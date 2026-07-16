@@ -33,7 +33,7 @@ beforeAll(async () => {
   redisCtx = await acquireRedisDb();
   serverCtx = await startTestServer(redisCtx.redisUrl);
   base = serverCtx.url;
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = postgres(process.env.DATABASE_URL);
 
   const u = await authService.register(EMAIL, PW, 'Stalled Projection Test');
   userId = u.id;

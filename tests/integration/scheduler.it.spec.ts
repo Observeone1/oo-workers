@@ -49,14 +49,14 @@ beforeAll(async () => {
   const addr = httpServer.address() as AddressInfo;
   targetUrl = `http://127.0.0.1:${addr.port}`;
 
-  stopWorkers = await startWorkers(process.env.REDIS_URL!);
+  stopWorkers = await startWorkers(process.env.REDIS_URL);
 }, 30_000);
 
 afterAll(async () => {
   // Stop workers FIRST — prevents scheduler from re-enqueuing during DB deletes.
   if (stopWorkers) await stopWorkers();
 
-  const sql = postgres(process.env.DATABASE_URL!);
+  const sql = postgres(process.env.DATABASE_URL);
   await cleanup(sql);
   await sql.end();
 
@@ -67,7 +67,7 @@ describe('scheduler', () => {
   test(
     `fires url-monitor and api-check within ${WAIT_MS / 1000}s (interval=${INTERVAL}s)`,
     async () => {
-      const sql = postgres(process.env.DATABASE_URL!);
+      const sql = postgres(process.env.DATABASE_URL);
 
       const [urlMon] = await sql`
         INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
@@ -93,7 +93,7 @@ describe('scheduler', () => {
 
       await sql.end();
 
-      const sql2 = postgres(process.env.DATABASE_URL!);
+      const sql2 = postgres(process.env.DATABASE_URL);
       const deadline = Date.now() + WAIT_MS;
       let urlRow: { n: string; ok: string } = { n: '0', ok: '0' };
       let apiRow: { n: string; ok: string } = { n: '0', ok: '0' };

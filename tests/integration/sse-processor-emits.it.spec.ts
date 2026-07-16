@@ -74,8 +74,8 @@ beforeAll(async () => {
   const addr = httpServer.address() as AddressInfo;
   targetUrl = `http://127.0.0.1:${addr.port}`;
 
-  stopWorkers = await startWorkers(process.env.REDIS_URL!);
-  sql = postgres(process.env.DATABASE_URL!);
+  stopWorkers = await startWorkers(process.env.REDIS_URL);
+  sql = postgres(process.env.DATABASE_URL);
 }, 30_000);
 
 afterAll(async () => {
@@ -137,7 +137,7 @@ describe('per-processor SSE execution emits', () => {
   test('tcp processor emits execution', async () => {
     // Testcontainer Redis is at REDIS_URL. Probe its port directly —
     // PING/PONG handshake succeeds on connect for the bare-probe path.
-    const redisUrl = new URL(process.env.REDIS_URL!);
+    const redisUrl = new URL(process.env.REDIS_URL);
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO tcp_monitors (name, host, port, timeout_ms, interval_seconds, enabled)
       VALUES ('sse-emit-tcp', ${redisUrl.hostname}, ${Number(redisUrl.port)}, 5000, ${INTERVAL}, TRUE) RETURNING id`;
@@ -147,7 +147,7 @@ describe('per-processor SSE execution emits', () => {
   }, TEST_TIMEOUT_MS);
 
   test('db processor emits execution', async () => {
-    const dbUrl = new URL(process.env.DATABASE_URL!);
+    const dbUrl = new URL(process.env.DATABASE_URL);
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO db_monitors (name, protocol, host, port, tls, timeout_ms, interval_seconds, enabled)
       VALUES ('sse-emit-db', 'postgres', ${dbUrl.hostname}, ${Number(dbUrl.port)}, FALSE, 5000, ${INTERVAL}, TRUE) RETURNING id`;

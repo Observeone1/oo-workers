@@ -23,7 +23,7 @@ beforeAll(async () => {
   redisCtx = await acquireRedisDb();
   serverCtx = await startTestServer(redisCtx.redisUrl);
   base = serverCtx.url;
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = postgres(process.env.DATABASE_URL);
 
   slug = `sp-${Date.now()}`;
 

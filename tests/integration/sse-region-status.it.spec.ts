@@ -29,7 +29,7 @@ let regionIds: number[] = [];
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = postgres(process.env.DATABASE_URL);
 
   // Two regions: A starts online (last_seen_at = NOW()), B starts offline.
   for (const suffix of ['a', 'b']) {

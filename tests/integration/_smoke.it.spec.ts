@@ -75,7 +75,7 @@ describe('worker round-trips', () => {
   }, 30_000);
 
   test('url-monitor job completes and execution row leaves PENDING', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
 
     const [monitor] = await sql<[{ id: number; url: string; timeout_ms: number }]>`
       INSERT INTO url_monitors (name, url, timeout_ms, enabled)
@@ -125,7 +125,7 @@ describe('worker round-trips', () => {
   }, 35_000);
 
   test('api-check job completes and execution row leaves PENDING', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
 
     const [check] = await sql<[{ id: number }]>`
       INSERT INTO api_checks (name, url, method, headers, timeout_ms, enabled)

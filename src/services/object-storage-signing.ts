@@ -47,7 +47,7 @@ export async function signedFetchRaw(
 
   const payloadHash = isStream
     ? 'UNSIGNED-PAYLOAD'
-    : sha256Hex((body as Buffer | null) ?? Buffer.alloc(0));
+    : sha256Hex(body instanceof Buffer ? body : Buffer.alloc(0));
 
   const baseHeaders: Record<string, string> = {
     host: url.host,

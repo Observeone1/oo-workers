@@ -88,7 +88,7 @@ function makeQueue(name: string) {
 
 describe('load', () => {
   test('1. concurrency burst: 20 url-monitor jobs all succeed', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
     const N = 20;
 
     // enabled=FALSE prevents the scheduler from auto-enqueueing extra executions
@@ -141,7 +141,7 @@ describe('load', () => {
   }, 70_000);
 
   test('2a. failure mode: DNS error → FAILED execution', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
     const [monitor] = await sql<[{ id: number }]>`
       INSERT INTO url_monitors (name, url, timeout_ms, enabled)
       VALUES ('load-dns-fail', 'https://this-host-does-not-exist-xyz.invalid', 5000, FALSE)
@@ -171,7 +171,7 @@ describe('load', () => {
   }, 30_000);
 
   test('2b. failure mode: wrong-status assertion → FAILED execution', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
     const [monitor] = await sql<[{ id: number }]>`
       INSERT INTO url_monitors (name, url, timeout_ms, enabled)
       VALUES ('load-wrong-assert', ${ok200Url}, 5000, FALSE)
@@ -201,7 +201,7 @@ describe('load', () => {
   }, 30_000);
 
   test('3. assertion variety: status + time + text + header all pass', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
     const [check] = await sql<[{ id: number }]>`
       INSERT INTO api_checks (name, url, method, headers, timeout_ms, enabled)
       VALUES ('load-multi-assert', ${ok200Url}, 'GET', '{}'::jsonb, 10000, FALSE)
@@ -241,7 +241,7 @@ describe('load', () => {
   }, 30_000);
 
   test('4. json-path assertion: exists check against local JSON endpoint', async () => {
-    const sql = postgres(process.env.DATABASE_URL!);
+    const sql = postgres(process.env.DATABASE_URL);
     const [check] = await sql<[{ id: number }]>`
       INSERT INTO api_checks (name, url, method, headers, timeout_ms, enabled)
       VALUES ('load-json-path', ${jsonUrl}, 'GET', '{"Accept":"application/json"}'::jsonb, 10000, FALSE)

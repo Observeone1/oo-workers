@@ -60,7 +60,7 @@ let apiKeyId = 0;
 
 beforeAll(async () => {
   redisCtx = await acquireRedisDb();
-  sql = postgres(process.env.DATABASE_URL!);
+  sql = postgres(process.env.DATABASE_URL);
 
   // regions.api_key_id is NOT NULL with FK to api_keys. Seed a throwaway
   // key first so the region insert satisfies the constraint.
