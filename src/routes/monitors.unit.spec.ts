@@ -101,7 +101,7 @@ const queues = {
 
 function makeApp(): Hono {
   const app = new Hono();
-   
+
   registerMonitorRoutes(app, queues as any);
   return app;
 }
