@@ -55,7 +55,7 @@ const NAME_PREFIXES = ['e2e-', 'qa-e2e-', 'spotcheck-'] as const;
 const SLUG_PREFIXES = ['e2e-', 'qa-e2e-', 'qg-', 'spotcheck-'] as const;
 
 function namePattern(p: string): string {
-  return `${p.replaceAll(/[%_\\]/g, '\\$&')}%`;
+  return `${p.replace(/[%_\\]/g, '\\$&')}%`;
 }
 
 const NAME_PATTERNS = NAME_PREFIXES.map(namePattern);
