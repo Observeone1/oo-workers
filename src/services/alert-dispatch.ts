@@ -146,7 +146,7 @@ function formatFor(
 }
 
 function escapeHtml(s: string): string {
-  return s.replaceAll(/&/g, '&amp;').replaceAll(/</g, '&lt;').replaceAll(/>/g, '&gt;');
+  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 // Email gets its own formatting (not the markdown headline/description the

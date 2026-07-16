@@ -30,13 +30,13 @@ export function renderIncidentMarkdown(raw: string): string {
   // 2. Re-introduce only literal, known-safe tags into escaped text.
   //    Code first so `**` inside a code span is not bolded.
   const blocks = escaped
-    .replaceAll(/\r\n/g, '\n')
+    .replaceAll('\r\n', '\n')
     .split(/\n[ \t]*\n+/) // blank line → paragraph break
     .map((block) => {
       const inline = block
         .replaceAll(/`([^`\n]+)`/g, '<code>$1</code>')
         .replaceAll(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replaceAll(/\n/g, '<br>'); // single newline → <br>
+        .replaceAll('\n', '<br>'); // single newline → <br>
       return inline.trim() ? `<p>${inline.trim()}</p>` : '';
     })
     .filter(Boolean);
