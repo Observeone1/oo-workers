@@ -64,7 +64,7 @@ function renderIncident(i: PublicIncident): string {
 }
 
 function esc(s: string | null | undefined): string {
-  return (s ?? '').replace(
+  return (s ?? '').replaceAll(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );

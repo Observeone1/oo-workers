@@ -140,7 +140,7 @@ function syncDialogChrome(type: MonType, dlg: HTMLElement): void {
 }
 
 function showFieldsForType(type: MonType): void {
-  const dlg = document.getElementById('add-dialog') as HTMLElement | null;
+  const dlg = document.getElementById('add-dialog');
   if (!dlg) return;
   (['url-fields', 'api-fields', 'qa-fields', 'udp-fields'] as const).forEach((id) => {
     const el = document.getElementById(id);
@@ -413,7 +413,7 @@ export function initAddDialog(): void {
         name,
         targetUrl: url,
         intervalSeconds,
-        tests: [{ name: name.replace(/\s+/g, '_'), script: fd.get('qa_script') }],
+        tests: [{ name: name.replaceAll(/\s+/g, '_'), script: fd.get('qa_script') }],
       };
     } else if (type === 'tcp') {
       const host = String(fd.get('tcp_host') ?? '').trim();

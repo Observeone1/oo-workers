@@ -65,7 +65,7 @@ export function udpProbe(opts: UdpProbeOptions): Promise<UdpProbeResult> {
     }, opts.timeoutMs);
 
     // Strip brackets so an IPv6 literal pasted as `[2001:db8::1]` resolves.
-    const hostname = opts.host.replace(/^\[|\]$/g, '');
+    const hostname = opts.host.replaceAll(/^\[|\]$/g, '');
     lookup(hostname, { all: true }, (err, addresses) => {
       if (settled) return;
       if (err || addresses.length === 0) {

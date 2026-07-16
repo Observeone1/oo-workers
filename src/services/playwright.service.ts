@@ -53,7 +53,7 @@ const ANSI_RE = new RegExp(
  */
 export function extractStderrSummary(stderr: string, maxLines = 20): string {
   return stderr
-    .replace(ANSI_RE, '')
+    .replaceAll(ANSI_RE, '')
     .split('\n')
     .map((l) => l.trimEnd())
     .filter((l) => l.length > 0)
@@ -192,7 +192,7 @@ export async function executePlaywrightTest(
 
     if (parsedResult?.suites?.length > 0) {
       const stripAnsi = (str: string) =>
-        str.replace(
+        str.replaceAll(
           /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
           '',
         );

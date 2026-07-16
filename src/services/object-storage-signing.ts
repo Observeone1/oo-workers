@@ -42,7 +42,7 @@ export async function signedFetchRaw(
 ): Promise<Response> {
   const isStream = body !== null && typeof (body as ReadableStream).getReader === 'function';
   const now = new Date();
-  const amzDate = now.toISOString().replace(/[-:]|\.\d{3}/g, '');
+  const amzDate = now.toISOString().replaceAll(/[-:]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
 
   const payloadHash = isStream
@@ -62,7 +62,7 @@ export async function signedFetchRaw(
   const canonicalHeaders = sortedKeys
     .map((k) => {
       const orig = Object.keys(baseHeaders).find((h) => h.toLowerCase() === k)!;
-      return `${k}:${String(baseHeaders[orig]).trim().replace(/\s+/g, ' ')}\n`;
+      return `${k}:${String(baseHeaders[orig]).trim().replaceAll(/\s+/g, ' ')}\n`;
     })
     .join('');
   const signedHeaders = sortedKeys.join(';');

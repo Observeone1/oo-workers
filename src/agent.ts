@@ -487,7 +487,7 @@ export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<vo
     // Light image — surface the misconfiguration as a single FAILED test
     // so it shows in the dashboard with a clear message. The operator
     // redeploys with `observeone/oo-agent-qa` and the next tick succeeds.
-    const firstTest = tests[0]!;
+    const firstTest = tests[0];
     let execMap: Map<number, number>;
     try {
       execMap = await createQaExecutions(cfg, projectId, [firstTest.id]);
@@ -551,7 +551,7 @@ export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<vo
           logger.warn(`qa job ${job.jobId}: no exec id for test ${test.id}; skipping`);
           return;
         }
-        const safeName = test.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const safeName = test.name.replaceAll(/[^a-z0-9]/gi, '_').toLowerCase();
         const scriptPath = path.join(runDir, `${safeName}.spec.ts`);
         const outputDir = path.join(runDir, `out-${test.id}`);
         await fs.writeFile(scriptPath, test.script);

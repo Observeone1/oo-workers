@@ -464,7 +464,7 @@ function wireRowActions() {
   );
   $$('[data-open]').forEach((b) =>
     b.addEventListener('click', () => {
-      const { type, id } = (b as HTMLElement).dataset;
+      const { type, id } = b.dataset;
       location.hash = `#/${type}/${id}`;
     }),
   );

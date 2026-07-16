@@ -5,7 +5,7 @@ export const $$ = <T extends HTMLElement = HTMLElement>(sel: string) =>
   Array.from(document.querySelectorAll(sel)) as T[];
 
 export const esc = (s: string) =>
-  (s ?? '').replace(
+  (s ?? '').replaceAll(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );
