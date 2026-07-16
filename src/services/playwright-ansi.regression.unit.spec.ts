@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { extractStderrSummary } from './playwright.service.ts';
 
-const ESC = String.fromCharCode(0x1b);
-const BEL = String.fromCharCode(0x07);
+const ESC = String.fromCodePoint(0x1b);
+const BEL = String.fromCodePoint(0x07);
 
 // Regression for the S6324 fix: the old hand-rolled ANSI regex missed OSC
 // (terminal title) sequences, leaving "]0;..." garbage in error messages
