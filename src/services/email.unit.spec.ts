@@ -55,7 +55,9 @@ describe('sendEmail', () => {
     clearSmtpEnv();
     const { sendEmail } = await freshEmail();
 
-    await expect(sendEmail(msg)).rejects.toThrow('SMTP not configured');
+    const err = await sendEmail(msg).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain('SMTP not configured');
     expect(createTransport).not.toHaveBeenCalled();
   });
 

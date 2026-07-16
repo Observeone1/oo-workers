@@ -5,7 +5,7 @@
  * endpoint with per-entry validation. Repos are mocked at the db boundary.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { Hono } from 'hono';
 
 import {

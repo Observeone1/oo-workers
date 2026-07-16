@@ -7,7 +7,7 @@
  * and rate limiter run for real, so every test uses its own IP/email.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { Hono } from 'hono';
 
 import {
@@ -41,8 +41,14 @@ function makeApp(): Hono {
 }
 
 let uniq = 0;
-const nextIp = () => `198.51.100.${(uniq += 1) % 250}.${Math.floor(uniq / 250)}`;
-const nextEmail = () => `user${++uniq}@example.com`;
+const nextIp = () => {
+  uniq += 1;
+  return `198.51.100.${uniq % 250}.${Math.floor(uniq / 250)}`;
+};
+const nextEmail = () => {
+  uniq += 1;
+  return `user${uniq}@example.com`;
+};
 
 function postJson(path: string, body: unknown, headers: Record<string, string> = {}) {
   return makeApp().request(path, {
@@ -267,14 +273,14 @@ describe('me', () => {
   });
 });
 
-describe('profile + password', () => {
-  function patchProfile(body: unknown) {
-    return makeApp().request('/api/auth/profile', {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
-  }
+function patchProfile(body: unknown) {
+  return makeApp().request('/api/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
 
+describe('profile + password', () => {
   test('profile requires a valid session', async () => {
     expect((await patchProfile({ name: 'x' })).status).toBe(401);
 

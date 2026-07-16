@@ -145,7 +145,7 @@ describe('rotateRegionKey', () => {
 
     const { cleartextKey } = await rotateRegionKey(3);
 
-    const [keyInsert] = opsFor(schema.apiKeys).filter((o) => o.op === 'insert');
+    const keyInsert = opsFor(schema.apiKeys).find((o) => o.op === 'insert')!;
     expect(keyInsert.values).toMatchObject({ name: 'agent:us-east', scopes: ['agent'] });
     expect(await Bun.password.verify(cleartextKey, keyInsert.values!.keyHash as string)).toBe(true);
 
