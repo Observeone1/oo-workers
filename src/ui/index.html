@@ -245,8 +245,9 @@
             <div class="form-section" data-section="basics">
               <div class="sec-head"><span class="ttl">Basics</span></div>
               <div class="field">
-                <label>Monitor name</label>
+                <label for="f-name">Monitor name</label>
                 <input
+                  id="f-name"
                   name="name"
                   data-testid="add-monitor-name-input"
                   required
@@ -257,8 +258,9 @@
               <!-- URL/target + interval — shown for url / api / qa -->
               <div id="url-row" class="field-grid cols-2" data-testid="add-monitor-url-row">
                 <div class="field">
-                  <label>Target URL</label>
+                  <label for="f-url">Target URL</label>
                   <input
+                    id="f-url"
                     name="url"
                     data-testid="add-monitor-url-input"
                     placeholder="https://api.example.com/health"
@@ -266,9 +268,10 @@
                   />
                 </div>
                 <div class="field">
-                  <label>Interval</label>
+                  <label for="f-interval_seconds">Interval</label>
                   <div class="input-addon">
                     <input
+                      id="f-interval_seconds"
                       name="interval_seconds"
                       data-testid="add-monitor-interval-input"
                       type="number"
@@ -283,12 +286,18 @@
               <!-- TCP host + port + interval -->
               <div id="tcp-row" class="field-grid cols-3" hidden>
                 <div class="field">
-                  <label>Host</label>
-                  <input name="tcp_host" placeholder="db-1.internal" autocomplete="off" />
+                  <label for="f-tcp_host">Host</label>
+                  <input
+                    id="f-tcp_host"
+                    name="tcp_host"
+                    placeholder="db-1.internal"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
-                  <label>Port</label>
+                  <label for="f-tcp_port">Port</label>
                   <input
+                    id="f-tcp_port"
                     name="tcp_port"
                     type="number"
                     min="1"
@@ -298,9 +307,15 @@
                   />
                 </div>
                 <div class="field">
-                  <label>Interval</label>
+                  <label for="f-tcp_interval_seconds">Interval</label>
                   <div class="input-addon">
-                    <input name="tcp_interval_seconds" type="number" value="60" min="10" />
+                    <input
+                      id="f-tcp_interval_seconds"
+                      name="tcp_interval_seconds"
+                      type="number"
+                      value="60"
+                      min="10"
+                    />
                     <span class="suffix">seconds</span>
                   </div>
                 </div>
@@ -308,12 +323,13 @@
               <!-- UDP host + port + interval -->
               <div id="udp-row" class="field-grid cols-3" hidden>
                 <div class="field">
-                  <label>Host</label>
-                  <input name="udp_host" placeholder="8.8.8.8" autocomplete="off" />
+                  <label for="f-udp_host">Host</label>
+                  <input id="f-udp_host" name="udp_host" placeholder="8.8.8.8" autocomplete="off" />
                 </div>
                 <div class="field">
-                  <label>Port</label>
+                  <label for="f-udp_port">Port</label>
                   <input
+                    id="f-udp_port"
                     name="udp_port"
                     type="number"
                     min="1"
@@ -323,9 +339,15 @@
                   />
                 </div>
                 <div class="field">
-                  <label>Interval</label>
+                  <label for="f-udp_interval_seconds">Interval</label>
                   <div class="input-addon">
-                    <input name="udp_interval_seconds" type="number" value="60" min="10" />
+                    <input
+                      id="f-udp_interval_seconds"
+                      name="udp_interval_seconds"
+                      type="number"
+                      value="60"
+                      min="10"
+                    />
                     <span class="suffix">seconds</span>
                   </div>
                 </div>
@@ -333,12 +355,18 @@
               <!-- DB host + port + interval -->
               <div id="db-row" class="field-grid cols-3" hidden>
                 <div class="field">
-                  <label>Host</label>
-                  <input name="db_host" placeholder="db.internal" autocomplete="off" />
+                  <label for="f-db_host">Host</label>
+                  <input
+                    id="f-db_host"
+                    name="db_host"
+                    placeholder="db.internal"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
-                  <label>Port</label>
+                  <label for="f-db_port">Port</label>
                   <input
+                    id="f-db_port"
                     name="db_port"
                     type="number"
                     min="1"
@@ -348,9 +376,15 @@
                   />
                 </div>
                 <div class="field">
-                  <label>Interval</label>
+                  <label for="f-db_interval_seconds">Interval</label>
                   <div class="input-addon">
-                    <input name="db_interval_seconds" type="number" value="60" min="10" />
+                    <input
+                      id="f-db_interval_seconds"
+                      name="db_interval_seconds"
+                      type="number"
+                      value="60"
+                      min="10"
+                    />
                     <span class="suffix">seconds</span>
                   </div>
                 </div>
@@ -364,9 +398,10 @@
                 data-testid="add-monitor-heartbeat-row"
               >
                 <div class="field">
-                  <label>Expected period</label>
+                  <label for="f-hb_period_seconds">Expected period</label>
                   <div class="input-addon">
                     <input
+                      id="f-hb_period_seconds"
                       name="hb_period_seconds"
                       type="number"
                       value="300"
@@ -378,9 +413,10 @@
                   <div class="help">Your service is expected to ping every N seconds.</div>
                 </div>
                 <div class="field">
-                  <label>Grace</label>
+                  <label for="f-hb_grace_seconds">Grace</label>
                   <div class="input-addon">
                     <input
+                      id="f-hb_grace_seconds"
                       name="hb_grace_seconds"
                       type="number"
                       value="60"
@@ -392,8 +428,9 @@
                   <div class="help">Extra wait before declaring overdue.</div>
                 </div>
                 <div class="field" style="grid-column: 1 / -1">
-                  <label>Description (optional)</label>
+                  <label for="f-hb_description">Description (optional)</label>
                   <input
+                    id="f-hb_description"
                     name="hb_description"
                     placeholder="Nightly backup cron"
                     data-testid="hb-description-input"
@@ -403,12 +440,18 @@
 
               <div id="tls-row" class="field-grid cols-2" hidden>
                 <div class="field">
-                  <label>Host</label>
-                  <input name="tls_host" placeholder="example.com" autocomplete="off" />
+                  <label for="f-tls_host">Host</label>
+                  <input
+                    id="f-tls_host"
+                    name="tls_host"
+                    placeholder="example.com"
+                    autocomplete="off"
+                  />
                 </div>
                 <div class="field">
-                  <label>Port</label>
+                  <label for="f-tls_port">Port</label>
                   <input
+                    id="f-tls_port"
                     name="tls_port"
                     type="number"
                     min="1"
@@ -418,16 +461,28 @@
                   />
                 </div>
                 <div class="field">
-                  <label>Warn when expires in less than</label>
+                  <label for="f-tls_warn_days">Warn when expires in less than</label>
                   <div class="input-addon">
-                    <input name="tls_warn_days" type="number" value="30" min="0" />
+                    <input
+                      id="f-tls_warn_days"
+                      name="tls_warn_days"
+                      type="number"
+                      value="30"
+                      min="0"
+                    />
                     <span class="suffix">days</span>
                   </div>
                 </div>
                 <div class="field">
-                  <label>Interval</label>
+                  <label for="f-tls_interval_seconds">Interval</label>
                   <div class="input-addon">
-                    <input name="tls_interval_seconds" type="number" value="3600" min="60" />
+                    <input
+                      id="f-tls_interval_seconds"
+                      name="tls_interval_seconds"
+                      type="number"
+                      value="3600"
+                      min="60"
+                    />
                     <span class="suffix">seconds</span>
                   </div>
                 </div>
@@ -445,7 +500,7 @@
               <div class="check-pane" id="url-fields" data-for="url">
                 <div class="field-grid cols-2">
                   <div class="field">
-                    <label
+                    <label for="f-url_status"
                       >Expected status
                       <a
                         href="#/docs/assertions-url"
@@ -455,19 +510,19 @@
                         >?</a
                       ></label
                     >
-                    <input name="url_status" type="number" value="200" />
+                    <input id="f-url_status" name="url_status" type="number" value="200" />
                   </div>
                   <div class="field">
-                    <label>Timeout</label>
+                    <label for="f-url_timeout">Timeout</label>
                     <div class="input-addon">
-                      <input name="url_timeout" type="number" value="10" />
+                      <input id="f-url_timeout" name="url_timeout" type="number" value="10" />
                       <span class="suffix">seconds</span>
                     </div>
                   </div>
                 </div>
                 <div class="field">
-                  <label>Optional body match (regex)</label>
-                  <input name="url_body_match" placeholder="^OK$" />
+                  <label for="f-url_body_match">Optional body match (regex)</label>
+                  <input id="f-url_body_match" name="url_body_match" placeholder="^OK$" />
                   <div class="help">Leave empty to skip body checking.</div>
                 </div>
               </div>
@@ -476,8 +531,12 @@
               <div class="check-pane" id="api-fields" data-for="api" hidden>
                 <div class="field-grid cols-2">
                   <div class="field">
-                    <label>Method</label>
-                    <select name="api_method" data-testid="add-monitor-api-method">
+                    <label for="f-api_method">Method</label>
+                    <select
+                      id="f-api_method"
+                      name="api_method"
+                      data-testid="add-monitor-api-method"
+                    >
                       <option>GET</option>
                       <option>POST</option>
                       <option>PUT</option>
@@ -486,8 +545,8 @@
                     </select>
                   </div>
                   <div class="field">
-                    <label>Auth</label>
-                    <select name="api_auth">
+                    <label for="f-api_auth">Auth</label>
+                    <select id="f-api_auth" name="api_auth">
                       <option value="">None</option>
                       <option value="bearer">Bearer token</option>
                       <option value="basic">Basic</option>
@@ -520,7 +579,7 @@
               <!-- QA check -->
               <div class="check-pane" id="qa-fields" data-for="qa" hidden>
                 <div class="field">
-                  <label
+                  <label for="f-qa_script"
                     >Playwright script
                     <a
                       href="#/docs/playwright"
@@ -531,6 +590,7 @@
                     ></label
                   >
                   <textarea
+                    id="f-qa_script"
                     name="qa_script"
                     data-testid="add-monitor-qa-script"
                     placeholder="import { test, expect } from '@playwright/test';&#10;const URL = process.env.PLAYWRIGHT_TARGET_URL!;&#10;test('my check', async ({ page }) => { await page.goto(URL); ... });"
@@ -545,9 +605,9 @@
               <!-- TCP check -->
               <div class="check-pane" data-for="tcp" hidden>
                 <div class="field">
-                  <label>Timeout</label>
+                  <label for="f-tcp_timeout">Timeout</label>
                   <div class="input-addon" style="max-width: 160px">
-                    <input type="number" value="5" />
+                    <input id="f-tcp_timeout" type="number" value="5" />
                     <span class="suffix">seconds</span>
                   </div>
                   <div class="help">Connection must complete within this time.</div>
@@ -557,7 +617,7 @@
               <!-- UDP check -->
               <div class="check-pane" id="udp-fields" data-for="udp" hidden>
                 <div class="field">
-                  <label
+                  <label for="f-udp_payload_hex"
                     >Payload (hex)
                     <a
                       href="#/docs/udp"
@@ -567,7 +627,11 @@
                       >?</a
                     ></label
                   >
-                  <input name="udp_payload_hex" placeholder="1234010000010000…" />
+                  <input
+                    id="f-udp_payload_hex"
+                    name="udp_payload_hex"
+                    placeholder="1234010000010000…"
+                  />
                   <div class="help">Leave blank for an empty datagram.</div>
                 </div>
                 <label class="checkbox-label">
@@ -579,8 +643,8 @@
               <!-- DB check -->
               <div class="check-pane" data-for="db" hidden>
                 <div class="field">
-                  <label>Protocol</label>
-                  <select name="db_protocol">
+                  <label for="f-db_protocol">Protocol</label>
+                  <select id="f-db_protocol" name="db_protocol">
                     <option value="">— select —</option>
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL</option>
@@ -617,13 +681,21 @@
                   </label>
                 </div>
                 <div class="field" style="margin-top: 10px">
-                  <label>SNI override (optional)</label>
-                  <input name="tls_servername" placeholder="Leave blank to use host" />
+                  <label for="f-tls_servername">SNI override (optional)</label>
+                  <input
+                    id="f-tls_servername"
+                    name="tls_servername"
+                    placeholder="Leave blank to use host"
+                  />
                   <div class="help">Useful when connecting by IP or CDN edge.</div>
                 </div>
                 <div class="field" style="margin-top: 8px">
-                  <label>Expected CN/SAN regex (optional)</label>
-                  <input name="tls_expect_cn_regex" placeholder="e.g. \.example\.com$" />
+                  <label for="f-tls_expect_cn_regex">Expected CN/SAN regex (optional)</label>
+                  <input
+                    id="f-tls_expect_cn_regex"
+                    name="tls_expect_cn_regex"
+                    placeholder="e.g. \.example\.com$"
+                  />
                   <div class="help">Alert if the leaf cert CN/SAN doesn't match.</div>
                 </div>
               </div>
@@ -631,7 +703,7 @@
               <!-- TCP banner/payload (optional) -->
               <div class="check-pane" data-for="tcp" hidden style="margin-top: 12px">
                 <div class="field">
-                  <label
+                  <label for="f-tcp_payload_hex"
                     >Payload hex (optional)
                     <a
                       href="#/docs/tcp"
@@ -641,10 +713,14 @@
                       >?</a
                     ></label
                   >
-                  <input name="tcp_payload_hex" placeholder="e.g. 50494e470d0a (PING\r\n)" />
+                  <input
+                    id="f-tcp_payload_hex"
+                    name="tcp_payload_hex"
+                    placeholder="e.g. 50494e470d0a (PING\r\n)"
+                  />
                 </div>
                 <div class="field" style="margin-top: 8px">
-                  <label
+                  <label for="f-tcp_expect_banner"
                     >Expect banner contains (optional)
                     <a
                       href="#/docs/tcp"
@@ -654,7 +730,11 @@
                       >?</a
                     ></label
                   >
-                  <input name="tcp_expect_banner" placeholder="e.g. PONG, SSH-2.0, 220" />
+                  <input
+                    id="f-tcp_expect_banner"
+                    name="tcp_expect_banner"
+                    placeholder="e.g. PONG, SSH-2.0, 220"
+                  />
                 </div>
               </div>
             </div>
@@ -722,7 +802,7 @@
           <a href="https://observeone.com/cli" target="_blank">ObserveOne CLI</a>
           (v1.25.0+). The CLI handles the schema, id-anchor remap, and embedded resources for you.
         </p>
-        <label>JSON</label>
+        <label for="import-text">JSON</label>
         <textarea id="import-text" placeholder="Paste `obs export` output here…"></textarea>
       </div>
       <div class="dialog-actions">
