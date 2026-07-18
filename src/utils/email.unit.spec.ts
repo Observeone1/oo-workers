@@ -53,8 +53,8 @@ describe('isValidEmailAddress', () => {
   // The pattern itself is deliberately not reproduced here: it would raise a
   // fresh S5852 hotspot, and a spec is no place to reintroduce the very thing
   // this change removes.
-  const TAB = String.fromCharCode(9);
-  const NEWLINE = String.fromCharCode(10);
+  const TAB = String.fromCodePoint(9);
+  const NEWLINE = String.fromCodePoint(10);
   test.each([
     ['ops@example.com', true],
     ['a@b.c', true],
