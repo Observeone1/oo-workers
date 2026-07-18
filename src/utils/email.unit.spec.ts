@@ -76,4 +76,19 @@ describe('isValidEmailAddress', () => {
   ])('matches the original contract for %j', (address, expected) => {
     expect(isValidEmailAddress(address as string)).toBe(expected);
   });
+
+  // The one place the scan is deliberately STRICTER than the pattern it
+  // replaced. The old regex accepted a domain starting with '.' so long as a
+  // later dot existed ('x@.example.com' matched, splitting '.example' + '.' +
+  // 'com'); the scan looks at the first dot only, so it rejects. A brute-force
+  // sweep over domains up to 5 characters found 75 divergences, every one of
+  // this shape and every one old-accepts / new-rejects. No deliverable address
+  // has a domain beginning with a dot, so the tightening is intended — recorded
+  // here so nobody "restores" the old behavior by mistake.
+  test.each([['x@.example.com'], ['x@.a.b'], ['x@..b']])(
+    'rejects the leading-dot domain %j that the old pattern allowed',
+    (address) => {
+      expect(isValidEmailAddress(address)).toBe(false);
+    },
+  );
 });
