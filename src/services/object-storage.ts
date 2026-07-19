@@ -322,7 +322,7 @@ export async function listObjects(prefix: string): Promise<string[]> {
     }
     const xml = await res.text();
     for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) out.push(m[1]);
-    const nextMatch = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+    const nextMatch = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
     continuationToken = nextMatch?.[1];
   } while (continuationToken);
   return out;
@@ -361,7 +361,7 @@ export async function listObjectsWithSize(
     )) {
       out.push({ key: m[1], size: Number(m[2]) });
     }
-    const nextMatch = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+    const nextMatch = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
     continuationToken = nextMatch?.[1];
   } while (continuationToken);
   return out;

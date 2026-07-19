@@ -102,7 +102,7 @@ export interface AdaptResult {
 // SaaS schedules are cron; oo-workers monitors are interval-seconds.
 const cronToSeconds = (cron: string | null | undefined, fallback = 60): number => {
   if (!cron) return fallback;
-  const m = cron.trim().match(/^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/);
+  const m = /^\*\/(\d+)\s+\*\s+\*\s+\*\s+\*$/.exec(cron.trim());
   if (m) return Number(m[1]) * 60;
   if (cron.trim() === '* * * * *') return 60;
   return fallback;

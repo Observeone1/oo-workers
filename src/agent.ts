@@ -215,8 +215,7 @@ async function probeApi(job: JobPayload): Promise<AgentResultBody> {
       body,
       headers: responseHeaders,
     });
-    const allPassed =
-      assertionResults.length === 0 || assertionResults.every((r: { passed: boolean }) => r.passed);
+    const allPassed = assertionResults.every((r: { passed: boolean }) => r.passed);
     return {
       type: 'api',
       executionId: job.executionId,

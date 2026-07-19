@@ -21,7 +21,7 @@ import { renderEditor } from './incidents/editor.ts';
 import { sevPill } from './incidents/state.ts';
 
 export async function renderIncidents(): Promise<void> {
-  const m = location.hash.match(/^#\/incidents\/(\d+)$/);
+  const m = /^#\/incidents\/(\d+)$/.exec(location.hash);
   if (m) return renderEditor(Number(m[1]));
   return renderList();
 }

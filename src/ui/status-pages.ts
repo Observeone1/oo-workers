@@ -27,7 +27,7 @@ let lastBanner: { kind: 'ok' | 'err'; text: string } | null = null;
 let activePageId: number | null = null;
 
 export async function renderStatusPages() {
-  const m = location.hash.match(/^#\/status-pages\/(\d+)$/);
+  const m = /^#\/status-pages\/(\d+)$/.exec(location.hash);
   if (m) return renderEditor(Number(m[1]));
   return renderList();
 }

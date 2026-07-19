@@ -144,9 +144,10 @@ function wireChannelRowActions() {
           lastBanner = { kind: 'ok', text: 'Test alert delivered — check the destination.' };
         }
       } else {
+        const reason = data.error ?? 'HTTP ' + res.status;
         lastBanner = {
           kind: 'err',
-          text: `Test failed: ${data.error ?? `HTTP ${res.status}`}. Check the URL and worker logs.`,
+          text: `Test failed: ${reason}. Check the URL and worker logs.`,
         };
       }
       await renderChannels();

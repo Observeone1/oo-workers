@@ -36,7 +36,8 @@ async function wipeDb() {
   ).map((r) => r.tablename);
   const toWipe = tables.filter((t) => !KEEP.has(t));
   if (toWipe.length === 0) return;
-  await sql.unsafe(`TRUNCATE ${toWipe.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`);
+  const quoted = toWipe.map((t) => '"' + t + '"').join(', ');
+  await sql.unsafe(`TRUNCATE ${quoted} RESTART IDENTITY CASCADE`);
   console.log(`  wiped ${toWipe.length} tables (kept ${[...KEEP].join(', ')})`);
 }
 

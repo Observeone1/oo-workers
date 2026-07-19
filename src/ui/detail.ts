@@ -257,8 +257,12 @@ function renderWithFilter(
           .map((r) => {
             const cls = statusClass(r.status);
             const latency = r.responseTimeMs ?? r.durationMs;
+            const regionLabel =
+              r.regionId == null
+                ? 'master'
+                : esc(regions.get(r.regionId)?.slug ?? '#' + r.regionId);
             const regionCell = showChips
-              ? `<td class="cell-meta">${r.regionId == null ? 'master' : esc(regions.get(r.regionId)?.slug ?? `#${r.regionId}`)}</td>`
+              ? `<td class="cell-meta">${regionLabel}</td>`
               : '';
             const artifactsCell = type === 'qa' ? renderArtifactsCell(r) : '';
             // For API monitors, surface per-assertion pass/fail in the Detail
