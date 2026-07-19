@@ -24,12 +24,16 @@ import {
   resetObjectStorageMock,
 } from '../test-support/shared-mocks.ts';
 
-type Thenable = {
-  from: () => Thenable;
-  where: () => Thenable;
-  leftJoin: () => Thenable;
-  limit: () => Thenable;
-  then: (resolve: (value: unknown) => void, reject?: (err: unknown) => void) => void;
+/**
+ * A drizzle query stand-in: a real Promise carrying the chain methods, so
+ * `await db.select().from(x).where(y).limit(n)` works without hand-rolling a
+ * `then`. The queued result is taken when `.from()` runs, which is the order
+ * the pass issues its reads in.
+ */
+type Query = Promise<unknown> & {
+  where: () => Query;
+  leftJoin: () => Query;
+  limit: () => Query;
 };
 
 /** Results the next awaited select chains will resolve to, in order. */
@@ -37,26 +41,20 @@ const selects: unknown[] = [];
 /** Every `db.update(...).set(v)` payload, in call order. */
 const updates: Record<string, unknown>[] = [];
 
-function selectBuilder(): Thenable {
-  const b = {} as Thenable;
-  b.from = () => b;
-  b.where = () => b;
-  b.leftJoin = () => b;
-  b.limit = () => b;
-  // Being thenable IS the point: drizzle's builder is awaited directly, so
-  // the stand-in has to be too. Defined rather than assigned as a literal
-  // property so it is unmistakably deliberate (S7739 guards against
-  // *accidental* thenables).
-  Object.defineProperty(b, 'then', {
-    value: (resolve: (value: unknown) => void, reject?: (err: unknown) => void): void => {
-      if (selects.length === 0) {
-        (reject ?? (() => {}))(new Error('db mock: select queue exhausted'));
-        return;
-      }
-      void Promise.resolve(selects.shift()).then(resolve, reject);
-    },
-  });
-  return b;
+function nextQuery(): Query {
+  const q = (
+    selects.length === 0
+      ? Promise.reject(new Error('db mock: select queue exhausted'))
+      : Promise.resolve(selects.shift())
+  ) as Query;
+  q.where = () => q;
+  q.leftJoin = () => q;
+  q.limit = () => q;
+  return q;
+}
+
+function selectBuilder(): { from: () => Query } {
+  return { from: () => nextQuery() };
 }
 
 /** Queue results for the next awaited select chains, in order. */

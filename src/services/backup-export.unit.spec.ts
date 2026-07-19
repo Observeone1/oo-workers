@@ -30,33 +30,29 @@ type Row = Record<string, unknown>;
 /** Rows the fake db returns, keyed by SQL table name. Default: empty. */
 const rowsByTable: Record<string, Row[]> = {};
 
-type SelectChain = {
-  from: (t: unknown) => SelectChain;
-  where: () => SelectChain;
-  orderBy: () => SelectChain;
-  limit: () => SelectChain;
-  then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => void;
+/**
+ * A drizzle query stand-in: a real Promise carrying the chain methods, so the
+ * builder can be awaited directly without hand-rolling a `then`. The table is
+ * known by `.from()`, which is where the rows are resolved.
+ */
+type Query = Promise<unknown> & {
+  where: () => Query;
+  orderBy: () => Query;
+  limit: () => Query;
 };
 
-function selectChain(): SelectChain {
-  let name = '';
-  const c = {} as SelectChain;
-  c.from = (t: unknown) => {
-    name = getTableName(t as Parameters<typeof getTableName>[0]);
-    return c;
-  };
-  c.where = () => c;
-  c.orderBy = () => c;
-  c.limit = () => c;
-  // Being thenable IS the point: drizzle's builder is awaited directly, so
-  // the stand-in has to be too. Always the first (and only) page, since a
-  // short page ends the keyset loop.
-  Object.defineProperty(c, 'then', {
-    value: (resolve: (v: unknown) => void, reject?: (e: unknown) => void): void => {
-      void Promise.resolve(rowsByTable[name] ?? []).then(resolve, reject);
+function selectChain(): { from: (t: unknown) => Query } {
+  return {
+    from: (t: unknown) => {
+      const name = getTableName(t as Parameters<typeof getTableName>[0]);
+      // Always the first (and only) page: a short page ends the keyset loop.
+      const q = Promise.resolve(rowsByTable[name] ?? []) as Query;
+      q.where = () => q;
+      q.orderBy = () => q;
+      q.limit = () => q;
+      return q;
     },
-  });
-  return c;
+  };
 }
 
 const sqlTag = () => Promise.resolve([{ name: '0042_add_regions.sql' }]);

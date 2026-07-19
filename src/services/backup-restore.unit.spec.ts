@@ -37,22 +37,28 @@ let sqlCalls = 0;
 /** count(*) answers for targetIsEmpty, one per probe table. */
 let probeCount = 0;
 
-function selectChain() {
-  const c = {
-    from: () => c,
-    where: () => c,
-    leftJoin: () => c,
-    limit: () => c,
-  };
-  // Being thenable IS the point: drizzle's builder is awaited directly.
-  // `n` answers targetIsEmpty's count probe; `total` answers the real
-  // runBackfill's count probes with 0 so its passes are no-ops.
-  Object.defineProperty(c, 'then', {
-    value: (resolve: (v: unknown) => void, reject?: (e: unknown) => void): void => {
-      void Promise.resolve([{ n: probeCount, total: 0 }]).then(resolve, reject);
+/**
+ * A drizzle query stand-in: a real Promise carrying the chain methods, so the
+ * builder can be awaited directly without hand-rolling a `then`. `n` answers
+ * targetIsEmpty's count probe; `total` answers the real runBackfill's count
+ * probes with 0 so both of its passes are no-ops.
+ */
+type Query = Promise<unknown> & {
+  where: () => Query;
+  leftJoin: () => Query;
+  limit: () => Query;
+};
+
+function selectChain(): { from: () => Query } {
+  return {
+    from: () => {
+      const q = Promise.resolve([{ n: probeCount, total: 0 }]) as Query;
+      q.where = () => q;
+      q.leftJoin = () => q;
+      q.limit = () => q;
+      return q;
     },
-  });
-  return c;
+  };
 }
 
 function makeTx() {
