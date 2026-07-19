@@ -40,8 +40,13 @@ let probeCount = 0;
 function selectChain() {
   const c = {
     from: () => c,
+    where: () => c,
+    leftJoin: () => c,
+    limit: () => c,
+    // `n` answers targetIsEmpty's count probe; `total` answers the real
+    // runBackfill's count probes with 0 so its passes are no-ops.
     then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
-      Promise.resolve([{ n: probeCount }]).then(resolve, reject),
+      Promise.resolve([{ n: probeCount, total: 0 }]).then(resolve, reject),
   };
   return c;
 }
@@ -89,14 +94,13 @@ mock.module('./backup-shared.ts', () => ({
 mockObjectStorage();
 const { putObject } = objectStorageMock;
 
-const runBackfill = mock(async () => ({
-  uploaded: 0,
-  migrated: 0,
-  orphansDeleted: 0,
-  failed: 0,
-}));
-mock.module('./storage-backfill.ts', () => ({ runBackfill }));
-
+// storage-backfill is deliberately NOT mocked here. Registering a stub for
+// it would replace the module process-wide, and storage-backfill's own spec
+// would then import that stub as its subject instead of the real thing (a
+// stub returning zeros makes every non-zero expectation there fail, which is
+// exactly how this bit CI). The real runBackfill is harmless under this
+// spec's db stand-in: its count probes read `total: 0`, so both passes exit
+// immediately and only the orphan sweep's listObjects calls are observable.
 const { restore, restoreFromDir } = await import('./backup-restore.ts');
 const { RestoreError } = sharedReal;
 
@@ -141,7 +145,6 @@ beforeEach(() => {
   };
   dbMock.sql = sqlMock;
   resetObjectStorageMock();
-  runBackfill.mockClear();
 });
 
 describe('restore — single-file NDJSON dump', () => {
@@ -283,8 +286,12 @@ describe('restore — tar.gz artifact dump', () => {
       ['qa/t.spec.ts', 'text/typescript'],
     ]);
     expect(String(putObject.mock.calls[0][1])).toBe('ZIP');
-    // The post-restore backfill re-uploads pre-v1.0 inline-only scripts.
-    expect(runBackfill).toHaveBeenCalledTimes(1);
+    // The post-restore backfill ran: its orphan sweep is the only thing in
+    // this path that lists the bucket.
+    expect(objectStorageMock.listObjects.mock.calls.map((c) => c[0])).toEqual([
+      'qa-scripts/',
+      'qa-projects/',
+    ]);
   });
 
   test('falls back to octet-stream for an unknown extension', async () => {
@@ -330,7 +337,8 @@ describe('restore — tar.gz artifact dump', () => {
 
     expect(res.counts).toEqual({ [REGIONS]: 1 });
     expect(putObject).not.toHaveBeenCalled();
-    expect(runBackfill).not.toHaveBeenCalled();
+    // No backfill either: it is gated on storage being configured.
+    expect(objectStorageMock.listObjects).not.toHaveBeenCalled();
   });
 
   test('an upload failure is logged and does not fail the restore', async () => {
