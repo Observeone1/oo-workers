@@ -40,6 +40,7 @@ import {
   urlMonitors,
 } from '../db/schema.ts';
 import { parseHexPayload } from './udp-probe.ts';
+import { isValidEmailAddress } from '../utils/email.ts';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -407,7 +408,7 @@ async function importChannels(
         let createdId: number | undefined;
         if (type === 'email') {
           const to = typeof cfg.to === 'string' ? cfg.to.trim() : '';
-          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+          if (!isValidEmailAddress(to)) {
             throw new Error('email channel needs a valid config.to address');
           }
           const [created] = await stx
