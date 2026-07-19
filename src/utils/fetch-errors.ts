@@ -6,20 +6,37 @@
  *
  * Stored without separators; `isSensitiveParam` normalises before lookup so
  * `api_key`, `api-key` and `APIKey` all match the one entry.
+ *
+ * KNOWN LIMIT: this is a denylist matched **exactly** after normalisation, so a
+ * compound name that is not listed (say `?tenant_api_token=`) is not redacted.
+ * Matching on substrings instead would redact ordinary data (`?monkey=`), so
+ * the list is deliberately explicit. Add names here as they come up; the safe
+ * long-term fix is to stop putting secrets in query strings at all.
  */
 const SENSITIVE_PARAMS = new Set([
   'apikey',
+  'apitoken',
+  'apisecret',
   'accesstoken',
+  'accesskey',
   'refreshtoken',
   'idtoken',
   'authtoken',
+  'authkey',
+  'sessiontoken',
+  'bearer',
   'token',
   'auth',
   'authorization',
+  'credential',
+  'credentials',
   'secret',
+  'secretkey',
+  'privatekey',
   'clientsecret',
   'password',
   'passwd',
+  'passphrase',
   'pwd',
   'sessionid',
   'session',

@@ -73,9 +73,32 @@ describe('redactUrlCredentials strips secret query parameters', () => {
     'api-key',
     'sessionId',
     'ACCESS_TOKEN',
+    // Compound names: an exact-match denylist does not get these for free from
+    // the bare `token` / `key` / `secret` entries, so each is listed and pinned.
+    'api_token',
+    'api_secret',
+    'access_key',
+    'secret_key',
+    'private_key',
+    'auth_key',
+    'session_token',
+    'passphrase',
+    'credentials',
+    'bearer',
   ])('redacts the %s parameter', (name) => {
     expect(redactUrlCredentials(`https://api.example.com/?${name}=s3cret`)).not.toContain('s3cret');
   });
+
+  // Guards the exact-match design: a substring or endsWith() matcher would
+  // redact these, silently destroying ordinary query data.
+  test.each(['monkey', 'keyboard', 'tokenizer', 'session_count', 'signature_version'])(
+    'leaves the ordinary %s parameter intact',
+    (name) => {
+      expect(redactUrlCredentials(`https://api.example.com/?${name}=banana`)).toContain(
+        `${name}=banana`,
+      );
+    },
+  );
 
   test('keeps non-secret query data intact alongside a redacted secret', () => {
     const out = redactUrlCredentials('https://api.example.com/?region=eu&token=s3cret&page=2');
