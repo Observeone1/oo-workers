@@ -1,5 +1,5 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { exec } from 'node:child_process';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import path from 'node:path';
 
 const execAsync = promisify(exec);
@@ -38,22 +38,15 @@ interface TestConfig {
   outputDir?: string;
 }
 
-// Built from a string with explicit unicode escapes so editor tools and
-// diff viewers don't lose the literal ESC byte. Matches CSI + OSC and
-// the most common SGR sequences Playwright emits.
-const ANSI_RE = new RegExp(
-  '[\\u001b\\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]',
-  'g',
-);
-
 /**
  * Strip ANSI escapes from stderr and trim it to the first N non-empty
  * lines so the resulting message is short enough to land in an execution
  * row's error_message column without dragging in the whole npm spinner.
+ * ANSI stripping uses node:util's stripVTControlCharacters (covers the
+ * full CSI/OSC/SGR range Playwright emits, not just the common cases).
  */
 export function extractStderrSummary(stderr: string, maxLines = 20): string {
-  return stderr
-    .replaceAll(ANSI_RE, '')
+  return stripVTControlCharacters(stderr)
     .split('\n')
     .map((l) => l.trimEnd())
     .filter((l) => l.length > 0)
@@ -191,11 +184,7 @@ export async function executePlaywrightTest(
     }
 
     if (parsedResult?.suites?.length > 0) {
-      const stripAnsi = (str: string) =>
-        str.replaceAll(
-          /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g,
-          '',
-        );
+      const stripAnsi = stripVTControlCharacters;
 
       const flattenTests = (suite: any): any[] => {
         let tests: any[] = [];

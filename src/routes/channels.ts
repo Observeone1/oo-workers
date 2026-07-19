@@ -8,6 +8,7 @@ import type { Hono } from 'hono';
 import { alertChannelRepo, type ChannelType } from '../db/repositories/alert-channel.repo.ts';
 import { sendToChannel } from '../services/alert-dispatch.ts';
 import { isLocalMailpit, findRecentTestMessage } from '../services/mailpit.ts';
+import { isValidEmailAddress } from '../utils/email.ts';
 
 const VALID_CHANNEL_TYPES: ChannelType[] = ['webhook', 'discord', 'slack', 'email'];
 
@@ -28,7 +29,7 @@ export function registerChannelRoutes(app: Hono): void {
     }
     let config: Record<string, unknown>;
     if (type === 'email') {
-      if (!url || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(url)) {
+      if (!isValidEmailAddress(url)) {
         return c.json({ error: 'a recipient email address is required' }, 400);
       }
       config = { to: url };

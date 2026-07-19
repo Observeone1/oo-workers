@@ -100,8 +100,8 @@ describe('import-remap: POSITIVE — v1.25.0 bundle', () => {
     const emailCh = await db.select().from(alertChannels).where(eq(alertChannels.name, `${TAG}-ops`));
     const slackCh = await db.select().from(alertChannels).where(eq(alertChannels.name, `${TAG}-slack`));
     const bindings = await db.select().from(monitorAlertChannels).where(and(eq(monitorAlertChannels.monitorType, 'url'), eq(monitorAlertChannels.monitorId, urlMon[0].id)));
-    const chIds = bindings.map((b) => b.channelId).sort();
-    expect(chIds).toEqual([emailCh[0].id, slackCh[0].id].sort());
+    const chIds = bindings.map((b) => b.channelId).sort((a, b) => a - b);
+    expect(chIds).toEqual([emailCh[0].id, slackCh[0].id].sort((a, b) => a - b));
   });
 
   test('api check bound to slack only', async () => {
@@ -118,8 +118,8 @@ describe('import-remap: POSITIVE — v1.25.0 bundle', () => {
     const urlMon = await db.select().from(urlMonitors).where(eq(urlMonitors.name, `${TAG}-url-home`));
     const apiChk = await db.select().from(apiChecks).where(eq(apiChecks.name, `${TAG}-api-health`));
     const bindings = await db.select().from(statusPageMonitors).where(eq(statusPageMonitors.statusPageId, sp[0].id));
-    const pairs = bindings.map((b) => `${b.monitorType}:${b.monitorId}`).sort();
-    expect(pairs).toEqual([`url:${urlMon[0].id}`, `api:${apiChk[0].id}`].sort());
+    const pairs = bindings.map((b) => `${b.monitorType}:${b.monitorId}`).sort((a, b) => a.localeCompare(b));
+    expect(pairs).toEqual([`url:${urlMon[0].id}`, `api:${apiChk[0].id}`].sort((a, b) => a.localeCompare(b)));
   });
 });
 
