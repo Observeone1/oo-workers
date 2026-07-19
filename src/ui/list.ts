@@ -206,7 +206,6 @@ export async function renderList() {
 
   const showingFrom = filtered.length === 0 ? 0 : start + 1;
   const showingTo = Math.min(start + PAGE_SIZE, filtered.length);
-  const filteredSuffix = search ? ` (filtered from ${allForTab.length})` : '';
 
   // Fleet stats
   const allMonitors = [
@@ -374,7 +373,7 @@ export async function renderList() {
             ? search
               ? `No matches for "${esc(search)}"`
               : 'No monitors'
-            : `${showingFrom}–${showingTo} of ${filtered.length}${filteredSuffix}`
+            : `${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
         }
       </span>
     </div>

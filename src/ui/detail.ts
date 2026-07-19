@@ -257,13 +257,11 @@ function renderWithFilter(
           .map((r) => {
             const cls = statusClass(r.status);
             const latency = r.responseTimeMs ?? r.durationMs;
-            const regionLabel =
+            const regionSlug =
               r.regionId == null
                 ? 'master'
                 : esc(regions.get(r.regionId)?.slug ?? '#' + r.regionId);
-            const regionCell = showChips
-              ? `<td class="cell-meta">${regionLabel}</td>`
-              : '';
+            const regionCell = showChips ? `<td class="cell-meta">${regionSlug}</td>` : '';
             const artifactsCell = type === 'qa' ? renderArtifactsCell(r) : '';
             // For API monitors, surface per-assertion pass/fail in the Detail
             // cell instead of the generic "One or more assertions failed".
