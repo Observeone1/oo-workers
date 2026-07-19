@@ -55,9 +55,11 @@ export async function signedFetchRaw(
     ...extraHeaders,
   };
 
+  // Sig-V4 requires byte-order sorting of header names — never localeCompare,
+  // which is locale-dependent and can reorder hyphenated names under ICU.
   const sortedKeys = Object.keys(baseHeaders)
     .map((k) => k.toLowerCase())
-    .sort();
+    .sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
   const canonicalHeaders = sortedKeys
     .map((k) => {
       const orig = Object.keys(baseHeaders).find((h) => h.toLowerCase() === k)!;

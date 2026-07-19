@@ -1528,7 +1528,6 @@ td.col-actions {
    FORMS
    ================================================================= */
 label {
-  display: block;
   margin: var(--s-3) 0 6px;
   font-size: 10.5px;
   color: var(--muted);
@@ -4956,7 +4955,6 @@ dialog.v2 .dialog-shell {
 }
 
 .docs-body h3 {
-  font-size: var(--fs-14, 14px);
   font-weight: var(--fw-semibold);
   color: var(--text);
   margin: 28px 0 10px;
