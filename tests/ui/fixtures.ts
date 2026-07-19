@@ -75,6 +75,43 @@ export async function deleteMonitorViaApi(
   await request.delete(`/api/monitors/${type}/${id}`).catch(() => {});
 }
 
+// Fetch a created monitor back through the single-GET endpoint so a spec can
+// assert what the form actually serialized (interval, timeout, ...).
+export async function fetchMonitor(
+  request: APIRequestContext,
+  type: 'url' | 'tcp',
+  id: number,
+): Promise<{ intervalSeconds: number; timeoutMs: number }> {
+  const res = await request.get(`/api/monitors/${type}/${id}`);
+  expect(res.ok(), `GET /api/monitors/${type}/${id} failed: ${res.status()}`).toBe(true);
+  const body = (await res.json()) as { monitor: { intervalSeconds: number; timeoutMs: number } };
+  return body.monitor;
+}
+
+// Resolve a dialog-created monitor's id by the unique name the spec typed.
+export async function findCreatedId(
+  request: APIRequestContext,
+  type: 'url' | 'tcp',
+  name: string,
+): Promise<number> {
+  const list = (await (await request.get('/api/monitors')).json()) as Record<
+    string,
+    Array<{ id: number; name: string }>
+  >;
+  const row = list[type].find((m) => m.name === name);
+  expect(row, `monitor '${name}' not found in /api/monitors[${type}]`).toBeDefined();
+  return row!.id;
+}
+
+// Open the add-monitor dialog on the given type tile.
+export async function openAddDialog(page: Page, tile: 'url' | 'tcp'): Promise<void> {
+  await page.goto('/');
+  await waitForList(page);
+  await page.getByTestId('header-add-monitor-btn').click();
+  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
+  await page.getByTestId(`add-monitor-type-tile-${tile}`).click();
+}
+
 // Seed a URL monitor for specs that need at least one row in the list
 // (e.g. the detail view spec, or the status-page binding spec). The
 // global-setup purge starts every run with an empty DB, so any spec

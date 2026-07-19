@@ -12,40 +12,24 @@
  * If any scenario fails, the failing path identifies the root cause.
  */
 
-import { test, expect, waitForList, uniqueSuffix, deleteMonitorViaApi } from './fixtures';
-import type { Page, APIRequestContext } from '@playwright/test';
+import {
+  test,
+  expect,
+  waitForList,
+  uniqueSuffix,
+  deleteMonitorViaApi,
+  fetchMonitor,
+  findCreatedId,
+  openAddDialog,
+} from './fixtures';
+import type { APIRequestContext } from '@playwright/test';
 
 async function fetchInterval(
   request: APIRequestContext,
   type: 'url' | 'tcp',
   id: number,
 ): Promise<number> {
-  const res = await request.get(`/api/monitors/${type}/${id}`);
-  expect(res.ok(), `GET /api/monitors/${type}/${id} failed: ${res.status()}`).toBe(true);
-  const body = (await res.json()) as { monitor: { intervalSeconds: number } };
-  return body.monitor.intervalSeconds;
-}
-
-async function findCreatedId(
-  request: APIRequestContext,
-  type: 'url' | 'tcp',
-  name: string,
-): Promise<number> {
-  const list = (await (await request.get('/api/monitors')).json()) as Record<
-    string,
-    Array<{ id: number; name: string }>
-  >;
-  const row = list[type].find((m) => m.name === name);
-  expect(row, `monitor '${name}' not found in /api/monitors[${type}]`).toBeDefined();
-  return row!.id;
-}
-
-async function openAddDialog(page: Page, tile: 'url' | 'tcp'): Promise<void> {
-  await page.goto('/');
-  await waitForList(page);
-  await page.getByTestId('header-add-monitor-btn').click();
-  await expect(page.getByTestId('add-monitor-dialog')).toBeVisible();
-  await page.getByTestId(`add-monitor-type-tile-${tile}`).click();
+  return (await fetchMonitor(request, type, id)).intervalSeconds;
 }
 
 test('A. URL interval — fill("30") (select-all + type, the canonical path)', async ({
