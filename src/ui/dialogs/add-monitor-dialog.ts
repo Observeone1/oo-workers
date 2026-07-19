@@ -378,6 +378,7 @@ export function initAddDialog(): void {
         name,
         url,
         intervalSeconds,
+        timeoutMs: (Number(fd.get('url_timeout')) || 10) * 1000,
         assertions: [{ operator: 'equals', statusCode: Number(fd.get('url_status') || 200) }],
       };
     } else if (type === 'api') {
@@ -431,6 +432,7 @@ export function initAddDialog(): void {
         payloadHex: tcpPayloadHex || null,
         expectBanner: tcpExpectBanner || null,
         intervalSeconds: Number(fd.get('tcp_interval_seconds')) || 60,
+        timeoutMs: (Number(fd.get('tcp_timeout')) || 5) * 1000,
       };
     } else if (type === 'db') {
       const host = String(fd.get('db_host') ?? '').trim();
