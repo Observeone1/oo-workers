@@ -19,37 +19,43 @@ import {
   openAddDialog,
 } from './fixtures';
 
-test('URL timeout — typed value reaches the created monitor', async ({ page, request }) => {
-  await openAddDialog(page, 'url');
-  const name = `e2e-timeout-url-${uniqueSuffix()}`;
-  await page.locator('#add-form input[name="name"]').fill(name);
-  await page.locator('#add-form input[name="url"]').fill('https://example.com');
-  await page.locator('#add-form input[name="url_timeout"]').fill('7');
-  await page.getByTestId('add-monitor-submit').click();
-  await waitForList(page);
+const CASES = [
+  {
+    type: 'url' as const,
+    fields: { url: 'https://example.com' },
+    timeoutField: 'url_timeout',
+    typed: '7',
+    expectedMs: 7000,
+  },
+  {
+    type: 'tcp' as const,
+    fields: { tcp_host: 'example.com', tcp_port: '443' },
+    timeoutField: 'tcp_timeout',
+    typed: '9',
+    expectedMs: 9000,
+  },
+];
 
-  const id = await findCreatedId(request, 'url', name);
-  try {
-    expect((await fetchMonitor(request, 'url', id)).timeoutMs).toBe(7000);
-  } finally {
-    await deleteMonitorViaApi(request, 'url', id);
-  }
-});
+for (const c of CASES) {
+  test(`${c.type.toUpperCase()} timeout — typed value reaches the created monitor`, async ({
+    page,
+    request,
+  }) => {
+    await openAddDialog(page, c.type);
+    const name = `e2e-timeout-${c.type}-${uniqueSuffix()}`;
+    await page.locator('#add-form input[name="name"]').fill(name);
+    for (const [field, value] of Object.entries(c.fields)) {
+      await page.locator(`#add-form input[name="${field}"]`).fill(value);
+    }
+    await page.locator(`#add-form input[name="${c.timeoutField}"]`).fill(c.typed);
+    await page.getByTestId('add-monitor-submit').click();
+    await waitForList(page);
 
-test('TCP timeout — typed value reaches the created monitor', async ({ page, request }) => {
-  await openAddDialog(page, 'tcp');
-  const name = `e2e-timeout-tcp-${uniqueSuffix()}`;
-  await page.locator('#add-form input[name="name"]').fill(name);
-  await page.locator('#add-form input[name="tcp_host"]').fill('example.com');
-  await page.locator('#add-form input[name="tcp_port"]').fill('443');
-  await page.locator('#add-form input[name="tcp_timeout"]').fill('9');
-  await page.getByTestId('add-monitor-submit').click();
-  await waitForList(page);
-
-  const id = await findCreatedId(request, 'tcp', name);
-  try {
-    expect((await fetchMonitor(request, 'tcp', id)).timeoutMs).toBe(9000);
-  } finally {
-    await deleteMonitorViaApi(request, 'tcp', id);
-  }
-});
+    const id = await findCreatedId(request, c.type, name);
+    try {
+      expect((await fetchMonitor(request, c.type, id)).timeoutMs).toBe(c.expectedMs);
+    } finally {
+      await deleteMonitorViaApi(request, c.type, id);
+    }
+  });
+}
