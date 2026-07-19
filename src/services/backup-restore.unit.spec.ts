@@ -43,11 +43,15 @@ function selectChain() {
     where: () => c,
     leftJoin: () => c,
     limit: () => c,
-    // `n` answers targetIsEmpty's count probe; `total` answers the real
-    // runBackfill's count probes with 0 so its passes are no-ops.
-    then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
-      Promise.resolve([{ n: probeCount, total: 0 }]).then(resolve, reject),
   };
+  // Being thenable IS the point: drizzle's builder is awaited directly.
+  // `n` answers targetIsEmpty's count probe; `total` answers the real
+  // runBackfill's count probes with 0 so its passes are no-ops.
+  Object.defineProperty(c, 'then', {
+    value: (resolve: (v: unknown) => void, reject?: (e: unknown) => void): void => {
+      void Promise.resolve([{ n: probeCount, total: 0 }]).then(resolve, reject);
+    },
+  });
   return c;
 }
 

@@ -43,14 +43,25 @@ function selectBuilder(): Thenable {
   b.where = () => b;
   b.leftJoin = () => b;
   b.limit = () => b;
-  b.then = (resolve, reject) => {
-    if (selects.length === 0) {
-      (reject ?? (() => {}))(new Error('db mock: select queue exhausted'));
-      return;
-    }
-    Promise.resolve(selects.shift()).then(resolve, reject);
-  };
+  // Being thenable IS the point: drizzle's builder is awaited directly, so
+  // the stand-in has to be too. Defined rather than assigned as a literal
+  // property so it is unmistakably deliberate (S7739 guards against
+  // *accidental* thenables).
+  Object.defineProperty(b, 'then', {
+    value: (resolve: (value: unknown) => void, reject?: (err: unknown) => void): void => {
+      if (selects.length === 0) {
+        (reject ?? (() => {}))(new Error('db mock: select queue exhausted'));
+        return;
+      }
+      void Promise.resolve(selects.shift()).then(resolve, reject);
+    },
+  });
   return b;
+}
+
+/** Queue results for the next awaited select chains, in order. */
+function queue(...results: unknown[]): void {
+  selects.push(...results);
 }
 
 function updateBuilder(): { set: (v: Record<string, unknown>) => unknown } {
@@ -70,15 +81,15 @@ const { runBackfill } = await import('./storage-backfill.ts');
 
 /** upload phase finds nothing to do (one count read). */
 function queueUploadEmpty(): void {
-  selects.push([{ total: 0 }]);
+  queue([{ total: 0 }]);
 }
 /** migrate phase finds nothing to do (one count read). */
 function queueMigrateEmpty(): void {
-  selects.push([{ total: 0 }]);
+  queue([{ total: 0 }]);
 }
 /** sweep phase reads script rows then artifact rows. */
 function queueSweep(scriptRows: unknown[] = [], artifactRows: unknown[] = []): void {
-  selects.push(scriptRows, artifactRows);
+  queue(scriptRows, artifactRows);
 }
 
 beforeEach(() => {
@@ -107,8 +118,8 @@ describe('runBackfill — storage not configured', () => {
 
 describe('runBackfill — upload pass', () => {
   test('uploads each pending script under the current qa-projects key and records it', async () => {
-    selects.push([{ total: 2 }]);
-    selects.push([
+    queue([{ total: 2 }]);
+    queue([
       {
         id: 7,
         projectId: 3,
@@ -118,7 +129,7 @@ describe('runBackfill — upload pass', () => {
       },
       { id: 8, projectId: 3, testName: 'Login', script: 'expect(1)', projectName: 'Shop' },
     ]);
-    selects.push([]); // second batch read drains the loop
+    queue([]); // second batch read drains the loop
     queueMigrateEmpty();
     queueSweep();
 
@@ -128,25 +139,28 @@ describe('runBackfill — upload pass', () => {
     expect(out.failed).toBe(0);
 
     // Real qaScriptKey output, not a stubbed one.
-    const keys = putObject.mock.calls.map((c) => c[0]).sort();
+    const keys = putObject.mock.calls
+      .map((c) => c[0])
+      .sort((a, b) => String(a).localeCompare(String(b)));
     expect(keys).toEqual([
       'qa-projects/3-shop/7-checkout-flow.spec.ts',
       'qa-projects/3-shop/8-login.spec.ts',
     ]);
     expect(putObject.mock.calls.map((c) => c[2])).toEqual(['text/typescript', 'text/typescript']);
     // The script body is uploaded verbatim.
-    expect(putObject.mock.calls.map((c) => c[1]).sort()).toEqual([
-      'await page.goto()',
-      'expect(1)',
-    ]);
+    expect(
+      putObject.mock.calls.map((c) => c[1]).sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual(['await page.goto()', 'expect(1)']);
     // Each uploaded row gets its script_url written back to the key we uploaded.
-    expect(updates.map((u) => u.scriptUrl).sort()).toEqual(keys);
+    expect(
+      updates.map((u) => u.scriptUrl).sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual(keys);
   });
 
   test('falls back to synthetic project/test names when the join returns nulls', async () => {
-    selects.push([{ total: 1 }]);
-    selects.push([{ id: 42, projectId: 9, testName: null, script: 'x', projectName: null }]);
-    selects.push([]);
+    queue([{ total: 1 }]);
+    queue([{ id: 42, projectId: 9, testName: null, script: 'x', projectName: null }]);
+    queue([]);
     queueMigrateEmpty();
     queueSweep();
 
@@ -157,12 +171,12 @@ describe('runBackfill — upload pass', () => {
   });
 
   test('a failed upload is counted, does not write script_url, and does not stop its peers', async () => {
-    selects.push([{ total: 2 }]);
-    selects.push([
+    queue([{ total: 2 }]);
+    queue([
       { id: 1, projectId: 1, testName: 'ok', script: 's1', projectName: 'p' },
       { id: 2, projectId: 1, testName: 'boom', script: 's2', projectName: 'p' },
     ]);
-    selects.push([]);
+    queue([]);
     queueMigrateEmpty();
     queueSweep();
     putObject.mockImplementation(async (key: string) => {
@@ -180,8 +194,8 @@ describe('runBackfill — upload pass', () => {
   });
 
   test('aborts the upload loop when every row in a batch fails (no infinite re-read)', async () => {
-    selects.push([{ total: 2 }]);
-    selects.push([
+    queue([{ total: 2 }]);
+    queue([
       { id: 1, projectId: 1, testName: 'a', script: 's', projectName: 'p' },
       { id: 2, projectId: 1, testName: 'b', script: 's', projectName: 'p' },
     ]);
@@ -213,8 +227,8 @@ describe('runBackfill — upload pass', () => {
 describe('runBackfill — legacy migrate pass', () => {
   test('moves legacy keys to the new layout and repoints script_url', async () => {
     queueUploadEmpty();
-    selects.push([{ total: 1 }]);
-    selects.push([
+    queue([{ total: 1 }]);
+    queue([
       {
         id: 5,
         projectId: 2,
@@ -223,7 +237,7 @@ describe('runBackfill — legacy migrate pass', () => {
         projectName: 'Api',
       },
     ]);
-    selects.push([]);
+    queue([]);
     queueSweep();
 
     const out = await runBackfill();
@@ -239,8 +253,8 @@ describe('runBackfill — legacy migrate pass', () => {
 
   test('leaves a row alone when its script_url is already in the current layout', async () => {
     queueUploadEmpty();
-    selects.push([{ total: 1 }]);
-    selects.push([
+    queue([{ total: 1 }]);
+    queue([
       {
         id: 6,
         projectId: 2,
@@ -249,7 +263,7 @@ describe('runBackfill — legacy migrate pass', () => {
         projectName: 'Api',
       },
     ]);
-    selects.push([]);
+    queue([]);
     queueSweep();
 
     const out = await runBackfill();
@@ -262,8 +276,8 @@ describe('runBackfill — legacy migrate pass', () => {
 
   test('counts a failed move without repointing script_url', async () => {
     queueUploadEmpty();
-    selects.push([{ total: 1 }]);
-    selects.push([
+    queue([{ total: 1 }]);
+    queue([
       { id: 9, projectId: 1, testName: 't', scriptUrl: 'qa-scripts/9.spec.ts', projectName: 'p' },
     ]);
     queueSweep();
@@ -300,10 +314,9 @@ describe('runBackfill — orphan sweep', () => {
 
     expect(out.orphansDeleted).toBe(2);
     expect(out.failed).toBe(0);
-    expect(deleteObject.mock.calls.map((c) => c[0]).sort()).toEqual([
-      'qa-projects/1-p/stale.spec.ts',
-      'qa-scripts/legacy-orphan.spec.ts',
-    ]);
+    expect(
+      deleteObject.mock.calls.map((c) => c[0]).sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual(['qa-projects/1-p/stale.spec.ts', 'qa-scripts/legacy-orphan.spec.ts']);
     expect(listObjects.mock.calls.map((c) => c[0])).toEqual(['qa-scripts/', 'qa-projects/']);
   });
 
@@ -320,7 +333,9 @@ describe('runBackfill — orphan sweep', () => {
 
     expect(out.orphansDeleted).toBe(25);
     // The pool must not double-delete or drop a key.
-    expect(deleteObject.mock.calls.map((c) => c[0]).sort()).toEqual([...orphans].sort());
+    expect(
+      deleteObject.mock.calls.map((c) => c[0]).sort((a, b) => String(a).localeCompare(String(b))),
+    ).toEqual([...orphans].sort((a, b) => String(a).localeCompare(String(b))));
   });
 
   test('counts a failed delete without aborting the rest of the sweep', async () => {
@@ -359,11 +374,11 @@ describe('runBackfill — orphan sweep', () => {
 describe('runBackfill — aggregate result', () => {
   test('sums failures across all three passes', async () => {
     // upload: 1 row, fails
-    selects.push([{ total: 1 }]);
-    selects.push([{ id: 1, projectId: 1, testName: 't', script: 's', projectName: 'p' }]);
+    queue([{ total: 1 }]);
+    queue([{ id: 1, projectId: 1, testName: 't', script: 's', projectName: 'p' }]);
     // migrate: 1 row, fails
-    selects.push([{ total: 1 }]);
-    selects.push([
+    queue([{ total: 1 }]);
+    queue([
       { id: 2, projectId: 1, testName: 't', scriptUrl: 'qa-scripts/2.spec.ts', projectName: 'p' },
     ]);
     // sweep: 1 orphan, fails

@@ -732,11 +732,11 @@ describe('full update — socket, db and tls types', () => {
     await req('/api/monitors/tls/6', 'PUT', {
       name: 'c',
       host: 'h',
-      expectCnRegex: '^x\\.test$',
+      expectCnRegex: String.raw`^x\.test$`,
       verifyChain: true,
     });
     const [, patch] = tlsRepo.update.mock.calls.at(-1) as [number, Record<string, unknown>];
-    expect(patch.expectCnRegex).toBe('^x\\.test$');
+    expect(patch.expectCnRegex).toBe(String.raw`^x\.test$`);
     expect(patch.verifyChain).toBe(true);
   });
 

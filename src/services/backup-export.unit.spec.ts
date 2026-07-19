@@ -48,8 +48,14 @@ function selectChain(): SelectChain {
   c.where = () => c;
   c.orderBy = () => c;
   c.limit = () => c;
-  // Always the first (and only) page: a short page ends the keyset loop.
-  c.then = (resolve, reject) => Promise.resolve(rowsByTable[name] ?? []).then(resolve, reject);
+  // Being thenable IS the point: drizzle's builder is awaited directly, so
+  // the stand-in has to be too. Always the first (and only) page, since a
+  // short page ends the keyset loop.
+  Object.defineProperty(c, 'then', {
+    value: (resolve: (v: unknown) => void, reject?: (e: unknown) => void): void => {
+      void Promise.resolve(rowsByTable[name] ?? []).then(resolve, reject);
+    },
+  });
   return c;
 }
 
@@ -294,14 +300,15 @@ describe('estimateArtifacts', () => {
   });
 });
 
-describe('exportSplit', () => {
-  async function splitInto(opts: Record<string, unknown>): Promise<string> {
-    const dir = await mkdtemp(join(tmpdir(), 'oow-split-'));
-    tmpDirs.push(dir);
-    await exportSplit(opts as never, dir);
-    return dir;
-  }
+/** Run a split export into a fresh temp dir and return its path. */
+async function splitInto(opts: Record<string, unknown>): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'oow-split-'));
+  tmpDirs.push(dir);
+  await exportSplit(opts as never, dir);
+  return dir;
+}
 
+describe('exportSplit', () => {
   test('writes a manifest plus one index-prefixed gzip file per table', async () => {
     rowsByTable[REGIONS] = [{ id: 1, slug: 'eu' }];
 
