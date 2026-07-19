@@ -77,19 +77,19 @@ function redactQuerySecretsInText(raw: string): string {
   let out = '';
   let i = 0;
   while (i < raw.length) {
-    const ch = raw[i]!;
+    const ch = raw[i];
     out += ch;
     i += 1;
     if (ch !== '?' && ch !== '&') continue;
 
     let nameEnd = i;
-    while (nameEnd < raw.length && raw[nameEnd] !== '=' && !DELIMITERS.has(raw[nameEnd]!)) {
+    while (nameEnd < raw.length && raw[nameEnd] !== '=' && !DELIMITERS.has(raw[nameEnd])) {
       nameEnd += 1;
     }
     if (nameEnd === i || raw[nameEnd] !== '=') continue;
 
     let valueEnd = nameEnd + 1;
-    while (valueEnd < raw.length && !DELIMITERS.has(raw[valueEnd]!)) valueEnd += 1;
+    while (valueEnd < raw.length && !DELIMITERS.has(raw[valueEnd])) valueEnd += 1;
 
     const name = raw.slice(i, nameEnd);
     out += isSensitiveParam(name) ? `${name}=${REDACTED}` : raw.slice(i, valueEnd);
