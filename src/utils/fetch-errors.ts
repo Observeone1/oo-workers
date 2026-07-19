@@ -58,12 +58,44 @@ export function redactUrlCredentials(raw: string): string {
     return u.toString();
   } catch {
     // Not a parseable URL — apply the same two rules textually.
-    return raw
-      .replaceAll(/(\/\/)[^/@\s]*@/g, '$1')
-      .replaceAll(/([?&])([^=&\s]+)=([^&\s]*)/g, (match, sep: string, name: string) =>
-        isSensitiveParam(name) ? `${sep}${name}=${REDACTED}` : match,
-      );
+    return redactQuerySecretsInText(raw.replaceAll(/(\/\/)[^/@\s]*@/g, '$1'));
   }
+}
+
+const DELIMITERS = new Set(['&', ' ', '\t', '\n', '\r', '\f', '\v']);
+
+/**
+ * Redact secret query values in a string that would not parse as a URL.
+ *
+ * Written as a single forward scan rather than a `([?&])(name)=(value)` regex:
+ * that pattern is linear (each class excludes its own delimiter) but Sonar
+ * still reports it as S5852 backtracking, and this routine is not permitted to
+ * review hotspots away — so the pattern is removed rather than justified.
+ * One pass, no backtracking possible.
+ */
+function redactQuerySecretsInText(raw: string): string {
+  let out = '';
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i]!;
+    out += ch;
+    i += 1;
+    if (ch !== '?' && ch !== '&') continue;
+
+    let nameEnd = i;
+    while (nameEnd < raw.length && raw[nameEnd] !== '=' && !DELIMITERS.has(raw[nameEnd]!)) {
+      nameEnd += 1;
+    }
+    if (nameEnd === i || raw[nameEnd] !== '=') continue;
+
+    let valueEnd = nameEnd + 1;
+    while (valueEnd < raw.length && !DELIMITERS.has(raw[valueEnd]!)) valueEnd += 1;
+
+    const name = raw.slice(i, nameEnd);
+    out += isSensitiveParam(name) ? `${name}=${REDACTED}` : raw.slice(i, valueEnd);
+    i = valueEnd;
+  }
+  return out;
 }
 
 /**

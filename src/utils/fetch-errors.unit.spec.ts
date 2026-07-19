@@ -94,6 +94,24 @@ describe('redactUrlCredentials strips secret query parameters', () => {
   test('redacts a query secret even when the URL will not parse', () => {
     expect(redactUrlCredentials('not a url ?api_key=s3cret')).not.toContain('s3cret');
   });
+
+  test('keeps non-secret params intact in an unparseable string', () => {
+    const out = redactUrlCredentials('not a url ?region=eu&token=s3cret&page=2');
+    expect(out).toContain('region=eu');
+    expect(out).toContain('page=2');
+    expect(out).toContain('token=REDACTED');
+    expect(out).not.toContain('s3cret');
+  });
+
+  test('leaves a valueless flag param alone in an unparseable string', () => {
+    expect(redactUrlCredentials('not a url ?verbose&token=s3cret')).toBe(
+      'not a url ?verbose&token=REDACTED',
+    );
+  });
+
+  test('leaves an unparseable string with no query untouched', () => {
+    expect(redactUrlCredentials('not a url at all')).toBe('not a url at all');
+  });
 });
 
 describe('classifyFetchError does not leak query-string secrets', () => {
