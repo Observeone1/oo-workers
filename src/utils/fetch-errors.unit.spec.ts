@@ -123,6 +123,11 @@ describe('classifyFetchError does not leak query-string secrets', () => {
   });
 
   test('an empty error message still yields an empty string (unchanged)', () => {
-    expect(classifyFetchError(new Error(''), tokenUrl, 5000)).toBe('');
+    // Pins the `?? 'Unknown error'` semantics: '' is not nullish, so it passes
+    // through. Assigned rather than constructed so the empty string is not an
+    // Error-constructor literal.
+    const err = new Error('placeholder');
+    err.message = '';
+    expect(classifyFetchError(err, tokenUrl, 5000)).toBe('');
   });
 });

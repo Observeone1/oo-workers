@@ -2,12 +2,37 @@
  * Query parameters whose values are credentials rather than data. Monitor URLs
  * routinely carry a token this way (`?api_key={{PROD_KEY}}`), and since env
  * secrets are interpolated into the URL before the probe runs, the resolved
- * value would otherwise reach error messages, logs and alert channels.
+ * value would otherwise reach error messages, logs and alert payloads.
+ *
+ * Stored without separators; `isSensitiveParam` normalises before lookup so
+ * `api_key`, `api-key` and `APIKey` all match the one entry.
  */
-const SENSITIVE_PARAM =
-  /^(api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|token|auth|authorization|secret|client[-_]?secret|password|passwd|pwd|session[-_]?id|session|signature|sig|key)$/i;
+const SENSITIVE_PARAMS = new Set([
+  'apikey',
+  'accesstoken',
+  'refreshtoken',
+  'idtoken',
+  'authtoken',
+  'token',
+  'auth',
+  'authorization',
+  'secret',
+  'clientsecret',
+  'password',
+  'passwd',
+  'pwd',
+  'sessionid',
+  'session',
+  'signature',
+  'sig',
+  'key',
+]);
 
 const REDACTED = 'REDACTED';
+
+function isSensitiveParam(name: string): boolean {
+  return SENSITIVE_PARAMS.has(name.toLowerCase().replaceAll(/[-_]/g, ''));
+}
 
 /**
  * Strip credentials from a URL so they don't leak into error messages, logs, or
@@ -25,20 +50,18 @@ export function redactUrlCredentials(raw: string): string {
       u.username = '';
       u.password = '';
     }
-    // Snapshot the keys: mutating searchParams while iterating it is undefined.
-    // Only touch the params that match, so a URL with no secrets serialises
-    // exactly as it does today.
-    for (const name of [...u.searchParams.keys()]) {
-      if (SENSITIVE_PARAM.test(name)) u.searchParams.set(name, REDACTED);
-    }
+    // Collect first: mutating searchParams while iterating it is undefined.
+    // Only the matching params are touched, so a URL with no secrets
+    // serialises exactly as it does today.
+    const secretNames = [...u.searchParams.keys()].filter(isSensitiveParam);
+    for (const name of secretNames) u.searchParams.set(name, REDACTED);
     return u.toString();
   } catch {
-    // Not a parseable URL — strip defensively with the same two rules.
+    // Not a parseable URL — apply the same two rules textually.
     return raw
-      .replace(/(\/\/)[^/@\s]*@/, '$1')
-      .replace(
-        /([?&](?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|token|auth|authorization|secret|client[-_]?secret|password|passwd|pwd|session[-_]?id|session|signature|sig|key)=)[^&\s]*/gi,
-        `$1${REDACTED}`,
+      .replaceAll(/(\/\/)[^/@\s]*@/g, '$1')
+      .replaceAll(/([?&])([^=&\s]+)=([^&\s]*)/g, (match, sep: string, name: string) =>
+        isSensitiveParam(name) ? `${sep}${name}=${REDACTED}` : match,
       );
   }
 }
