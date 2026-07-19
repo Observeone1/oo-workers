@@ -12,11 +12,15 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 import { DEFAULTS } from '../constants.ts';
 import {
+  execEventsMock,
   mockAlertChannelRepo,
+  mockExecEvents,
+  mockQaProjectRepo,
   mockRegionRepo,
   mockStatusPageRepo,
   monitorAlertChannelRepoMock,
   monitorRegionRepoMock,
+  qaProjectRepoMock,
   statusPageMonitorRepoMock,
 } from '../test-support/shared-mocks.ts';
 
@@ -48,13 +52,10 @@ const apiRepo = {
   createAssertions: mock(async (_id: number, _a: AnyRow[]): Promise<void> => {}),
   replaceAssertions: mock(async (_id: number, _a: AnyRow[]): Promise<void> => {}),
 };
-const qaRepo = {
-  ...makeMonitorRepo(),
-  findTestsByProjectId: mock(async (_id: number, _o?: AnyRow): Promise<AnyRow[]> => []),
-  findExecutionsByProjectId: mock(async (_id: number): Promise<AnyRow[]> => []),
-  createTests: mock(async (_id: number, _t: AnyRow[]): Promise<void> => {}),
-  updateFirstTestScript: mock(async (_id: number, _s: string): Promise<void> => {}),
-};
+// Shared with the qa processor spec: bun's mock registry is process-wide, so
+// two files registering this module with different instances poison whichever
+// one loads second.
+const qaRepo = qaProjectRepoMock;
 const tcpRepo = makeMonitorRepo();
 const udpRepo = makeMonitorRepo();
 const dbRepo = makeMonitorRepo();
@@ -70,12 +71,11 @@ const monitorRegionRepo = monitorRegionRepoMock;
 const monitorAlertChannelRepo = monitorAlertChannelRepoMock;
 const statusPageMonitorRepo = statusPageMonitorRepoMock;
 const getFleetAvailability = mock(async (_days: number): Promise<AnyRow[]> => []);
-const emitMonitorCreated = mock((_t: string, _id: number): void => {});
-const emitMonitorDeleted = mock((_t: string, _id: number): void => {});
+const { emitMonitorCreated, emitMonitorDeleted } = execEventsMock;
 
 mock.module('../db/repositories/url-monitor.repo.ts', () => ({ urlMonitorRepo: urlRepo }));
 mock.module('../db/repositories/api-check.repo.ts', () => ({ apiCheckRepo: apiRepo }));
-mock.module('../db/repositories/qa-project.repo.ts', () => ({ qaProjectRepo: qaRepo }));
+mockQaProjectRepo();
 mock.module('../db/repositories/tcp-monitor.repo.ts', () => ({ tcpMonitorRepo: tcpRepo }));
 mock.module('../db/repositories/udp-monitor.repo.ts', () => ({ udpMonitorRepo: udpRepo }));
 mock.module('../db/repositories/db-monitor.repo.ts', () => ({ dbMonitorRepo: dbRepo }));
@@ -85,7 +85,7 @@ mockRegionRepo();
 mockAlertChannelRepo();
 mockStatusPageRepo();
 mock.module('../db/repositories/availability.repo.ts', () => ({ getFleetAvailability }));
-mock.module('../services/exec-events.ts', () => ({ emitMonitorCreated, emitMonitorDeleted }));
+mockExecEvents();
 
 const { registerMonitorRoutes } = await import('./monitors.ts');
 

@@ -10,6 +10,13 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import {
+  dbMock,
+  mockDb,
+  mockObjectStorage,
+  objectStorageMock,
+  resetObjectStorageMock,
+} from '../test-support/shared-mocks.ts';
 import { gzipSync } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -70,13 +77,7 @@ const sqlMock = (...args: unknown[]) => {
   return Promise.resolve([]);
 };
 
-mock.module('../config/db.ts', () => ({
-  db: {
-    select: () => selectChain(),
-    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()),
-  },
-  sql: sqlMock,
-}));
+mockDb();
 
 let head = HEAD;
 const sharedReal = await import('./backup-shared.ts');
@@ -85,14 +86,8 @@ mock.module('./backup-shared.ts', () => ({
   schemaHead: async () => head,
 }));
 
-let configured = true;
-const putObject = mock(async (_k: string, _b: unknown, _ct: string) => undefined);
-const currentStorage = await import('./object-storage.ts');
-mock.module('./object-storage.ts', () => ({
-  ...currentStorage,
-  isStorageConfigured: () => configured,
-  putObject,
-}));
+mockObjectStorage();
+const { putObject } = objectStorageMock;
 
 const runBackfill = mock(async () => ({
   uploaded: 0,
@@ -139,9 +134,13 @@ beforeEach(() => {
   sqlCalls = 0;
   probeCount = 0;
   head = HEAD;
-  configured = true;
-  putObject.mockReset();
-  putObject.mockResolvedValue(undefined);
+  // Shared registrations: prime our own behaviour every time.
+  dbMock.db = {
+    select: () => selectChain(),
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()),
+  };
+  dbMock.sql = sqlMock;
+  resetObjectStorageMock();
   runBackfill.mockClear();
 });
 
@@ -318,7 +317,7 @@ describe('restore — tar.gz artifact dump', () => {
   });
 
   test('skips artifacts entirely when object storage is not configured', async () => {
-    configured = false;
+    objectStorageMock.configured.value = false;
 
     const res = await restore(
       await tarDump([

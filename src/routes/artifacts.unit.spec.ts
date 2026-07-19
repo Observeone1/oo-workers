@@ -8,12 +8,18 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
-import { authMiddlewareMock, mockAuthMiddleware } from '../test-support/shared-mocks.ts';
+import {
+  authMiddlewareMock,
+  mockAuthMiddleware,
+  mockObjectStorage,
+  objectStorageMock,
+  resetObjectStorageMock,
+} from '../test-support/shared-mocks.ts';
 
-const getObjectResponse = mock(async (_key: string): Promise<Response> => new Response(''));
 const { requireAuth } = authMiddlewareMock;
+const { getObjectResponse } = objectStorageMock;
 
-mock.module('../services/object-storage.ts', () => ({ getObjectResponse }));
+mockObjectStorage();
 mockAuthMiddleware();
 mock.module('../utils/logger.ts', () => ({
   logger: { error: () => {}, info: () => {}, warn: () => {} },
@@ -30,7 +36,8 @@ function makeApp(): Hono {
 const GOOD_KEY = 'qa-projects/12-checkout-suite/runs/345/trace.zip';
 
 beforeEach(() => {
-  getObjectResponse.mockReset();
+  // Shared registrations: prime our own behaviour every time.
+  resetObjectStorageMock();
   getObjectResponse.mockResolvedValue(
     new Response('artifact-bytes', { headers: { 'content-type': 'application/zip' } }),
   );

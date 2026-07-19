@@ -15,7 +15,14 @@
  * queues all three phases (the *Empty helpers keep that noise down).
  */
 
-import { describe, test, expect, beforeEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach } from 'bun:test';
+import {
+  dbMock,
+  mockDb,
+  mockObjectStorage,
+  objectStorageMock,
+  resetObjectStorageMock,
+} from '../test-support/shared-mocks.ts';
 
 type Thenable = {
   from: () => Thenable;
@@ -55,26 +62,9 @@ function updateBuilder(): { set: (v: Record<string, unknown>) => unknown } {
   };
 }
 
-mock.module('../config/db.ts', () => ({
-  db: { select: () => selectBuilder(), update: () => updateBuilder() },
-  sql: {},
-}));
-
-let storageConfigured = true;
-const putObject = mock(async (_key: string, _body: string, _ct: string) => undefined);
-const moveObject = mock(async (_from: string, _to: string) => undefined);
-const deleteObject = mock(async (_key: string) => undefined);
-const listObjects = mock(async (_prefix: string) => [] as string[]);
-
-const realStorage = await import('./object-storage.ts');
-mock.module('./object-storage.ts', () => ({
-  ...realStorage,
-  isStorageConfigured: () => storageConfigured,
-  putObject,
-  moveObject,
-  deleteObject,
-  listObjects,
-}));
+mockDb();
+mockObjectStorage();
+const { putObject, moveObject, deleteObject, listObjects } = objectStorageMock;
 
 const { runBackfill } = await import('./storage-backfill.ts');
 
@@ -94,20 +84,16 @@ function queueSweep(scriptRows: unknown[] = [], artifactRows: unknown[] = []): v
 beforeEach(() => {
   selects.length = 0;
   updates.length = 0;
-  storageConfigured = true;
-  putObject.mockReset();
-  moveObject.mockReset();
-  deleteObject.mockReset();
-  listObjects.mockReset();
-  putObject.mockResolvedValue(undefined);
-  moveObject.mockResolvedValue(undefined);
-  deleteObject.mockResolvedValue(undefined);
-  listObjects.mockResolvedValue([]);
+  // Shared registrations: prime our own behaviour, never trust what another
+  // spec file left behind.
+  dbMock.db = { select: () => selectBuilder(), update: () => updateBuilder() };
+  dbMock.sql = () => Promise.resolve([]);
+  resetObjectStorageMock();
 });
 
 describe('runBackfill — storage not configured', () => {
   test('returns all-zero counts and touches neither db nor storage', async () => {
-    storageConfigured = false;
+    objectStorageMock.configured.value = false;
 
     const out = await runBackfill();
 

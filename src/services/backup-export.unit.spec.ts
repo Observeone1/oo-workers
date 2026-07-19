@@ -8,7 +8,14 @@
  * boundaries are faked — the drizzle `db` reads and object storage.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  dbMock,
+  mockDb,
+  mockObjectStorage,
+  objectStorageMock,
+  resetObjectStorageMock,
+} from '../test-support/shared-mocks.ts';
 import { gunzipSync } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { mkdtemp, readdir, rm, readFile } from 'node:fs/promises';
@@ -48,22 +55,9 @@ function selectChain(): SelectChain {
 
 const sqlTag = () => Promise.resolve([{ name: '0042_add_regions.sql' }]);
 
-mock.module('../config/db.ts', () => ({
-  db: { select: () => selectChain() },
-  sql: sqlTag,
-}));
-
-let configured = true;
-const listObjectsWithSize = mock(async (_p: string) => [] as { key: string; size: number }[]);
-const getObjectResponse = mock(async (_k: string) => new Response('x'));
-
-const currentStorage = await import('./object-storage.ts');
-mock.module('./object-storage.ts', () => ({
-  ...currentStorage,
-  isStorageConfigured: () => configured,
-  listObjectsWithSize,
-  getObjectResponse,
-}));
+mockDb();
+mockObjectStorage();
+const { listObjectsWithSize, getObjectResponse } = objectStorageMock;
 
 const { estimateArtifacts, exportSplit, exportStream } = await import('./backup-export.ts');
 
@@ -75,10 +69,10 @@ const tmpDirs: string[] = [];
 
 beforeEach(() => {
   for (const k of Object.keys(rowsByTable)) delete rowsByTable[k];
-  configured = true;
-  listObjectsWithSize.mockReset();
-  getObjectResponse.mockReset();
-  listObjectsWithSize.mockResolvedValue([]);
+  // Shared registrations: prime our own behaviour every time.
+  dbMock.db = { select: () => selectChain() };
+  dbMock.sql = sqlTag;
+  resetObjectStorageMock();
   getObjectResponse.mockImplementation(async () => new Response('x'));
 });
 
@@ -270,7 +264,7 @@ describe('exportStream — tar.gz artifact envelope', () => {
   });
 
   test('still emits a valid envelope when object storage is not configured', async () => {
-    configured = false;
+    objectStorageMock.configured.value = false;
 
     const entries = await tarEntries(
       exportStream({ scope: 'none', sinceDays: 90, includeArtifacts: true } as never),
@@ -293,7 +287,7 @@ describe('estimateArtifacts', () => {
   });
 
   test('reports zeros without listing when storage is not configured', async () => {
-    configured = false;
+    objectStorageMock.configured.value = false;
 
     expect(await estimateArtifacts()).toEqual({ artifactCount: 0, artifactBytes: 0 });
     expect(listObjectsWithSize).not.toHaveBeenCalled();
