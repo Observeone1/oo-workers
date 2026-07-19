@@ -283,7 +283,7 @@ describe('restore — tar.gz artifact dump', () => {
       ['qa/shot.png', 'image/png'],
       ['qa/t.spec.ts', 'text/typescript'],
     ]);
-    expect(putObject.mock.calls[0][1].toString()).toBe('ZIP');
+    expect(String(putObject.mock.calls[0][1])).toBe('ZIP');
     // The post-restore backfill re-uploads pre-v1.0 inline-only scripts.
     expect(runBackfill).toHaveBeenCalledTimes(1);
   });
