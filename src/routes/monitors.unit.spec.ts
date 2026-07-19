@@ -537,3 +537,355 @@ describe('run now', () => {
     expect((await req('/api/monitors/cron/9/run', 'POST')).status).toBe(400);
   });
 });
+
+describe('full update — socket, db and tls types', () => {
+  test('api: re-validates assertions, applies method/interval defaults and replaces them', async () => {
+    apiRepo.update.mockResolvedValueOnce([{ id: 4, name: 'checkout' }]);
+
+    const res = await req('/api/monitors/api/4', 'PUT', {
+      name: 'checkout',
+      url: 'https://x.test/health',
+      assertions: [{ type: 'status_code', operator: 'equals', value: '200' }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(apiRepo.update).toHaveBeenLastCalledWith(4, {
+      name: 'checkout',
+      url: 'https://x.test/health',
+      method: 'GET',
+      intervalSeconds: 60,
+    });
+    // Optional assertion fields are nulled, not left undefined.
+    expect(apiRepo.replaceAssertions).toHaveBeenLastCalledWith(4, [
+      { type: 'status_code', operator: 'equals', path: null, value: '200' },
+    ]);
+  });
+
+  test('api: rejects a bad assertion by index before touching the repo', async () => {
+    const res = await req('/api/monitors/api/4', 'PUT', {
+      name: 'n',
+      url: 'u',
+      assertions: [
+        { type: 'status_code', operator: 'equals' },
+        { type: 'nope', operator: 'equals' },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'assertions[1].type invalid' });
+    expect(apiRepo.update).not.toHaveBeenCalled();
+    expect(apiRepo.replaceAssertions).not.toHaveBeenCalled();
+  });
+
+  test('api: clears assertions when the body omits them', async () => {
+    apiRepo.update.mockResolvedValueOnce([{ id: 4 }]);
+
+    await req('/api/monitors/api/4', 'PUT', { name: 'n', url: 'u' });
+
+    expect(apiRepo.replaceAssertions).toHaveBeenLastCalledWith(4, []);
+  });
+
+  test('api: 400 without name + url, 404 when the row is gone', async () => {
+    expect((await req('/api/monitors/api/4', 'PUT', { name: 'n' })).status).toBe(400);
+    // update mock defaults to [] -> not found
+    expect((await req('/api/monitors/api/4', 'PUT', { name: 'n', url: 'u' })).status).toBe(404);
+  });
+
+  test('tcp: persists the probe fields and defaults the optional ones to null', async () => {
+    tcpRepo.update.mockResolvedValueOnce([{ id: 2 }]);
+
+    const res = await req('/api/monitors/tcp/2', 'PUT', {
+      name: 'smtp',
+      host: 'mail.test',
+      port: 25,
+    });
+
+    expect(res.status).toBe(200);
+    expect(tcpRepo.update).toHaveBeenLastCalledWith(2, {
+      name: 'smtp',
+      host: 'mail.test',
+      port: 25,
+      payloadHex: null,
+      expectBanner: null,
+      intervalSeconds: 60,
+    });
+  });
+
+  test('tcp: rejects an out-of-range port and a malformed payloadHex', async () => {
+    const bad = await req('/api/monitors/tcp/2', 'PUT', { name: 'n', host: 'h', port: 70000 });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'name + host + port (1-65535) required' });
+
+    const hex = await req('/api/monitors/tcp/2', 'PUT', {
+      name: 'n',
+      host: 'h',
+      port: 25,
+      payloadHex: 'zz',
+    });
+    expect(hex.status).toBe(400);
+    expect(tcpRepo.update).not.toHaveBeenCalled();
+  });
+
+  test('udp: coerces expectResponse to a strict boolean', async () => {
+    udpRepo.update.mockResolvedValueOnce([{ id: 3 }]);
+
+    await req('/api/monitors/udp/3', 'PUT', {
+      name: 'dns',
+      host: 'ns.test',
+      port: 53,
+      expectResponse: 'yes',
+    });
+
+    // Only a literal `true` enables it — a truthy string must not.
+    expect(udpRepo.update).toHaveBeenLastCalledWith(3, {
+      name: 'dns',
+      host: 'ns.test',
+      port: 53,
+      payloadHex: null,
+      expectResponse: false,
+      intervalSeconds: 60,
+    });
+  });
+
+  test('db: requires a known protocol and coerces tls', async () => {
+    const bad = await req('/api/monitors/db/5', 'PUT', {
+      name: 'pg',
+      host: 'h',
+      port: 5432,
+      protocol: 'mongo',
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: 'protocol must be postgres, mysql, or redis' });
+
+    dbRepo.update.mockResolvedValueOnce([{ id: 5 }]);
+    await req('/api/monitors/db/5', 'PUT', {
+      name: 'pg',
+      host: 'h',
+      port: 5432,
+      protocol: 'postgres',
+      tls: 1,
+    });
+    expect(dbRepo.update).toHaveBeenLastCalledWith(5, {
+      name: 'pg',
+      host: 'h',
+      port: 5432,
+      protocol: 'postgres',
+      tls: false,
+      intervalSeconds: 60,
+    });
+  });
+
+  test('tls: defaults port 443 / warnDays 30 and nulls a blank servername', async () => {
+    tlsRepo.update.mockResolvedValueOnce([{ id: 6 }]);
+
+    await req('/api/monitors/tls/6', 'PUT', { name: 'cert', host: 'x.test', servername: '' });
+
+    expect(tlsRepo.update).toHaveBeenLastCalledWith(6, {
+      name: 'cert',
+      host: 'x.test',
+      port: 443,
+      servername: null,
+      warnDays: 30,
+      intervalSeconds: 60,
+      verifyChain: false,
+      verifyHostname: false,
+      expectCnRegex: null,
+    });
+  });
+
+  test('tls: applies the same expectCnRegex ReDoS gate as create', async () => {
+    const long = await req('/api/monitors/tls/6', 'PUT', {
+      name: 'c',
+      host: 'h',
+      expectCnRegex: 'a'.repeat(201),
+    });
+    expect(long.status).toBe(400);
+    expect(await long.json()).toEqual({ error: 'expectCnRegex too long (max 200 chars)' });
+
+    const nested = await req('/api/monitors/tls/6', 'PUT', {
+      name: 'c',
+      host: 'h',
+      expectCnRegex: '(a+)+',
+    });
+    expect(nested.status).toBe(400);
+    expect(await nested.json()).toEqual({
+      error: 'expectCnRegex has a trivially-nested quantifier',
+    });
+
+    const syntax = await req('/api/monitors/tls/6', 'PUT', {
+      name: 'c',
+      host: 'h',
+      expectCnRegex: '(unclosed',
+    });
+    expect(syntax.status).toBe(400);
+    expect((await syntax.json()).error).toMatch(/^expectCnRegex invalid: /);
+
+    expect(tlsRepo.update).not.toHaveBeenCalled();
+  });
+
+  test('tls: rejects a negative warnDays but keeps a valid regex', async () => {
+    const warn = await req('/api/monitors/tls/6', 'PUT', { name: 'c', host: 'h', warnDays: -1 });
+    expect(warn.status).toBe(400);
+    expect(await warn.json()).toEqual({ error: 'warnDays must be a non-negative integer' });
+
+    tlsRepo.update.mockResolvedValueOnce([{ id: 6 }]);
+    await req('/api/monitors/tls/6', 'PUT', {
+      name: 'c',
+      host: 'h',
+      expectCnRegex: '^x\\.test$',
+      verifyChain: true,
+    });
+    const [, patch] = tlsRepo.update.mock.calls.at(-1) as [number, Record<string, unknown>];
+    expect(patch.expectCnRegex).toBe('^x\\.test$');
+    expect(patch.verifyChain).toBe(true);
+  });
+
+  test('404 when the socket/db/tls row is missing', async () => {
+    // every update mock defaults to [] -> not found
+    for (const path of ['tcp/2', 'udp/3', 'db/5', 'tls/6']) {
+      const body =
+        path === 'db/5'
+          ? { name: 'n', host: 'h', port: 1, protocol: 'redis' }
+          : { name: 'n', host: 'h', port: 1 };
+      expect((await req(`/api/monitors/${path}`, 'PUT', body)).status).toBe(404);
+    }
+  });
+
+  test('bad id is rejected before the body is read', async () => {
+    expect((await req('/api/monitors/url/abc', 'PUT', { name: 'n', url: 'u' })).status).toBe(400);
+  });
+});
+
+describe('enable/disable — full type dispatch', () => {
+  test.each([
+    ['api', () => apiRepo.updateEnabled],
+    ['qa', () => qaRepo.updateEnabled],
+    ['tcp', () => tcpRepo.updateEnabled],
+    ['udp', () => udpRepo.updateEnabled],
+    ['db', () => dbRepo.updateEnabled],
+    ['tls', () => tlsRepo.updateEnabled],
+  ])('%s routes to its own repo and answers 204', async (type, pick) => {
+    const res = await req(`/api/monitors/${type}/8`, 'PATCH', { enabled: false });
+
+    expect(res.status).toBe(204);
+    expect(pick()).toHaveBeenLastCalledWith(8, false);
+  });
+
+  // The generic handler has an `else if (type === 'heartbeat')` arm, but it is
+  // unreachable: the dedicated `app.patch('/api/monitors/heartbeat/:id')` is
+  // registered earlier and Hono takes the first match, so a heartbeat PATCH
+  // always lands there and answers with the row (or 404), never 204.
+  test('heartbeat PATCH is served by the dedicated handler, not the generic one', async () => {
+    heartbeatRepo.update.mockResolvedValueOnce([{ id: 8, enabled: true }]);
+
+    const res = await req('/api/monitors/heartbeat/8', 'PATCH', { enabled: true });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 8, enabled: true });
+    expect(heartbeatRepo.update).toHaveBeenLastCalledWith(8, { enabled: true });
+  });
+
+  test('unknown type is a 400 and toggles nothing', async () => {
+    const res = await req('/api/monitors/cron/8', 'PATCH', { enabled: true });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'bad type' });
+    expect(urlRepo.updateEnabled).not.toHaveBeenCalled();
+  });
+});
+
+describe('run now — api, socket and db types', () => {
+  test('api: enqueues the check with its assertions and returns the execution id', async () => {
+    apiRepo.findById.mockResolvedValueOnce([{ id: 4, url: 'https://x.test' }]);
+    apiRepo.findAssertionsByCheckId.mockResolvedValueOnce([{ type: 'status' }]);
+    apiRepo.createExecution.mockResolvedValueOnce([{ id: 55 }]);
+
+    const res = await req('/api/monitors/api/4/run', 'POST');
+
+    expect(await res.json()).toEqual({ executionId: 55 });
+    expect(apiRepo.createExecution).toHaveBeenLastCalledWith(4, 'PENDING');
+    expect(queues.apiQ.add).toHaveBeenLastCalledWith('check', {
+      executionId: 55,
+      apiCheck: { id: 4, url: 'https://x.test' },
+      assertions: [{ type: 'status' }],
+    });
+  });
+
+  test('tcp: enqueues the banner-probe payload', async () => {
+    tcpRepo.findById.mockResolvedValueOnce([
+      {
+        id: 2,
+        host: 'mail.test',
+        port: 25,
+        payloadHex: 'ff',
+        expectBanner: '220',
+        timeoutMs: 5000,
+      },
+    ]);
+    tcpRepo.createExecution.mockResolvedValueOnce([{ id: 56 }]);
+
+    const res = await req('/api/monitors/tcp/2/run', 'POST');
+
+    expect(await res.json()).toEqual({ executionId: 56 });
+    expect(queues.tcpQ.add).toHaveBeenLastCalledWith('check', {
+      executionId: 56,
+      monitor: {
+        id: 2,
+        host: 'mail.test',
+        port: 25,
+        payloadHex: 'ff',
+        expectBanner: '220',
+        timeoutMs: 5000,
+      },
+    });
+  });
+
+  test('udp: carries expectResponse onto the queue payload', async () => {
+    udpRepo.findById.mockResolvedValueOnce([
+      { id: 3, host: 'ns.test', port: 53, payloadHex: 'ab', expectResponse: true, timeoutMs: 2000 },
+    ]);
+    udpRepo.createExecution.mockResolvedValueOnce([{ id: 57 }]);
+
+    await req('/api/monitors/udp/3/run', 'POST');
+
+    expect(queues.udpQ.add).toHaveBeenLastCalledWith('check', {
+      executionId: 57,
+      monitor: {
+        id: 3,
+        host: 'ns.test',
+        port: 53,
+        payloadHex: 'ab',
+        expectResponse: true,
+        timeoutMs: 2000,
+      },
+    });
+  });
+
+  test('db: carries protocol and tls onto the queue payload', async () => {
+    dbRepo.findById.mockResolvedValueOnce([
+      { id: 5, protocol: 'postgres', tls: true, host: 'pg.test', port: 5432, timeoutMs: 3000 },
+    ]);
+    dbRepo.createExecution.mockResolvedValueOnce([{ id: 58 }]);
+
+    await req('/api/monitors/db/5/run', 'POST');
+
+    expect(queues.dbQ.add).toHaveBeenLastCalledWith('check', {
+      executionId: 58,
+      monitor: {
+        id: 5,
+        protocol: 'postgres',
+        tls: true,
+        host: 'pg.test',
+        port: 5432,
+        timeoutMs: 3000,
+      },
+    });
+  });
+
+  test.each(['api', 'udp', 'db'])('%s: 404 leaves the queue untouched', async (type) => {
+    const res = await req(`/api/monitors/${type}/9/run`, 'POST');
+
+    expect(res.status).toBe(404);
+    for (const q of Object.values(queues)) expect(q.add).not.toHaveBeenCalled();
+  });
+});
