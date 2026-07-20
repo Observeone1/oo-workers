@@ -44,3 +44,131 @@ describe('classifyFetchError redacts the URL', () => {
     expect(classifyFetchError(err, credUrl, 5000)).toBe('Request timed out after 5000ms');
   });
 });
+
+// Regression: env secrets are interpolated into monitor URLs before the probe
+// runs ({{PROD_API_KEY}} -> the real token), so a token in the query string is
+// the common shape. Redacting only basic-auth userinfo left these exposed in
+// error_message and in outbound alert payloads.
+describe('redactUrlCredentials strips secret query parameters', () => {
+  test('redacts an api_key value', () => {
+    const out = redactUrlCredentials('https://api.example.com/health?api_key=s3cret');
+    expect(out).not.toContain('s3cret');
+    expect(out).toContain('api_key=REDACTED');
+  });
+
+  test.each([
+    'token',
+    'access_token',
+    'refresh_token',
+    'auth',
+    'authorization',
+    'secret',
+    'client_secret',
+    'password',
+    'pwd',
+    'signature',
+    'sig',
+    'key',
+    'apikey',
+    'api-key',
+    'sessionId',
+    'ACCESS_TOKEN',
+    // Compound names: an exact-match denylist does not get these for free from
+    // the bare `token` / `key` / `secret` entries, so each is listed and pinned.
+    'api_token',
+    'api_secret',
+    'access_key',
+    'secret_key',
+    'private_key',
+    'auth_key',
+    'session_token',
+    'passphrase',
+    'credentials',
+    'bearer',
+  ])('redacts the %s parameter', (name) => {
+    expect(redactUrlCredentials(`https://api.example.com/?${name}=s3cret`)).not.toContain('s3cret');
+  });
+
+  // Guards the exact-match design: a substring or endsWith() matcher would
+  // redact these, silently destroying ordinary query data.
+  test.each(['monkey', 'keyboard', 'tokenizer', 'session_count', 'signature_version'])(
+    'leaves the ordinary %s parameter intact',
+    (name) => {
+      expect(redactUrlCredentials(`https://api.example.com/?${name}=banana`)).toContain(
+        `${name}=banana`,
+      );
+    },
+  );
+
+  test('keeps non-secret query data intact alongside a redacted secret', () => {
+    const out = redactUrlCredentials('https://api.example.com/?region=eu&token=s3cret&page=2');
+    expect(out).toContain('region=eu');
+    expect(out).toContain('page=2');
+    expect(out).not.toContain('s3cret');
+  });
+
+  test('redacts both userinfo and a query secret in the same URL', () => {
+    const out = redactUrlCredentials('https://user:pw0rd@api.example.com/?token=s3cret');
+    expect(out).not.toContain('pw0rd');
+    expect(out).not.toContain('s3cret');
+    expect(out).toContain('api.example.com');
+  });
+
+  test('redacts a query secret even when the URL will not parse', () => {
+    expect(redactUrlCredentials('not a url ?api_key=s3cret')).not.toContain('s3cret');
+  });
+
+  test('keeps non-secret params intact in an unparseable string', () => {
+    const out = redactUrlCredentials('not a url ?region=eu&token=s3cret&page=2');
+    expect(out).toContain('region=eu');
+    expect(out).toContain('page=2');
+    expect(out).toContain('token=REDACTED');
+    expect(out).not.toContain('s3cret');
+  });
+
+  test('leaves a valueless flag param alone in an unparseable string', () => {
+    expect(redactUrlCredentials('not a url ?verbose&token=s3cret')).toBe(
+      'not a url ?verbose&token=REDACTED',
+    );
+  });
+
+  test('leaves an unparseable string with no query untouched', () => {
+    expect(redactUrlCredentials('not a url at all')).toBe('not a url at all');
+  });
+});
+
+describe('classifyFetchError does not leak query-string secrets', () => {
+  const tokenUrl = 'https://api.example.com/health?api_key=s3cret';
+
+  test('ENOTFOUND message redacts the token but keeps the host', () => {
+    const err = Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } });
+    const msg = classifyFetchError(err, tokenUrl, 5000);
+    expect(msg).toContain('api.example.com');
+    expect(msg).not.toContain('s3cret');
+  });
+
+  // undici embeds the request URL in the message text itself, so redacting the
+  // `url` argument alone was not enough on these two passthrough branches.
+  test('Network error passthrough scrubs a URL embedded in the cause message', () => {
+    const err = Object.assign(new Error('fetch failed'), {
+      cause: { message: `connect ECONNREFUSED for ${tokenUrl}` },
+    });
+    const msg = classifyFetchError(err, tokenUrl, 5000);
+    expect(msg).not.toContain('s3cret');
+    expect(msg).toContain('api_key=REDACTED');
+  });
+
+  test('final fallback scrubs a URL embedded in the error message', () => {
+    const err = new Error(`request to ${tokenUrl} failed`);
+    expect(classifyFetchError(err, tokenUrl, 5000)).not.toContain('s3cret');
+  });
+
+  test('an empty error message still yields an empty string (unchanged)', () => {
+    // Pins the `?? 'Unknown error'` semantics: '' is not nullish, so it passes
+    // through. Assigned rather than constructed so the empty string is not an
+    // Error-constructor literal.
+    const err = new Error('placeholder');
+    err.message = '';
+    expect(classifyFetchError(err, tokenUrl, 5000)).toBe('');
+  });
+});
