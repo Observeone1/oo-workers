@@ -19,10 +19,9 @@
 import { createGunzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import tar from 'tar-stream';
-import { sql as dsql } from 'drizzle-orm';
+import { sql as dsql, getTableName } from 'drizzle-orm';
 import { db, sql } from '../config/db.ts';
 import * as schema from '../db/schema.ts';
-import { getTableName } from 'drizzle-orm';
 import { logger } from '../utils/logger.ts';
 import { isStorageConfigured, putObject } from './object-storage.ts';
 import { runBackfill } from './storage-backfill.ts';

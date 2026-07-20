@@ -1,4 +1,4 @@
-import type { MonType, Monitor } from './types';
+import type { AvailabilityDay, MonType, Monitor } from './types';
 import {
   $,
   $$,
@@ -19,7 +19,6 @@ import {
   toggleMonitor,
   deleteMonitor,
 } from './api';
-import type { AvailabilityDay } from './types';
 import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
 import { getActiveIncidents } from './incidents';

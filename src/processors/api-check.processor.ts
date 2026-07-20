@@ -91,8 +91,7 @@ export const apiCheckProcessor = async (job: Job) => {
       headers: responseHeaders,
     });
 
-    const allAssertionsPassed =
-      assertionResults.length === 0 || assertionResults.every((r) => r.passed);
+    const allAssertionsPassed = assertionResults.every((r) => r.passed);
     const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
     const status = allAssertionsPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
 

@@ -114,7 +114,7 @@ function route() {
     renderDocs(section);
     return;
   }
-  const m = h.match(/^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/);
+  const m = /^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/.exec(h);
   if (m) {
     setActiveNav(null);
     renderDetail(m[1] as MonType, Number(m[2]));
