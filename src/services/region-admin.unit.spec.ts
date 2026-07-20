@@ -57,18 +57,17 @@ function makeTx() {
 }
 
 import {
+  dbMock,
   KEY_PREFIX_LEN,
   mockAuthMiddleware,
+  mockDb,
   mockRegionRepo,
   regionRepoMock,
 } from '../test-support/shared-mocks.ts';
 
 const { findBySlug, findById } = regionRepoMock;
 
-mock.module('../config/db.ts', () => ({
-  db: { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()) },
-  sql: {},
-}));
+mockDb();
 mockRegionRepo();
 mockAuthMiddleware();
 
@@ -78,6 +77,8 @@ const schema = await import('../db/schema.ts');
 
 beforeEach(() => {
   ops.length = 0;
+  // Shared registration: prime our own db stand-in every time.
+  dbMock.db = { transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()) };
   findBySlug.mockReset();
   findById.mockReset();
   findBySlug.mockResolvedValue(null);
