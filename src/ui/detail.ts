@@ -239,7 +239,7 @@ function renderWithFilter(
     <div class="detail-grid" data-testid="detail-meta-cards">
       <div class="meta-card"><div class="label">Runs (last 100)</div><div class="value">${runs.length}</div></div>
       <div class="meta-card"><div class="label">Success rate</div><div class="value">${successRate}</div></div>
-      <div class="meta-card"><div class="label">Last latency</div><div class="value">${lastLatency != null ? `${lastLatency}ms` : '—'}</div></div>
+      <div class="meta-card"><div class="label">Last latency</div><div class="value">${lastLatency == null ? '—' : `${lastLatency}ms`}</div></div>
       <div class="meta-card"><div class="label">Status</div><div class="value flex">${m.enabled ? `${iconActive} active` : `${iconPaused} paused`}</div></div>
     </div>
     <div class="sparkline-wrap">
@@ -275,7 +275,7 @@ function renderWithFilter(
             <td class="cell-meta">${fmtAgeLive(r.startTime)}</td>
             ${regionCell}
             <td>${r.status}${r.statusCode ? ' · ' + r.statusCode : ''}</td>
-            <td class="cell-meta">${latency != null ? `${latency}ms` : '—'}</td>
+            <td class="cell-meta">${latency == null ? '—' : `${latency}ms`}</td>
             ${detailCell}
             ${artifactsCell}
           </tr>`;

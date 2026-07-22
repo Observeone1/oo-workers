@@ -420,7 +420,7 @@ function wireEditorForm(detail: StatusPageDetail) {
     }
     lastBanner = {
       kind: 'ok',
-      text: `Saved — ${monitors.length} monitor${monitors.length !== 1 ? 's' : ''} on this page.`,
+      text: `Saved — ${monitors.length} monitor${monitors.length === 1 ? '' : 's'} on this page.`,
     };
     cachedDetail = null; // bust cache so list view re-fetches
     cachedDetailId = null;

@@ -115,7 +115,7 @@ export function tcpProbe(opts: TcpProbeOptions): Promise<TcpProbeResult> {
       finish({
         ok: false,
         latencyMs: Date.now() - start,
-        ...(banner !== undefined ? { banner } : {}),
+        ...(banner === undefined ? {} : { banner }),
         errorMessage,
       });
     });

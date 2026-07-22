@@ -144,7 +144,7 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
     .map((m, i) => {
       const lat = m.latest?.responseTimeMs ?? m.latest?.durationMs;
       const cls = statusClass(m.latest?.status);
-      const regionSlug = m.latest?.regionId != null ? regionMap.get(m.latest.regionId) : null;
+      const regionSlug = m.latest?.regionId == null ? null : regionMap.get(m.latest.regionId);
       const atRegion = regionSlug ? `<span class="at"> · @${esc(regionSlug)}</span>` : '';
       // Format as HH:MM:SS if available, else relative
       let timeStr = fmtAge(m.latest?.startTime);
@@ -164,7 +164,7 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
       <div class="row${i < 2 ? ' new' : ''}">
         <span class="time">${timeStr}</span>
         <span class="target">${esc(m.name)}${atRegion}</span>
-        <span class="lat">${lat != null ? `${lat}ms` : '—'}</span>
+        <span class="lat">${lat == null ? '—' : `${lat}ms`}</span>
         <span class="dot ${cls}"></span>
       </div>`;
     })
@@ -266,7 +266,7 @@ export async function renderList() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
         <div class="text">
-          <div class="head">Degraded · ${downCount} monitor${downCount !== 1 ? 's' : ''} down</div>
+          <div class="head">Degraded · ${downCount} monitor${downCount === 1 ? '' : 's'} down</div>
           <div class="sub">${upCount}/${totalActive} active monitors passing</div>
         </div>
         <div class="uptime-strip">
@@ -306,13 +306,13 @@ export async function renderList() {
       </div>
       <div class="stat">
         <span class="label">P95 latency</span>
-        <span class="value">${p95 != null ? p95 : '—'}<span class="unit">${p95 != null ? 'ms' : ''}</span></span>
+        <span class="value">${p95 == null ? '—' : p95}<span class="unit">${p95 == null ? '' : 'ms'}</span></span>
         <span class="delta up">across active monitors</span>
       </div>
       <div class="stat">
         <span class="label">Total monitors</span>
         <span class="value">${totalAll}</span>
-        <span class="delta up">${totalActive} active${onlineRegionCount > 0 ? `, ${onlineRegionCount} region${onlineRegionCount !== 1 ? 's' : ''}` : ''}</span>
+        <span class="delta up">${totalActive} active${onlineRegionCount > 0 ? `, ${onlineRegionCount} region${onlineRegionCount === 1 ? '' : 's'}` : ''}</span>
       </div>
     </div>`;
 
@@ -525,7 +525,7 @@ function rowFor(m: Monitor): string {
       <td><span class="pill">${schedule}</span></td>
       <td class="cell-meta">${lastEvent}</td>
       <td class="cell-num">
-        ${m.type === 'heartbeat' ? '—' : latency != null ? `${latency}<span class="dim">ms</span>` : '—'}
+        ${m.type === 'heartbeat' ? '—' : latency == null ? '—' : `${latency}<span class="dim">ms</span>`}
       </td>
       <td class="col-actions">
         <div class="row-actions">

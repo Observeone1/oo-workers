@@ -84,8 +84,8 @@ export async function renderList(): Promise<void> {
         ${
           incidents.length === 0
             ? `<div class="empty" style="padding:32px;text-align:center">
-               No ${state.filter !== 'all' ? state.filter + ' ' : ''}incidents.
-               ${state.filter !== 'all' ? `<a href="#" data-filter="all">Show all</a>` : ''}
+               No ${state.filter === 'all' ? '' : state.filter + ' '}incidents.
+               ${state.filter === 'all' ? '' : `<a href="#" data-filter="all">Show all</a>`}
              </div>`
             : incidents.map(renderIncidentCard).join('')
         }
