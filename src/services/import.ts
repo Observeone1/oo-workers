@@ -450,12 +450,12 @@ async function wireChannelBindings(
     const out: number[] = [];
     for (const r of refs) {
       const real = idMap.channel.get(r);
-      if (real === undefined) {
+      if (real !== undefined) {
+        out.push(real);
+      } else {
         result.skipped.push(
           `${context}: channel ref ${r} did not resolve (channel may have been skipped or absent from bundle)`,
         );
-      } else {
-        out.push(real);
       }
     }
     return out;
@@ -504,10 +504,10 @@ async function importStatusPages(
       for (const m of monitors) {
         const map = m.type === 'url' ? idMaps.url : idMaps.api;
         const real = map.get(m.ref);
-        if (real === undefined) {
-          dangling.push(`${m.type} ref ${m.ref} did not resolve`);
-        } else {
+        if (real !== undefined) {
           resolved.push({ monitorType: m.type, monitorId: real });
+        } else {
+          dangling.push(`${m.type} ref ${m.ref} did not resolve`);
         }
       }
       // Pre-flight: don't create a hollow shell if every binding dangled.

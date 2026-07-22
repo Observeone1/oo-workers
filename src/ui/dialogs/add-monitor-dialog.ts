@@ -524,11 +524,11 @@ export function initAddDialog(): void {
       };
     }
     const res =
-      editModeId === null
-        ? await createMonitor(type, body)
-        : await updateMonitor(type, editModeId, body);
+      editModeId !== null
+        ? await updateMonitor(type, editModeId, body)
+        : await createMonitor(type, body);
     if (!res.ok) {
-      const label = editModeId === null ? 'Create failed' : 'Update failed';
+      const label = editModeId !== null ? 'Update failed' : 'Create failed';
       alertDialog({ title: label, body: `Failed: ${await res.text()}` });
       return;
     }
