@@ -160,7 +160,7 @@ function addAssertionRow(
   const container = $('#api-assertion-rows');
   const row = document.createElement('div');
   row.className = 'assertion-row';
-  row.setAttribute('data-testid', 'add-monitor-api-assertion-row');
+  row.dataset.testid = 'add-monitor-api-assertion-row';
   row.innerHTML = `
     <select data-field="type" data-testid="add-monitor-api-assertion-type">
       ${ASSERTION_TYPES.map(

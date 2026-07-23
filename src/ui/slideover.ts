@@ -20,7 +20,7 @@ export function openSlideover(opts: SlideoverOpts): void {
 
   const so = document.createElement('aside');
   so.className = 'slideover';
-  so.setAttribute('data-testid', 'slideover');
+  so.dataset.testid = 'slideover';
   so.innerHTML = `
     <div class="head">
       <div>

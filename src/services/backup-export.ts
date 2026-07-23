@@ -63,7 +63,7 @@ async function* tableNdjson(spec: TableSpec, opts: BackupOptions): AsyncGenerato
       .limit(READ_BATCH)) as Record<string, unknown>[];
     if (rows.length === 0) break;
     for (const r of rows) yield JSON.stringify({ t: name, r }) + '\n';
-    lastId = rows[rows.length - 1].id as number;
+    lastId = rows.at(-1)!.id as number;
     if (rows.length < READ_BATCH) break;
   }
 }
