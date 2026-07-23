@@ -71,3 +71,100 @@ describe('renderStatusPageHtml — incident timeline expand control', () => {
     expect(html).not.toContain('<summary>Full timeline');
   });
 });
+
+type MonitorRow = StatusPageSummary['monitors'][number];
+
+function monitor(overrides: Partial<MonitorRow> = {}): MonitorRow {
+  return {
+    type: 'url',
+    id: 1,
+    name: 'API',
+    target: 'https://api.example.com',
+    currentStatus: 'up',
+    uptime24h: 100,
+    bars90d: ['up'],
+    ...overrides,
+  } as MonitorRow;
+}
+
+describe('renderStatusPageHtml — monitor rows', () => {
+  test('renders a row per monitor with its name, target and status class', () => {
+    const html = renderStatusPageHtml(
+      baseSummary({
+        monitors: [
+          monitor({ id: 1, name: 'API', target: 'https://api.example.com' }),
+          monitor({ id: 2, name: 'Web', target: 'https://example.com', currentStatus: 'down' }),
+        ],
+      }),
+    );
+
+    expect(html).not.toContain('No monitors on this page yet.');
+    expect(html).toContain('<div class="monitor-name">API</div>');
+    expect(html).toContain('<div class="monitor-target">https://api.example.com</div>');
+    expect(html).toContain('<div class="monitor-name">Web</div>');
+    // Status drives both the class and the visible text.
+    expect(html).toContain('<div class="monitor-status down">down</div>');
+  });
+
+  test('falls back to the empty-state copy when the page has no monitors', () => {
+    expect(renderStatusPageHtml(baseSummary({ monitors: [] }))).toContain(
+      'No monitors on this page yet.',
+    );
+  });
+
+  test('escapes monitor name and target rather than emitting raw markup', () => {
+    const html = renderStatusPageHtml(
+      baseSummary({
+        monitors: [monitor({ name: '<script>x</script>', target: 'a&b"c' })],
+      }),
+    );
+
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&lt;script&gt;x&lt;/script&gt;');
+    expect(html).toContain('a&amp;b&quot;c');
+  });
+
+  test('emits one bar per 90d entry, oldest first, each titled with its own day', () => {
+    // The renderer dates bars as `89 - idx` days back, so a full 90-slot
+    // series is the only one whose last entry lands on today.
+    const bars90d = Array.from({ length: 90 }, (_, i) =>
+      i === 89 ? 'down' : i === 0 ? 'unknown' : 'up',
+    ) as MonitorRow['bars90d'];
+
+    const html = renderStatusPageHtml(baseSummary({ monitors: [monitor({ bars90d })] }));
+
+    expect(html.match(/<span class="bar bar-\w+"/g) ?? []).toHaveLength(90);
+
+    const day = (back: number) =>
+      new Date(Date.now() - back * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    // Newest slot is today, oldest is 89 days back.
+    expect(html).toContain(`class="bar bar-down" title="${day(0)}: down"`);
+    expect(html).toContain(`class="bar bar-unknown" title="${day(89)}: unknown"`);
+  });
+
+  test('shows a percentage for a known 24h uptime and "no data" for null', () => {
+    const known = renderStatusPageHtml(baseSummary({ monitors: [monitor({ uptime24h: 99.5 })] }));
+    expect(known).toContain('24h uptime: 99.5%');
+
+    const unknown = renderStatusPageHtml(baseSummary({ monitors: [monitor({ uptime24h: null })] }));
+    expect(unknown).toContain('24h uptime: no data');
+    expect(unknown).not.toContain('24h uptime: null');
+  });
+});
+
+describe('renderStatusPageHtml — overall headline', () => {
+  const cases: [StatusPageSummary['overall'], string, string][] = [
+    ['up', 'All systems operational', '✅'],
+    ['degraded', 'Some services are degraded', '⚠️'],
+    ['down', 'Some services are degraded', '🔥'],
+    ['unknown', 'Status unknown', '⚪'],
+  ];
+
+  for (const [overall, label, emoji] of cases) {
+    test(`${overall} renders "${label}"`, () => {
+      const html = renderStatusPageHtml(baseSummary({ overall }));
+      expect(html).toContain(label);
+      expect(html).toContain(emoji);
+    });
+  }
+});

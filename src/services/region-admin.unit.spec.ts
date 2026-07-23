@@ -6,7 +6,7 @@
  * every statement inside the transaction is captured for assertion.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 
 interface Op {
   op: 'insert' | 'update' | 'delete';
