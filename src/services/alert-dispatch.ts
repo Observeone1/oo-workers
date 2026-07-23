@@ -110,12 +110,12 @@ function formatSlack(ctx: AlertContext): { body: unknown; headers: Record<string
           fields: [
             { type: 'mrkdwn', text: `*Target*\n${ctx.monitor.target}` },
             { type: 'mrkdwn', text: `*Type*\n${ctx.monitor.type.toUpperCase()}` },
-            ...(ctx.statusCode != null
-              ? [{ type: 'mrkdwn', text: `*Status code*\n${ctx.statusCode}` }]
-              : []),
-            ...(ctx.durationMs != null
-              ? [{ type: 'mrkdwn', text: `*Latency*\n${ctx.durationMs}ms` }]
-              : []),
+            ...(ctx.statusCode == null
+              ? []
+              : [{ type: 'mrkdwn', text: `*Status code*\n${ctx.statusCode}` }]),
+            ...(ctx.durationMs == null
+              ? []
+              : [{ type: 'mrkdwn', text: `*Latency*\n${ctx.durationMs}ms` }]),
             ...(ctx.regionSlug ? [{ type: 'mrkdwn', text: `*Region*\n${ctx.regionSlug}` }] : []),
           ],
         },

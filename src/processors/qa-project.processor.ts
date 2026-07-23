@@ -172,9 +172,9 @@ export const createQaProjectProcessor = (redis: Redis) => {
           // On failure, upload trace + screenshots to the bucket and stamp
           // the execution row. Skip cleanly when storage isn't configured
           // or no artifacts came back.
-          const { traceUrl, screenshotUrls } = !result.success
-            ? await uploadArtifacts(projectId, projectName, executionId, result.artifacts)
-            : { traceUrl: null, screenshotUrls: null };
+          const { traceUrl, screenshotUrls } = result.success
+            ? { traceUrl: null, screenshotUrls: null }
+            : await uploadArtifacts(projectId, projectName, executionId, result.artifacts);
 
           await qaProjectRepo.updateExecution(executionId, {
             status,

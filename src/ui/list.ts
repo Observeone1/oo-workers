@@ -144,7 +144,7 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
     .map((m, i) => {
       const lat = m.latest?.responseTimeMs ?? m.latest?.durationMs;
       const cls = statusClass(m.latest?.status);
-      const regionSlug = m.latest?.regionId != null ? regionMap.get(m.latest.regionId) : null;
+      const regionSlug = m.latest?.regionId == null ? null : regionMap.get(m.latest.regionId);
       const atRegion = regionSlug ? `<span class="at"> · @${esc(regionSlug)}</span>` : '';
       // Format as HH:MM:SS if available, else relative
       let timeStr = fmtAge(m.latest?.startTime);
@@ -164,7 +164,7 @@ function activityRows(allMonitors: Monitor[], regions: RegionLite[]): string {
       <div class="row${i < 2 ? ' new' : ''}">
         <span class="time">${timeStr}</span>
         <span class="target">${esc(m.name)}${atRegion}</span>
-        <span class="lat">${lat != null ? `${lat}ms` : '—'}</span>
+        <span class="lat">${lat == null ? '—' : `${lat}ms`}</span>
         <span class="dot ${cls}"></span>
       </div>`;
     })
