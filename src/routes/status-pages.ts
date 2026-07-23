@@ -7,7 +7,15 @@ import type { Hono } from 'hono';
 import { statusPageMonitorRepo, statusPageRepo } from '../db/repositories/status-page.repo.ts';
 import type { MonitorType } from '../db/repositories/region.repo.ts';
 
-const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
+const MONITOR_TYPES: ReadonlySet<MonitorType> = new Set([
+  'url',
+  'api',
+  'tcp',
+  'udp',
+  'qa',
+  'db',
+  'tls',
+]);
 const STATUS_PAGE_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]?$/;
 
 export function registerStatusPageRoutes(app: Hono): void {
@@ -76,7 +84,7 @@ export function registerStatusPageRoutes(app: Hono): void {
       monitorId: number;
     }> = [];
     for (const m of body.monitors as Array<{ type?: unknown; id?: unknown }>) {
-      if (!MONITOR_TYPES.includes(m.type as MonitorType) || !Number.isInteger(m.id)) {
+      if (!MONITOR_TYPES.has(m.type as MonitorType) || !Number.isInteger(m.id)) {
         return c.json({ error: `bad monitor entry: ${JSON.stringify(m)}` }, 400);
       }
       bindings.push({

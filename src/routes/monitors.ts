@@ -23,7 +23,15 @@ import { getFleetAvailability } from '../db/repositories/availability.repo.ts';
 import { emitMonitorCreated, emitMonitorDeleted } from '../services/exec-events.ts';
 import type { RouteDeps } from './types.ts';
 
-const MONITOR_TYPES: readonly MonitorType[] = ['url', 'api', 'tcp', 'udp', 'qa', 'db', 'tls'];
+const MONITOR_TYPES: ReadonlySet<MonitorType> = new Set([
+  'url',
+  'api',
+  'tcp',
+  'udp',
+  'qa',
+  'db',
+  'tls',
+]);
 
 // Must match the enums in src/services/api-assertion.ts. The api_assertions
 // table has NOT NULL on (type, operator), so an invalid value used to land as
@@ -479,7 +487,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.put('/api/monitors/:type/:id/regions', async (c) => {
     const type = c.req.param('type') as MonitorType;
     const id = Number(c.req.param('id'));
-    if (!MONITOR_TYPES.includes(type)) return c.json({ error: 'bad type' }, 400);
+    if (!MONITOR_TYPES.has(type)) return c.json({ error: 'bad type' }, 400);
     if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     const body = await c.req.json().catch(() => ({}));
     if (
@@ -496,7 +504,7 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   app.put('/api/monitors/:type/:id/channels', async (c) => {
     const type = c.req.param('type') as MonitorType;
     const id = Number(c.req.param('id'));
-    if (!MONITOR_TYPES.includes(type)) return c.json({ error: 'bad type' }, 400);
+    if (!MONITOR_TYPES.has(type)) return c.json({ error: 'bad type' }, 400);
     if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     const body = await c.req.json().catch(() => ({}));
     if (
