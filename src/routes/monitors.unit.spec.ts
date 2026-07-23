@@ -889,3 +889,81 @@ describe('run now — api, socket and db types', () => {
     for (const q of Object.values(queues)) expect(q.add).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /api/monitors/:type/:id — detail payloads', () => {
+  test('api: returns the check with its assertions and executions', async () => {
+    apiRepo.findById.mockResolvedValueOnce([{ id: 4, name: 'checkout' }]);
+    apiRepo.findAssertionsByCheckId.mockResolvedValueOnce([{ id: 1, kind: 'status' }]);
+    apiRepo.findExecutionsByCheckId.mockResolvedValueOnce([{ id: 70, status: 'SUCCESS' }]);
+
+    const body = await (await req('/api/monitors/api/4')).json();
+
+    expect(body).toEqual({
+      monitor: { id: 4, name: 'checkout', type: 'api' },
+      assertions: [{ id: 1, kind: 'status' }],
+      runs: [{ id: 70, status: 'SUCCESS' }],
+    });
+  });
+
+  test('qa: returns tests rather than assertions', async () => {
+    qaRepo.findById.mockResolvedValueOnce([{ id: 6, name: 'signup flow' }]);
+    qaRepo.findTestsByProjectId.mockResolvedValueOnce([{ id: 11, name: 'login' }]);
+    qaRepo.findExecutionsByProjectId.mockResolvedValueOnce([{ id: 90 }]);
+
+    const body = await (await req('/api/monitors/qa/6')).json();
+
+    expect(body).toEqual({
+      monitor: { id: 6, name: 'signup flow', type: 'qa' },
+      tests: [{ id: 11, name: 'login' }],
+      runs: [{ id: 90 }],
+    });
+  });
+
+  // The socket/db/tls detail arms rename the stored latencyMs to the
+  // responseTimeMs the UI charts read. Renaming it back in the repo would
+  // silently flatten every latency graph, so pin the mapping per type.
+  const latencyTypes: [string, ReturnType<typeof makeMonitorRepo>][] = [
+    ['tcp', tcpRepo],
+    ['udp', udpRepo],
+    ['db', dbRepo],
+    ['tls', tlsRepo],
+  ];
+
+  test.each(latencyTypes)(
+    '%s: exposes latencyMs as responseTimeMs on every run',
+    async (type, repo) => {
+      repo.findById.mockResolvedValueOnce([{ id: 3, name: `${type}-probe` }]);
+      repo.findExecutionsByMonitorId.mockResolvedValueOnce([
+        { id: 21, latencyMs: 42, status: 'SUCCESS' },
+        { id: 22, latencyMs: null, status: 'FAILED' },
+      ]);
+
+      const body = await (await req(`/api/monitors/${type}/3`)).json();
+
+      expect(body.monitor).toEqual({ id: 3, name: `${type}-probe`, type });
+      expect(body.runs).toEqual([
+        { id: 21, latencyMs: 42, status: 'SUCCESS', responseTimeMs: 42 },
+        { id: 22, latencyMs: null, status: 'FAILED', responseTimeMs: null },
+      ]);
+    },
+  );
+
+  // qaRepo is the process-wide shared mock, so a `...Once` queued by another
+  // spec can still be pending here: prime the empty row explicitly rather
+  // than relying on the default left behind.
+  const detailRepos: [string, { findById: ReturnType<typeof mock> }][] = [
+    ['api', apiRepo],
+    ['qa', qaRepo],
+    ['tcp', tcpRepo],
+    ['udp', udpRepo],
+    ['db', dbRepo],
+    ['tls', tlsRepo],
+    ['heartbeat', heartbeatRepo],
+  ];
+
+  test.each(detailRepos)('%s: 404 when the row is gone', async (type, repo) => {
+    repo.findById.mockResolvedValueOnce([]);
+
+    expect((await req(`/api/monitors/${type}/9`)).status).toBe(404);
+  });
+});
