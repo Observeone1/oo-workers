@@ -184,7 +184,15 @@ function emailFields(ctx: AlertContext): Array<[string, string, boolean]> {
 
 function emailSubject(ctx: AlertContext): string {
   const t = EMAIL_TONE[ctx.event];
-  return `[oo-workers] ${t.tag === 'TEST' ? 'Test alert' : t.tag === 'RECOVERED' ? 'Recovered' : 'DOWN'}: ${ctx.monitor.name}`;
+  let severity: string;
+  if (t.tag === 'TEST') {
+    severity = 'Test alert';
+  } else if (t.tag === 'RECOVERED') {
+    severity = 'Recovered';
+  } else {
+    severity = 'DOWN';
+  }
+  return `[oo-workers] ${severity}: ${ctx.monitor.name}`;
 }
 
 function emailText(ctx: AlertContext): string {

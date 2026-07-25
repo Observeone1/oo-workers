@@ -93,7 +93,8 @@ export const apiCheckProcessor = async (job: Job) => {
 
     const allAssertionsPassed = assertionResults.every((r) => r.passed);
     const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
-    const status = allAssertionsPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
+    const retryStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
+    const status = allAssertionsPassed ? 'SUCCESS' : retryStatus;
 
     await apiCheckRepo.updateExecution(executionId, {
       status,

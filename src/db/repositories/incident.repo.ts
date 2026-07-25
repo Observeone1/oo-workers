@@ -97,12 +97,14 @@ export const incidentRepo = {
    *  active or only resolved. Capped at LIST_DEFAULT_LIMIT to bound
    *  memory on long-lived pages with thousands of incidents. */
   listForPage(statusPageId: number, filter: 'all' | 'active' | 'resolved' = 'all') {
+    const resolvedOrAll =
+      filter === 'resolved'
+        ? and(eq(incidents.statusPageId, statusPageId), isNotNull(incidents.resolvedAt))
+        : eq(incidents.statusPageId, statusPageId);
     const cond =
       filter === 'active'
         ? and(eq(incidents.statusPageId, statusPageId), isNull(incidents.resolvedAt))
-        : filter === 'resolved'
-          ? and(eq(incidents.statusPageId, statusPageId), isNotNull(incidents.resolvedAt))
-          : eq(incidents.statusPageId, statusPageId);
+        : resolvedOrAll;
     return db
       .select()
       .from(incidents)

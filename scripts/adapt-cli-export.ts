@@ -327,8 +327,8 @@ export function adaptSaaSExport(src: SaaSExport): AdaptResult {
       .map((m) => {
         const ref = readId(m.monitor_id);
         const rawType = typeof m.monitor_type === 'string' ? m.monitor_type : '';
-        const type: 'url' | 'api' | null =
-          rawType === 'url' ? 'url' : rawType === 'api_check' || rawType === 'api' ? 'api' : null;
+        const apiOrNull: 'api' | null = rawType === 'api_check' || rawType === 'api' ? 'api' : null;
+        const type: 'url' | 'api' | null = rawType === 'url' ? 'url' : apiOrNull;
         if (ref === undefined || type === null) return null;
         return { ref, type };
       })
