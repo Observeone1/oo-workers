@@ -127,9 +127,11 @@ describe('renderStatusPageHtml — monitor rows', () => {
   test('emits one bar per 90d entry, oldest first, each titled with its own day', () => {
     // The renderer dates bars as `89 - idx` days back, so a full 90-slot
     // series is the only one whose last entry lands on today.
-    const bars90d = Array.from({ length: 90 }, (_, i) =>
-      i === 89 ? 'down' : i === 0 ? 'unknown' : 'up',
-    ) as MonitorRow['bars90d'];
+    const bars90d = Array.from({ length: 90 }, (_, i) => {
+      if (i === 89) return 'down';
+      if (i === 0) return 'unknown';
+      return 'up';
+    }) as MonitorRow['bars90d'];
 
     const html = renderStatusPageHtml(baseSummary({ monitors: [monitor({ bars90d })] }));
 
