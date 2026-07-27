@@ -24,7 +24,8 @@ export const urlMonitorProcessor = async (job: Job) => {
     const assertionResults = evaluateUrlMonitorAssertions(assertions || [], response.status);
     const allPassed = assertionResults.every((r: { passed: boolean }) => r.passed);
     const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
-    const status = allPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
+    const retryStatus = isFinalAttempt ? 'FAILED' : 'PENDING';
+    const status = allPassed ? 'SUCCESS' : retryStatus;
 
     await urlMonitorRepo.updateExecution(executionId, {
       status,

@@ -39,7 +39,8 @@ function buildDemoBars(seed: number): { bars: string; uptimePct: string } {
   let upCount = 0;
   const bars = Array.from({ length: 90 }, (_, i) => {
     const r = Math.abs(Math.sin(seed * 9.7 + i * 3.1 + seed / (i + 1))) % 1;
-    const cls = r < 0.015 ? 'down' : r < 0.04 ? 'warn' : 'up';
+    const warnOrUp = r < 0.04 ? 'warn' : 'up';
+    const cls = r < 0.015 ? 'down' : warnOrUp;
     if (cls === 'up') upCount++;
     return `<i class="${cls}" title="Day ${90 - i}"></i>`;
   }).join('');

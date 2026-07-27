@@ -298,12 +298,14 @@ async function importHeartbeats(
         // services keep pinging the same URL. Adapter has already
         // mapped CLI ping_key → token; tolerate either field name
         // here in case a hand-written bundle uses ping_key directly.
-        const token =
-          typeof h.token === 'string'
-            ? h.token
-            : typeof h.ping_key === 'string'
-              ? h.ping_key
-              : randomBytes(32).toString('base64url');
+        let token: string;
+        if (typeof h.token === 'string') {
+          token = h.token;
+        } else if (typeof h.ping_key === 'string') {
+          token = h.ping_key;
+        } else {
+          token = randomBytes(32).toString('base64url');
+        }
         await stx.insert(heartbeatMonitors).values({
           name: String(h.name),
           description: asString(h.description),
