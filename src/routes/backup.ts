@@ -28,7 +28,7 @@ export function registerBackupRoutes(app: Hono): void {
     const scope: DataScope = scopeParam === 'all' || scopeParam === 'none' ? scopeParam : 'window';
     const since = Number(c.req.query('since')) || DEFAULT_SINCE_DAYS;
     const includeArtifacts = c.req.query('includeArtifacts') === '1';
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const stamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
     const filename = includeArtifacts
       ? `oo-backup-${stamp}.oodump.tar.gz`
       : `oo-backup-${stamp}.oodump.gz`;

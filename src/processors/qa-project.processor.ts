@@ -89,7 +89,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
 
     const fileMap = new Map<number, string>(); // test.id → absolute path
     for (const test of tests) {
-      const safeTestName = test.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const safeTestName = test.name.replaceAll(/[^a-z0-9]/gi, '_').toLowerCase();
       const filePath = path.join(runDir, `${safeTestName}.spec.ts`);
       await fs.writeFile(filePath, test.script);
       fileMap.set(test.id, filePath);

@@ -31,7 +31,7 @@ function utc(ts: string): string {
 
 function renderIncident(i: PublicIncident): string {
   const sev = SEV_LABEL[i.severity] ? i.severity : 'investigating';
-  const latest = i.updates[i.updates.length - 1];
+  const latest = i.updates.at(-1);
   const thread = i.updates
     .map(
       (u) =>

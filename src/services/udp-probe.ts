@@ -146,7 +146,7 @@ function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number):
 /** Parse a hex string like "deadbeef" or "DE AD BE EF" into a Buffer. */
 export function parseHexPayload(hex: string | null | undefined): Buffer | null {
   if (!hex) return null;
-  const clean = hex.replace(/\s+/g, '').toLowerCase();
+  const clean = hex.replaceAll(/\s+/g, '').toLowerCase();
   if (clean.length === 0) return null;
   if (!/^[0-9a-f]+$/.test(clean) || clean.length % 2 !== 0) {
     throw new Error('payload_hex must be an even-length string of hex characters');

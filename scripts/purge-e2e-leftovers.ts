@@ -54,8 +54,11 @@ const REGIONAL_LIST_KEY_PATTERN = 'oo:jobs:*';
 const NAME_PREFIXES = ['e2e-', 'qa-e2e-', 'spotcheck-'] as const;
 const SLUG_PREFIXES = ['e2e-', 'qa-e2e-', 'qg-', 'spotcheck-'] as const;
 
+// Backslash + the matched char, so LIKE wildcards in a prefix stay literal.
+const LIKE_ESCAPED = String.raw`\$&`;
+
 function namePattern(p: string): string {
-  return `${p.replace(/[%_\\]/g, '\\$&')}%`;
+  return `${p.replaceAll(/[%_\\]/g, LIKE_ESCAPED)}%`;
 }
 
 const NAME_PATTERNS = NAME_PREFIXES.map(namePattern);

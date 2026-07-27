@@ -188,7 +188,7 @@ async function probeUrl(job: JobPayload): Promise<AgentResultBody> {
 async function probeApi(job: JobPayload): Promise<AgentResultBody> {
   const api = job.apiCheck!;
   const timeoutMs = api.timeoutMs || DEFAULTS.API_TIMEOUT_MS;
-  const headers: Record<string, string> = { ...(api.headers ?? {}) };
+  const headers: Record<string, string> = { ...api.headers };
   const requestInit: RequestInit = { method: api.method || 'GET', headers };
   if (api.body && ['POST', 'PUT', 'PATCH'].includes(api.method)) {
     requestInit.body = typeof api.body === 'string' ? api.body : JSON.stringify(api.body);
