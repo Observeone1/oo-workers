@@ -278,6 +278,17 @@ export function mockQaProjectRepo(): void {
   }));
 }
 
+// ---- src/db/repositories/api-check.repo.ts ----
+export const apiCheckRepoMock = {
+  updateExecution: mock(async (_id: number, _v: AnyRow): Promise<void> => {}),
+};
+
+export function mockApiCheckRepo(): void {
+  mock.module('../db/repositories/api-check.repo.ts', () => ({
+    apiCheckRepo: apiCheckRepoMock,
+  }));
+}
+
 // ---- src/services/exec-events.ts ----
 export const execEventsMock = {
   emitExecution: mock((_t: string, _id: number, _row: AnyRow): void => {}),

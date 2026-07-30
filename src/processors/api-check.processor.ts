@@ -34,17 +34,17 @@ async function readBodyCapped(response: Response, maxBytes: number): Promise<str
   return text;
 }
 
-const BODY_ALLOWED_METHODS = ['POST', 'PUT', 'PATCH', 'QUERY'];
+const BODY_ALLOWED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'QUERY']);
 
 function buildRequestOptions(apiCheck: any, signal: AbortSignal): RequestInit {
-  const headers: Record<string, string> = { ...(apiCheck.headers ?? {}) };
+  const headers: Record<string, string> = { ...apiCheck.headers };
   const requestOptions: RequestInit = {
     method: apiCheck.method || 'GET',
     headers,
     signal,
   };
 
-  if (apiCheck.body && BODY_ALLOWED_METHODS.includes(apiCheck.method)) {
+  if (apiCheck.body && BODY_ALLOWED_METHODS.has(apiCheck.method)) {
     requestOptions.body =
       typeof apiCheck.body === 'string' ? apiCheck.body : JSON.stringify(apiCheck.body);
 
@@ -80,7 +80,14 @@ async function finalizeSuccess(params: {
   } = params;
 
   const allAssertionsPassed = assertionResults.every((r) => r.passed);
-  const status = allAssertionsPassed ? 'SUCCESS' : isFinalAttempt ? 'FAILED' : 'PENDING';
+  let status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  if (allAssertionsPassed) {
+    status = 'SUCCESS';
+  } else if (isFinalAttempt) {
+    status = 'FAILED';
+  } else {
+    status = 'PENDING';
+  }
   const errorMessage = allAssertionsPassed ? null : 'One or more assertions failed';
 
   await apiCheckRepo.updateExecution(executionId, {
