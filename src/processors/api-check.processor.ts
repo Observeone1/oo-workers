@@ -55,7 +55,7 @@ export const apiCheckProcessor = async (job: Job) => {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     requestOptions.signal = controller.signal;
 
-    if (apiCheck.body && ['POST', 'PUT', 'PATCH'].includes(apiCheck.method)) {
+    if (apiCheck.body && ['POST', 'PUT', 'PATCH', 'QUERY'].includes(apiCheck.method)) {
       requestOptions.body =
         typeof apiCheck.body === 'string' ? apiCheck.body : JSON.stringify(apiCheck.body);
 
