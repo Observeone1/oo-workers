@@ -44,7 +44,7 @@ import type { FanOutTarget } from './scheduler-jobid.ts';
 // fresh IDs never collide with the previous boot's artifacts.
 const BOOT_NONCE = makeNonce();
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
-import { execEvents } from './services/exec-events.ts';
+import { execEvents, emitExecution } from './services/exec-events.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
@@ -53,6 +53,7 @@ import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from './services/alert-dispatch.ts';
+import { maybeAlertOnQaRunTransition } from './services/transition-detector.ts';
 import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -177,6 +178,11 @@ export async function startScheduler(connection: Redis) {
         // BullMQ jobs to dispatch, just an overdue sweep that fires
         // outage alerts via the existing channel system.
         tickHeartbeats(),
+        // Browser-check runs that died mid-flight never compute an
+        // aggregate, so nothing ever calls claimRunAlert and the failure
+        // is silent. Same shape as the heartbeat sweep: age them out,
+        // mark FAILED, let the normal transition alert fire.
+        tickAbandonedQaRuns(),
         // Region online/offline sweep — fires SSE `region` events on
         // every transition so the navbar badge updates live without
         // the dashboard polling every 30s.
@@ -605,6 +611,54 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
         }`,
       );
     }
+  }
+}
+
+// ---------------- abandoned qa runs ----------------
+// A QA project run only alerts once someone computes its aggregate:
+// the processor does it for master runs, agent-dispatch does it for
+// region runs once every expected test has reported. If the worker or
+// the region agent dies mid-run, neither happens — `qa_runs.outcome`
+// stays NULL forever, no alert fires, and because the previous-run
+// lookup skips NULL-outcome rows the run is invisible to the next
+// run's comparison too. A failing browser check therefore stays
+// completely silent.
+//
+// This sweep is the backstop: any run still without a verdict
+// QA_RUN_ABANDONED_MS after it started is declared FAILED through the
+// same one-shot `claimRunAlert` guard the live paths use, then handed
+// to the normal transition detector. Alert semantics are unchanged —
+// SUCCESS → abandoned fires an outage, and the next green run fires
+// the recovery.
+const QA_RUN_ABANDONED_MS = Number(process.env.QA_RUN_ABANDONED_MS ?? DEFAULTS.QA_RUN_ABANDONED_MS);
+
+/** Exported for tests. Internal use only — the scheduler tick calls this. */
+export async function tickAbandonedQaRuns(): Promise<void> {
+  const cutoff = new Date(Date.now() - QA_RUN_ABANDONED_MS);
+  const runs = await qaProjectRepo.findAbandonedRuns(cutoff);
+  for (const run of runs) {
+    // Claim FIRST: it's the atomic gate. If a straggler result lands at
+    // the same moment and wins the claim, we must not touch its rows.
+    if (!(await qaProjectRepo.claimRunAlert(run.id, 'FAILED'))) continue;
+
+    const ageMin = Math.round((Date.now() - run.startedAt.getTime()) / 60_000);
+    const stranded = await qaProjectRepo.markRunTestsAbandoned(
+      run.id,
+      `abandoned: run produced no result within ${ageMin}m`,
+    );
+    const errorMessage =
+      `run abandoned — ${stranded.length} of ${run.expectedTests} test(s) never reported ` +
+      `within ${ageMin}m (worker or region agent likely died mid-run)`;
+    logger.error(`qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}`);
+    for (const id of stranded) {
+      emitExecution('qa', run.projectId, {
+        id,
+        status: 'error',
+        errorMessage,
+        regionId: run.regionId,
+      });
+    }
+    await maybeAlertOnQaRunTransition(run.id, { errorMessage });
   }
 }
 

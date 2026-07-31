@@ -12,6 +12,12 @@ export const DEFAULTS = {
   API_TIMEOUT_IMPORT_DEFAULT_MS: 10_000,
   QA_INTERVAL_SECONDS: 300,
   QA_RUN_TIMEOUT_MS: 30_000,
+  // How long a qa_runs row may sit without a verdict before the scheduler
+  // declares it abandoned, marks it FAILED and lets the normal transition
+  // alert fire. Generous vs QA_INTERVAL_SECONDS (300s) and the per-test
+  // QA_RUN_TIMEOUT_MS (30s) so a slow-but-alive run is never mistaken for a
+  // dead one. Override with QA_RUN_ABANDONED_MS.
+  QA_RUN_ABANDONED_MS: 900_000,
   SCHEDULER_TICK_MS: 5_000,
   UI_POLL_MS: 5_000,
   RESPONSE_BODY_TRUNCATE_CHARS: 5_000,

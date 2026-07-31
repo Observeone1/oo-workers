@@ -95,6 +95,11 @@ export const createQaProjectProcessor = (redis: Redis) => {
       fileMap.set(test.id, filePath);
     }
 
+    // Hoisted out of the try so the catch below can still close the run out
+    // and alert. A run that dies without a verdict is otherwise invisible:
+    // nothing calls claimRunAlert, so no notification is ever sent.
+    let runId: number | null = null;
+
     try {
       // A master run (region_id NULL) groups these executions so run-level
       // alerting compares this run against the previous master run.
@@ -103,6 +108,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
         regionId: null,
         expectedTests: tests.length,
       });
+      runId = run.id;
 
       const testPromises = tests.map(async (test) => {
         // INSERT execution row
@@ -260,8 +266,6 @@ export const createQaProjectProcessor = (redis: Redis) => {
       const errors = results.filter((r) => r.status === 'error').length;
       const totalDuration = Date.now() - startTime;
 
-      await qaProjectRepo.touchLastRunAt(projectId);
-
       // QA alerting: per-project-run aggregate (all tests passed = up,
       // any failed/errored = down) vs the previous run's aggregate.
       // Best-effort — never blocks run completion.
@@ -270,9 +274,16 @@ export const createQaProjectProcessor = (redis: Redis) => {
       // is the same one-shot guard the region path uses; the master path always
       // wins it (no concurrent completor) but going through it keeps qa_runs the
       // single source of truth for "this run already alerted".
+      //
+      // Runs BEFORE touchLastRunAt deliberately: that write is cosmetic
+      // (it only feeds findDue's scheduling), and when it sat first a
+      // transient DB error on it threw past the alert and swallowed the
+      // outage notification entirely.
       if (await qaProjectRepo.claimRunAlert(run.id, aggregateOutcome)) {
         await maybeAlertOnQaRunTransition(run.id);
       }
+
+      await qaProjectRepo.touchLastRunAt(projectId);
 
       const completionData = {
         type: 'run_completed',
@@ -297,6 +308,31 @@ export const createQaProjectProcessor = (redis: Redis) => {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`QA Project ${projectId} run failed: ${msg}`);
       await fs.rm(runDir, { recursive: true, force: true });
+      // The run blew up before it could be aggregated (storage, Playwright
+      // launch, DB blip...). Close it out as FAILED so the operator hears
+      // about it now rather than waiting for the scheduler's abandoned-run
+      // sweep — and so the run stops being invisible to the next run's
+      // previous-outcome lookup. Best-effort: a failure here must not mask
+      // the original error, which still propagates for BullMQ retry.
+      //
+      // Not gated on isFinalAttempt (unlike url/api): the queue sets no
+      // `attempts`, and if one is ever added, transition-only alerting
+      // already collapses a retry storm — the first aborted run alerts,
+      // every further FAILED run is a no-op against a FAILED predecessor.
+      if (runId !== null) {
+        try {
+          if (await qaProjectRepo.claimRunAlert(runId, 'FAILED')) {
+            await qaProjectRepo.markRunTestsAbandoned(runId, `run aborted: ${msg}`);
+            await maybeAlertOnQaRunTransition(runId, { errorMessage: `run aborted: ${msg}` });
+          }
+        } catch (alertError) {
+          logger.error(
+            `QA Project ${projectId}: failed to alert on aborted run ${runId}: ${
+              alertError instanceof Error ? alertError.message : alertError
+            }`,
+          );
+        }
+      }
       throw error;
     }
   };

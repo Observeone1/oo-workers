@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import {
   monitorRegions,
@@ -244,6 +244,53 @@ export const qaProjectRepo = {
       .where(and(eq(qaRuns.id, runId), isNull(qaRuns.alertedAt)))
       .returning({ id: qaRuns.id });
     return rows.length === 1;
+  },
+
+  /**
+   * Runs that never reached a verdict: `outcome IS NULL` (nobody ever
+   * aggregated them) and `started_at` older than `cutoff`. This is the
+   * only way a failing browser check can go completely unnoticed — the
+   * worker or the region agent dies mid-run, no aggregate is ever
+   * computed, so `claimRunAlert` is never called and no alert fires.
+   * Swept by the scheduler; see `tickAbandonedQaRuns`.
+   *
+   * `alertedAt IS NULL` is implied by `outcome IS NULL` (claimRunAlert
+   * writes both), but it's stated explicitly so a future writer of one
+   * column without the other can't resurrect an already-alerted run.
+   *
+   * Bounded per call: an instance that has been broken for a long time
+   * could hold thousands of these, and the sweep runs inside a scheduler
+   * tick. The remainder drains over the following ticks.
+   */
+  async findAbandonedRuns(cutoff: Date, limit = 100) {
+    return db
+      .select({
+        id: qaRuns.id,
+        projectId: qaRuns.projectId,
+        regionId: qaRuns.regionId,
+        startedAt: qaRuns.startedAt,
+        expectedTests: qaRuns.expectedTests,
+      })
+      .from(qaRuns)
+      .where(and(isNull(qaRuns.outcome), isNull(qaRuns.alertedAt), lt(qaRuns.startedAt, cutoff)))
+      .orderBy(qaRuns.id)
+      .limit(limit);
+  },
+
+  /**
+   * Close out the executions of an abandoned run: every row still missing a
+   * `completedAt` becomes `error` with `message`. Without this the detail
+   * page shows those tests "running" forever, and a late-arriving agent
+   * result could push `runProgress` to completion long after the sweep
+   * already alerted. Returns the ids it stamped so the caller can emit SSE.
+   */
+  async markRunTestsAbandoned(runId: number, message: string): Promise<number[]> {
+    const rows = await db
+      .update(qaTestExecutions)
+      .set({ status: 'error', errorMessage: message, completedAt: new Date() })
+      .where(and(eq(qaTestExecutions.runId, runId), isNull(qaTestExecutions.completedAt)))
+      .returning({ id: qaTestExecutions.id });
+    return rows.map((r) => r.id);
   },
 
   /**

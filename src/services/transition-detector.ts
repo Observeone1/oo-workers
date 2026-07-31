@@ -269,10 +269,18 @@ export async function maybeAlertOnTransition(
  * against master runs. If the previous run's outcome differs, dispatch
  * outage/recovery. This replaces the old ±30s startedAt bucketing.
  *
+ * `detail.errorMessage` rides along into the alert body. Normal completion
+ * leaves it unset (the per-test rows carry the detail); the abandoned-run
+ * sweep sets it so an operator can tell "tests failed" from "the run never
+ * came back".
+ *
  * Best-effort and isolated — never throws back into the caller, so a busted
  * alert path can't break run completion.
  */
-export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> {
+export async function maybeAlertOnQaRunTransition(
+  runId: number,
+  detail: { errorMessage?: string | null } = {},
+): Promise<void> {
   try {
     const [run] = await db
       .select({
@@ -325,7 +333,7 @@ export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> 
       event,
       status: run.outcome,
       statusCode: null,
-      errorMessage: null,
+      errorMessage: detail.errorMessage ?? null,
       durationMs: null,
       startTime: run.startedAt.toISOString(),
       regionSlug,
