@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
 import { maybeAlertOnQaRunTransition } from '../services/transition-detector.ts';
+import { failUnfinishedQaRun } from '../services/qa-run-closeout.ts';
 import { emitExecution } from '../services/exec-events.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
@@ -313,30 +314,42 @@ export const createQaProjectProcessor = (redis: Redis) => {
       // about it now rather than waiting for the scheduler's abandoned-run
       // sweep — and so the run stops being invisible to the next run's
       // previous-outcome lookup. Best-effort: a failure here must not mask
-      // the original error, which still propagates for BullMQ retry.
+      // the original error, which still propagates.
       //
       // Not gated on isFinalAttempt (unlike url/api): the queue sets no
       // `attempts`, and if one is ever added, transition-only alerting
       // already collapses a retry storm — the first aborted run alerts,
       // every further FAILED run is a no-op against a FAILED predecessor.
       if (runId !== null) {
-        try {
-          if (await qaProjectRepo.claimRunAlert(runId, 'FAILED')) {
-            await qaProjectRepo.markRunTestsAbandoned(runId, `run aborted: ${msg}`);
-            await maybeAlertOnQaRunTransition(runId, { errorMessage: `run aborted: ${msg}` });
-          }
-        } catch (alertError) {
-          logger.error(
-            `QA Project ${projectId}: failed to alert on aborted run ${runId}: ${
-              alertError instanceof Error ? alertError.message : alertError
-            }`,
-          );
-        }
+        await closeOutAbortedRun(runId, projectId, msg);
       }
       throw error;
     }
   };
 };
+
+/**
+ * Best-effort close-out for a master run that threw mid-flight. Kept out of
+ * the processor body so the alert path can't add its own failure mode to the
+ * one already being handled: anything thrown here is logged and swallowed,
+ * leaving the original error to propagate. If the run had already been
+ * aggregated, `failUnfinishedQaRun` loses the claim and this is a no-op.
+ */
+async function closeOutAbortedRun(runId: number, projectId: number, msg: string): Promise<void> {
+  try {
+    await failUnfinishedQaRun(
+      { id: runId, projectId, regionId: null },
+      `run aborted: ${msg}`,
+      `run aborted: ${msg}`,
+    );
+  } catch (alertError) {
+    logger.error(
+      `QA Project ${projectId}: failed to alert on aborted run ${runId}: ${
+        alertError instanceof Error ? alertError.message : alertError
+      }`,
+    );
+  }
+}
 
 /**
  * Look up the QA project name by id. Used to slug it into artifact keys so

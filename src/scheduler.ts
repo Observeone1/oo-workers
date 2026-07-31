@@ -44,7 +44,7 @@ import type { FanOutTarget } from './scheduler-jobid.ts';
 // fresh IDs never collide with the previous boot's artifacts.
 const BOOT_NONCE = makeNonce();
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
-import { execEvents, emitExecution } from './services/exec-events.ts';
+import { execEvents } from './services/exec-events.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
@@ -53,7 +53,7 @@ import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from './services/alert-dispatch.ts';
-import { maybeAlertOnQaRunTransition } from './services/transition-detector.ts';
+import { failUnfinishedQaRun } from './services/qa-run-closeout.ts';
 import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -637,28 +637,18 @@ export async function tickAbandonedQaRuns(): Promise<void> {
   const cutoff = new Date(Date.now() - QA_RUN_ABANDONED_MS);
   const runs = await qaProjectRepo.findAbandonedRuns(cutoff);
   for (const run of runs) {
-    // Claim FIRST: it's the atomic gate. If a straggler result lands at
-    // the same moment and wins the claim, we must not touch its rows.
-    if (!(await qaProjectRepo.claimRunAlert(run.id, 'FAILED'))) continue;
-
     const ageMin = Math.round((Date.now() - run.startedAt.getTime()) / 60_000);
-    const stranded = await qaProjectRepo.markRunTestsAbandoned(
-      run.id,
+    const errorMessage =
+      `run abandoned — none of ${run.expectedTests} test(s) reported a result within ` +
+      `${ageMin}m (worker or region agent likely died mid-run)`;
+    const closed = await failUnfinishedQaRun(
+      run,
+      errorMessage,
       `abandoned: run produced no result within ${ageMin}m`,
     );
-    const errorMessage =
-      `run abandoned — ${stranded.length} of ${run.expectedTests} test(s) never reported ` +
-      `within ${ageMin}m (worker or region agent likely died mid-run)`;
-    logger.error(`qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}`);
-    for (const id of stranded) {
-      emitExecution('qa', run.projectId, {
-        id,
-        status: 'error',
-        errorMessage,
-        regionId: run.regionId,
-      });
+    if (closed) {
+      logger.error(`qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}`);
     }
-    await maybeAlertOnQaRunTransition(run.id, { errorMessage });
   }
 }
 

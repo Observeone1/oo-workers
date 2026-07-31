@@ -8,8 +8,9 @@
  * set by setup.ts). It does NOT start a server or workers.
  */
 
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { createServer, type Server } from 'node:http';
+import type { Redis } from 'ioredis';
 import { db } from '../../src/config/db.ts';
 import { apiKeys, qaRuns, qaTestExecutions, regions } from '../../src/db/schema.ts';
 import { qaProjectRepo } from '../../src/db/repositories/qa-project.repo.ts';
@@ -19,6 +20,7 @@ import {
 } from '../../src/db/repositories/alert-channel.repo.ts';
 import { maybeAlertOnQaRunTransition } from '../../src/services/transition-detector.ts';
 import { tickAbandonedQaRuns } from '../../src/scheduler.ts';
+import { createQaProjectProcessor } from '../../src/processors/qa-project.processor.ts';
 import { eq } from 'drizzle-orm';
 
 interface Hook {
@@ -220,23 +222,22 @@ describe('qa-alerting is region-scoped', () => {
   });
 });
 
-describe('abandoned qa runs are swept and alerted', () => {
-  /**
-   * The silent-failure case this sweep exists for: the worker (or a region
-   * agent) dies mid-run, so nobody ever computes the aggregate, `outcome`
-   * stays NULL, `claimRunAlert` is never called and no notification is ever
-   * sent. Seeds a run older than the cutoff with an execution still marked
-   * `running` and drives the scheduler sweep directly.
-   */
-  async function seedAbandonedRun(startedAt: Date): Promise<{ runId: number; execId: number }> {
-    const [run] = await db
-      .insert(qaRuns)
-      .values({ projectId, regionId: null, expectedTests: 1, startedAt })
-      .returning({ id: qaRuns.id });
-    const [exec] = await qaProjectRepo.createExecution(testId, projectId, 'running', null, run.id);
-    return { runId: run.id, execId: exec.id };
-  }
+/**
+ * The silent-failure case the sweep exists for: the worker (or a region
+ * agent) dies mid-run, so nobody ever computes the aggregate, `outcome`
+ * stays NULL, `claimRunAlert` is never called and no notification is ever
+ * sent. Seeds a run with no verdict and an execution still marked `running`.
+ */
+async function seedAbandonedRun(startedAt: Date): Promise<{ runId: number; execId: number }> {
+  const [run] = await db
+    .insert(qaRuns)
+    .values({ projectId, regionId: null, expectedTests: 1, startedAt })
+    .returning({ id: qaRuns.id });
+  const [exec] = await qaProjectRepo.createExecution(testId, projectId, 'running', null, run.id);
+  return { runId: run.id, execId: exec.id };
+}
 
+describe('abandoned qa runs are swept and alerted', () => {
   test('a run stuck without an outcome is marked FAILED and fires an outage alert', async () => {
     await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
     received.length = 0;
@@ -333,6 +334,109 @@ describe('abandoned qa runs are swept and alerted', () => {
 
     expect(received.length).toBe(2);
     expect(received[1].event).toBe('recovery');
+  });
+});
+
+/**
+ * The processor's own crash path. A run that throws mid-flight used to be
+ * rethrown with `qa_runs.outcome` still NULL — silent until the sweep caught
+ * it 15 minutes later, or forever if the row was never swept.
+ *
+ * Driven with an empty `tests` array so no Playwright process is launched:
+ * the run still gets created, aggregated and claimed, which is every code
+ * path these cases care about. Failures are injected by swapping repo
+ * methods for throwing ones, restored after each case.
+ */
+describe('qa processor closes out a run that throws', () => {
+  type QaProcessor = ReturnType<typeof createQaProjectProcessor>;
+  type QaJob = Parameters<QaProcessor>[0];
+
+  // publishUpdate only ever calls redis.publish, and swallows its errors —
+  // a stub keeps the case off a live Redis connection.
+  const redisStub = { publish: async () => 1 } as unknown as Redis;
+
+  function job(): QaJob {
+    return {
+      id: `it-${suffix}`,
+      data: {
+        type: 'qa-project-run',
+        projectId,
+        targetUrl: 'https://example.com',
+        tests: [],
+        triggeredAt: new Date().toISOString(),
+      },
+    } as unknown as QaJob;
+  }
+
+  const realTouch = qaProjectRepo.touchLastRunAt;
+  const realClaim = qaProjectRepo.claimRunAlert;
+
+  afterEach(() => {
+    qaProjectRepo.touchLastRunAt = realTouch;
+    qaProjectRepo.claimRunAlert = realClaim;
+  });
+
+  test('a run with no tests aggregates SUCCESS and alerts on the flip', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    await seedRun('FAILED', new Date(Date.now() - 60 * 60_000), null);
+
+    await createQaProjectProcessor(redisStub)(job());
+
+    expect(received.length).toBe(1);
+    expect(received[0].event).toBe('recovery');
+  });
+
+  test('the alert survives a failing touchLastRunAt', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    await seedRun('FAILED', new Date(Date.now() - 60 * 60_000), null);
+    // Cosmetic write, but it used to sit ahead of the claim — a blip here
+    // swallowed the notification entirely.
+    qaProjectRepo.touchLastRunAt = () => {
+      throw new Error('db blip');
+    };
+
+    await expect(createQaProjectProcessor(redisStub)(job())).rejects.toThrow('db blip');
+
+    expect(received.length).toBe(1);
+    expect(received[0].event).toBe('recovery');
+  });
+
+  test('a run that throws before aggregating is closed out as FAILED and alerts', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    await seedRun('SUCCESS', new Date(Date.now() - 60 * 60_000), null);
+    // Blow up on the in-band claim only; the catch's own claim goes through,
+    // which is exactly the "run died before it had a verdict" case.
+    let first = true;
+    qaProjectRepo.claimRunAlert = (runId, outcome) => {
+      if (first) {
+        first = false;
+        throw new Error('claim exploded');
+      }
+      return realClaim.call(qaProjectRepo, runId, outcome);
+    };
+
+    await expect(createQaProjectProcessor(redisStub)(job())).rejects.toThrow('claim exploded');
+
+    expect(received.length).toBe(1);
+    expect(received[0].event).toBe('outage');
+    expect(received[0].status).toBe('FAILED');
+    expect(received[0].errorMessage).toContain('run aborted');
+  });
+
+  test('a close-out that itself fails is swallowed, not masking the original error', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    await seedRun('SUCCESS', new Date(Date.now() - 60 * 60_000), null);
+    qaProjectRepo.claimRunAlert = () => {
+      throw new Error('claim exploded');
+    };
+
+    // The original failure is what propagates — not whatever the alert path hit.
+    await expect(createQaProjectProcessor(redisStub)(job())).rejects.toThrow('claim exploded');
+    expect(received.length).toBe(0);
   });
 });
 

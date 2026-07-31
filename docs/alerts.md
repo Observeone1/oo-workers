@@ -55,9 +55,11 @@ previous-outcome lookup, which skips NULL-outcome rows.
 
 Two backstops close that hole:
 
-- **Crash path.** If the processor throws before aggregating, it claims
-  the run as `FAILED` on the way out and dispatches immediately, so an
-  aborted run pages you now rather than on the next sweep.
+- **Crash path.** If the processor throws before aggregating, it closes the
+  run out as `FAILED` on the way out and dispatches immediately, so an
+  aborted run pages you now rather than on the next sweep. The close-out is
+  best-effort — if it fails too, it is logged and the original error still
+  propagates.
 - **Abandoned-run sweep.** The scheduler ticks `tickAbandonedQaRuns`
   alongside the heartbeat sweep. Any run still without an outcome
   `QA_RUN_ABANDONED_MS` (default 15 min) after it started is marked
@@ -94,8 +96,10 @@ before. Mailpit is intentionally **not** in the shipped
   scoping and `claimRunAlert` idempotency, and covers the abandoned-run
   sweep end to end (swept → outage with cause, idempotent second pass,
   in-flight run untouched, quiet after an already-failing run, recovery
-  on the next green run). Anti-vacuous — every case asserts on a real
-  webhook delivery.
+  on the next green run) plus the processor's crash paths (alert survives a
+  failing `touchLastRunAt`; a run that throws before aggregating is closed
+  out and alerts; a close-out that itself fails doesn't mask the original
+  error). Anti-vacuous — every case asserts on a real webhook delivery.
 - **Manual real-path e2e** — `tests/ui/qa-alerting.e2e.spec.ts`
   (`bun run test:ui:e2e:qa-alerting`). Runs a real QA project through
   the worker (run-now → BullMQ → Playwright → aggregation → dispatch)
