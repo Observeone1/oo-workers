@@ -12,7 +12,7 @@
  * normalizeOutcome() folds both vocabularies into 'up' | 'down'.
  */
 
-import { and, desc, eq, isNotNull, isNull, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
   apiChecks,
@@ -33,6 +33,7 @@ import {
   urlMonitors,
 } from '../db/schema.ts';
 import { logger } from '../utils/logger.ts';
+import { QA_RUN_VERDICTS } from '../constants.ts';
 import { dispatchAlert } from './alert-dispatch.ts';
 import type { MonitorType } from '../db/repositories/alert-channel.repo.ts';
 
@@ -269,18 +270,10 @@ export async function maybeAlertOnTransition(
  * against master runs. If the previous run's outcome differs, dispatch
  * outage/recovery. This replaces the old ±30s startedAt bucketing.
  *
- * `detail.errorMessage` rides along into the alert body. Normal completion
- * leaves it unset (the per-test rows carry the detail); the abandoned-run
- * sweep sets it so an operator can tell "tests failed" from "the run never
- * came back".
- *
  * Best-effort and isolated — never throws back into the caller, so a busted
  * alert path can't break run completion.
  */
-export async function maybeAlertOnQaRunTransition(
-  runId: number,
-  detail: { errorMessage?: string | null } = {},
-): Promise<void> {
+export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> {
   try {
     const [run] = await db
       .select({
@@ -299,6 +292,13 @@ export async function maybeAlertOnQaRunTransition(
     // Previous completed run for the SAME (project, region). A NULL region
     // (master run) only matches other master runs; a region only matches its
     // own runs — region_id scoping is what stops cross-region mis-blending.
+    //
+    // Restricted to real verdicts, NOT merely `outcome IS NOT NULL`. A run
+    // we abandoned (QA_RUN_VERDICTS excludes it) carries no information about
+    // the monitored target — our machinery died, that's all — so it must not
+    // become anyone's predecessor. If it could, the run after an abandoned
+    // one would normalize its predecessor to 'other' and bail, and QA
+    // alerting would go permanently silent from the first abandoned run on.
     const [prev] = await db
       .select({ outcome: qaRuns.outcome })
       .from(qaRuns)
@@ -307,7 +307,7 @@ export async function maybeAlertOnQaRunTransition(
           eq(qaRuns.projectId, run.projectId),
           run.regionId === null ? isNull(qaRuns.regionId) : eq(qaRuns.regionId, run.regionId),
           lt(qaRuns.startedAt, run.startedAt),
-          isNotNull(qaRuns.outcome),
+          inArray(qaRuns.outcome, [...QA_RUN_VERDICTS]),
         ),
       )
       .orderBy(desc(qaRuns.startedAt))
@@ -333,7 +333,7 @@ export async function maybeAlertOnQaRunTransition(
       event,
       status: run.outcome,
       statusCode: null,
-      errorMessage: detail.errorMessage ?? null,
+      errorMessage: null,
       durationMs: null,
       startTime: run.startedAt.toISOString(),
       regionSlug,

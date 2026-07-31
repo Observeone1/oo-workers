@@ -53,7 +53,7 @@ import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from './services/alert-dispatch.ts';
-import { failUnfinishedQaRun } from './services/qa-run-closeout.ts';
+import { finalizeUnfinishedQaRun } from './services/qa-run-closeout.ts';
 import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -179,9 +179,9 @@ export async function startScheduler(connection: Redis) {
         // outage alerts via the existing channel system.
         tickHeartbeats(),
         // Browser-check runs that died mid-flight never compute an
-        // aggregate, so nothing ever calls claimRunAlert and the failure
-        // is silent. Same shape as the heartbeat sweep: age them out,
-        // mark FAILED, let the normal transition alert fire.
+        // aggregate, so their rows rot at outcome NULL. Age them out and
+        // finalize them as ABANDONED — logged for operators, never
+        // alerted (our failure, not the target's).
         tickAbandonedQaRuns(),
         // Region online/offline sweep — fires SSE `region` events on
         // every transition so the navbar badge updates live without
@@ -615,21 +615,25 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- abandoned qa runs ----------------
-// A QA project run only alerts once someone computes its aggregate:
-// the processor does it for master runs, agent-dispatch does it for
-// region runs once every expected test has reported. If the worker or
-// the region agent dies mid-run, neither happens — `qa_runs.outcome`
-// stays NULL forever, no alert fires, and because the previous-run
-// lookup skips NULL-outcome rows the run is invisible to the next
-// run's comparison too. A failing browser check therefore stays
-// completely silent.
+// A QA project run only reaches an outcome once someone computes its
+// aggregate: the processor does it for master runs, agent-dispatch does
+// it for region runs once every expected test has reported. If the
+// worker or the region agent dies mid-run, neither happens —
+// `qa_runs.outcome` stays NULL forever, the row is skipped by the
+// previous-run lookup, and its executions keep claiming to be running.
 //
-// This sweep is the backstop: any run still without a verdict
-// QA_RUN_ABANDONED_MS after it started is declared FAILED through the
-// same one-shot `claimRunAlert` guard the live paths use, then handed
-// to the normal transition detector. Alert semantics are unchanged —
-// SUCCESS → abandoned fires an outage, and the next green run fires
-// the recovery.
+// This sweep finalizes those rows: any run still without an outcome
+// QA_RUN_ABANDONED_MS after it started is recorded as ABANDONED through
+// the same one-shot `claimRunAlert` guard the live paths use.
+//
+// It does NOT alert, and that is deliberate. A run we failed to execute
+// tells us nothing about the monitored target's health — it tells us our
+// own machinery broke. The operator of the fleet needs to know (hence
+// the log line); the monitor's owner cannot act on it, so paging them
+// would be pure noise. ABANDONED sits outside QA_RUN_VERDICTS, so the
+// row is skipped when the NEXT run looks for its predecessor: an
+// abandoned run neither fires an alert nor suppresses the following
+// real one.
 const QA_RUN_ABANDONED_MS = Number(process.env.QA_RUN_ABANDONED_MS ?? DEFAULTS.QA_RUN_ABANDONED_MS);
 
 /** Exported for tests. Internal use only — the scheduler tick calls this. */
@@ -638,30 +642,16 @@ export async function tickAbandonedQaRuns(): Promise<void> {
   const runs = await qaProjectRepo.findAbandonedRuns(cutoff);
   for (const run of runs) {
     const ageMin = Math.round((Date.now() - run.startedAt.getTime()) / 60_000);
-    const errorMessage =
-      `run abandoned — none of ${run.expectedTests} test(s) reported a result within ` +
-      `${ageMin}m (worker or region agent likely died mid-run)`;
-    // Only page if this dead run is still the newest thing we know about.
-    // A run that died never stamped lastRunAt, so findDue re-schedules the
-    // project right away and later runs usually beat the sweep here; paging
-    // then would claim an outage for a monitor that has been green for
-    // minutes, and no recovery could follow it. Record the verdict either
-    // way so the row stops being invisible to the previous-outcome lookup.
-    const superseded = await qaProjectRepo.hasNewerCompletedRun(
-      run.projectId,
-      run.regionId,
-      run.startedAt,
-    );
-    const closed = await failUnfinishedQaRun(
+    const finalized = await finalizeUnfinishedQaRun(
       run,
-      errorMessage,
       `abandoned: run produced no result within ${ageMin}m`,
-      !superseded,
     );
-    if (closed) {
+    if (finalized) {
       logger.error(
-        `qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}` +
-          (superseded ? ' [not alerted — a newer run has since reported]' : ''),
+        `qa run #${run.id} (project #${run.projectId}) → ABANDONED: none of ` +
+          `${run.expectedTests} test(s) reported a result within ${ageMin}m ` +
+          `(worker or region agent likely died mid-run). Not alerted — this is ` +
+          `our failure, not the monitored target's.`,
       );
     }
   }

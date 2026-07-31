@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
 import { maybeAlertOnQaRunTransition } from '../services/transition-detector.ts';
-import { failUnfinishedQaRun } from '../services/qa-run-closeout.ts';
+import { finalizeUnfinishedQaRun } from '../services/qa-run-closeout.ts';
 import { emitExecution } from '../services/exec-events.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
@@ -96,9 +96,9 @@ export const createQaProjectProcessor = (redis: Redis) => {
       fileMap.set(test.id, filePath);
     }
 
-    // Hoisted out of the try so the catch below can still close the run out
-    // and alert. A run that dies without a verdict is otherwise invisible:
-    // nothing calls claimRunAlert, so no notification is ever sent.
+    // Hoisted out of the try so the catch below can still finalize the run.
+    // A run that dies without an outcome otherwise rots at NULL forever:
+    // skipped by the previous-run lookup, executions stuck at "running".
     let runId: number | null = null;
 
     try {
@@ -310,16 +310,10 @@ export const createQaProjectProcessor = (redis: Redis) => {
       logger.error(`QA Project ${projectId} run failed: ${msg}`);
       await fs.rm(runDir, { recursive: true, force: true });
       // The run blew up before it could be aggregated (storage, Playwright
-      // launch, DB blip...). Close it out as FAILED so the operator hears
-      // about it now rather than waiting for the scheduler's abandoned-run
-      // sweep — and so the run stops being invisible to the next run's
-      // previous-outcome lookup. Best-effort: a failure here must not mask
-      // the original error, which still propagates.
-      //
-      // Not gated on isFinalAttempt (unlike url/api): the queue sets no
-      // `attempts`, and if one is ever added, transition-only alerting
-      // already collapses a retry storm — the first aborted run alerts,
-      // every further FAILED run is a no-op against a FAILED predecessor.
+      // launch, DB blip...). Finalize it now rather than leaving the row for
+      // the scheduler's sweep 15 minutes later — same outcome either way,
+      // just sooner. Best-effort: a failure here must not mask the original
+      // error, which still propagates.
       if (runId !== null) {
         await closeOutAbortedRun(runId, projectId, msg);
       }
@@ -330,22 +324,22 @@ export const createQaProjectProcessor = (redis: Redis) => {
 
 /**
  * Best-effort close-out for a master run that threw mid-flight. Kept out of
- * the processor body so the alert path can't add its own failure mode to the
- * one already being handled: anything thrown here is logged and swallowed,
- * leaving the original error to propagate. If the run had already been
- * aggregated, `failUnfinishedQaRun` loses the claim and this is a no-op.
+ * the processor body so it can't add its own failure mode to the one already
+ * being handled: anything thrown here is logged and swallowed, leaving the
+ * original error to propagate. If the run had already been aggregated,
+ * `finalizeUnfinishedQaRun` loses the claim and this is a no-op.
+ *
+ * Records only — no alert. The run blew up on our side (Playwright launch,
+ * storage, a DB blip), which says nothing about the monitored target, so the
+ * monitor's owner is not paged for it. See docs/alerts.md.
  */
 async function closeOutAbortedRun(runId: number, projectId: number, msg: string): Promise<void> {
   try {
-    await failUnfinishedQaRun(
-      { id: runId, projectId, regionId: null },
-      `run aborted: ${msg}`,
-      `run aborted: ${msg}`,
-    );
-  } catch (alertError) {
+    await finalizeUnfinishedQaRun({ id: runId, projectId, regionId: null }, `run aborted: ${msg}`);
+  } catch (closeOutError) {
     logger.error(
-      `QA Project ${projectId}: failed to alert on aborted run ${runId}: ${
-        alertError instanceof Error ? alertError.message : alertError
+      `QA Project ${projectId}: failed to finalize aborted run ${runId}: ${
+        closeOutError instanceof Error ? closeOutError.message : closeOutError
       }`,
     );
   }

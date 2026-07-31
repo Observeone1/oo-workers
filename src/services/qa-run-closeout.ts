@@ -1,67 +1,58 @@
 /**
- * Closing out a QA run that will never produce a verdict.
+ * Finalizing a QA run that will never produce a verdict.
  *
- * A QA run only alerts once someone computes its aggregate — the processor
- * for a master run, `agent-dispatch` once every expected test has reported
- * for a region run. When a run dies before that (worker killed, region
- * agent gone, the processor throwing mid-flight), `qa_runs.outcome` stays
- * NULL, `claimRunAlert` is never called, and the failing browser check is
- * completely silent. The run is also invisible to the next run's
- * previous-outcome lookup, which skips NULL-outcome rows, so the eventual
- * recovery can't fire either.
+ * A QA run only reaches an outcome once someone computes its aggregate — the
+ * processor for a master run, `agent-dispatch` once every expected test has
+ * reported for a region run. When a run dies before that (worker killed,
+ * region agent gone, the processor throwing mid-flight), `qa_runs.outcome`
+ * stays NULL forever and the row rots: it is skipped by the previous-run
+ * lookup, and its executions keep claiming to be `running`.
  *
- * Two callers reach this: the processor's catch (a run that aborted here
- * and now) and the scheduler's `tickAbandonedQaRuns` sweep (a run nobody
- * ever came back for). Both need the same three steps in the same order,
- * hence one place for them.
+ * **This never alerts, by policy.** A run we failed to execute says nothing
+ * about whether the monitored target is healthy — it says our own machinery
+ * broke. Paging the monitor's owner for that is noise they can't act on, so
+ * the run is recorded as `QA_RUN_ABANDONED` (outside `QA_RUN_VERDICTS`,
+ * therefore invisible to the transition detector) and logged for whoever
+ * operates the fleet. See docs/alerts.md.
+ *
+ * Two callers reach this: the processor's catch (a run that aborted here and
+ * now) and the scheduler's `tickAbandonedQaRuns` sweep (a run nobody ever
+ * came back for).
  */
 
+import { QA_EXEC_ABANDONED, QA_RUN_ABANDONED } from '../constants.ts';
 import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
 import { emitExecution } from './exec-events.ts';
-import { maybeAlertOnQaRunTransition } from './transition-detector.ts';
 
 /**
- * Record `runId` as FAILED, close out its still-running executions, and —
- * unless `notify` is false — fire the normal transition alert.
+ * Record `run` as abandoned and close out its still-running executions.
+ * Returns true iff this call won the claim.
  *
- * `claimRunAlert` is claimed FIRST because it is the atomic gate: if a
- * straggler result lands at the same moment and wins the claim, that caller
- * owns the run and we must not touch its rows. Returns true iff this call
- * won the claim.
+ * The claim goes first because it is the atomic gate: if a straggler result
+ * lands at the same moment and wins it, that caller owns the run and we must
+ * not touch its rows. Nothing here dispatches — see the note above.
  *
- * Recording and notifying are separable because the two callers sit at
- * different distances from the event. The processor's catch fires as the run
- * dies, so its verdict is the current state of the monitor and always worth
- * paging. The sweep runs up to 15 minutes late, by which point newer runs
- * may have already reported — there the verdict is bookkeeping (it stops the
- * row being invisible to the previous-outcome lookup, which skips NULL
- * outcomes) and paging would be a lie about the monitor's current state.
- *
- * `errorMessage` rides into the alert body so an operator can tell a dead
- * run from a genuine test failure; `execMessage` is stamped on the stranded
- * `qa_test_executions` rows.
+ * `execMessage` is stamped on the stranded `qa_test_executions` rows so the
+ * detail page can say why they stopped rather than just showing them dead.
  */
-export async function failUnfinishedQaRun(
+export async function finalizeUnfinishedQaRun(
   run: { id: number; projectId: number; regionId: number | null },
-  errorMessage: string,
   execMessage: string,
-  notify = true,
 ): Promise<boolean> {
-  if (!(await qaProjectRepo.claimRunAlert(run.id, 'FAILED'))) return false;
+  if (!(await qaProjectRepo.claimRunAlert(run.id, QA_RUN_ABANDONED))) return false;
 
   // Without this the detail page shows those tests "running" forever, and a
   // late-arriving agent result could push runProgress to completion long
-  // after we already alerted.
+  // after the run was already finalized.
   const stranded = await qaProjectRepo.markRunTestsAbandoned(run.id, execMessage);
   for (const id of stranded) {
     emitExecution('qa', run.projectId, {
       id,
-      status: 'error',
-      errorMessage,
+      status: QA_EXEC_ABANDONED,
+      errorMessage: execMessage,
       regionId: run.regionId,
     });
   }
 
-  if (notify) await maybeAlertOnQaRunTransition(run.id, { errorMessage });
   return true;
 }

@@ -45,48 +45,59 @@ The aggregate is computed by whoever finishes the run — the processor
 for a master run, `agent-dispatch` once every expected test has reported
 for a region run — and claimed exactly once via `claimRunAlert`.
 
+### Our failures are not the target's downtime
+
+**Policy: alert channels fire only on a verdict about the monitored
+target.** A failure of oo-workers' own execution machinery — a killed
+worker, a dead region agent, Playwright failing to launch — is recorded
+and logged for whoever operates the fleet, but never paged to the
+monitor's owner. They cannot act on it, and a page they cannot act on
+trains them to ignore the ones they can.
+
 ### Runs that never finish
 
-A run only alerts if something computes its aggregate. If the worker or
-a region agent dies mid-run, nothing does: `qa_runs.outcome` stays NULL,
-`claimRunAlert` is never called, and the failing browser check is
-**completely silent** — the run is even invisible to the next run's
-previous-outcome lookup, which skips NULL-outcome rows.
+A run only reaches an outcome if something computes its aggregate. If the
+worker or a region agent dies mid-run, nothing does, and the row rots:
+`qa_runs.outcome` stays NULL forever, so the previous-run lookup skips it,
+and its executions keep claiming to be `running`.
 
-Two backstops close that hole:
+Two paths finalize those rows:
 
-- **Crash path.** If the processor throws before aggregating, it closes the
-  run out as `FAILED` on the way out and dispatches immediately, so an
-  aborted run pages you now rather than on the next sweep. The close-out is
-  best-effort — if it fails too, it is logged and the original error still
-  propagates.
+- **Crash path.** If the processor throws before aggregating, it finalizes
+  the run on the way out rather than leaving it for the sweep 15 minutes
+  later. Best-effort — if the finalize fails too it is logged, and the
+  original error still propagates.
 - **Abandoned-run sweep.** The scheduler ticks `tickAbandonedQaRuns`
   alongside the heartbeat sweep. Any run still without an outcome
-  `QA_RUN_ABANDONED_MS` (default 15 min) after it started is marked
-  `FAILED` through the same one-shot `claimRunAlert` guard, its stranded
-  executions are closed out as `error` (so the detail page stops showing
-  them "running"), and the normal transition alert fires with an
-  `errorMessage` naming the cause ("run abandoned — none of 3 test(s)
-  reported a result within 18m…") so an operator can tell a dead run from
-  a genuine test failure.
+  `QA_RUN_ABANDONED_MS` (default 15 min) after it started is recorded as
+  `ABANDONED` through the same one-shot `claimRunAlert` guard, and its
+  stranded executions are stamped `abandoned` so the detail page stops
+  showing them "running".
 
-Alert semantics are unchanged: this only supplies the missing verdict.
-An abandoned run after a green one fires an outage; after an
-already-failing one it stays quiet; and because the run now carries a
-verdict, the next green run fires the recovery it previously couldn't.
+Neither dispatches. `ABANDONED` is deliberately **not** in
+`QA_RUN_VERDICTS` (`SUCCESS`/`FAILED`), and the previous-run lookup filters
+on that set rather than on `outcome IS NOT NULL`. So an abandoned run is
+invisible to the transition detector in both directions:
 
-**Recording is not the same as paging.** The sweep runs late by design —
-the cutoff is 3x the default interval, and a run that died never stamped
-`last_run_at`, so the scheduler re-runs the project immediately and good
-runs usually land while the dead one is still ageing out. Since the
-detector only ever looks _backwards_ (a run is compared to its immediate
-predecessor), alerting on a superseded dead run would page an outage
-against the pre-death success for a monitor that has been green for
-minutes — and no later run could fire the recovery, because none of them
-ever looks at that row again. So the sweep always records the verdict,
-but only notifies when the abandoned run is still the newest run with an
-outcome for that `(project, region)`. The processor's crash path always
-notifies: it fires as the run dies, so its verdict _is_ the current state.
+| Sequence                      | Result                              |
+| ----------------------------- | ----------------------------------- |
+| SUCCESS → ABANDONED           | silent (logged only)                |
+| SUCCESS → ABANDONED → FAILED  | outage — compares past the dead run |
+| FAILED → ABANDONED → SUCCESS  | recovery — same, other direction    |
+| SUCCESS → ABANDONED → SUCCESS | silent                              |
+
+That filter is load-bearing. Were it merely `outcome IS NOT NULL`, the run
+after an abandoned one would find a predecessor that normalizes to
+`'other'`, bail early, and **QA alerting would go permanently silent from
+the first abandoned run onward** — strictly worse than the rotting NULL row
+it replaced.
+
+The stranded executions use `abandoned` rather than `error` for the same
+reason: `error` counts as _down_ for status-page bars and uptime maths, so
+a dead worker of ours would show up as the customer's outage on their
+public status page. `abandoned` sits outside both the up and down sets,
+exactly as the `running` these rows previously kept forever did — status
+pages and uptime are unaffected.
 
 ## Dev: Mailpit
 
@@ -107,13 +118,14 @@ before. Mailpit is intentionally **not** in the shipped
   `bun run test:integration`. Drives the transition detector directly across the
   full table (first-run / up→down / down→up / noop), asserts per-region
   scoping and `claimRunAlert` idempotency, and covers the abandoned-run
-  sweep end to end (swept → outage with cause, idempotent second pass,
-  in-flight run untouched, quiet after an already-failing run, recorded
-  but not paged once superseded, a newer _verdictless_ run not counting as
-  superseding, recovery on the next green run) plus the processor's crash paths (alert survives a
-  failing `touchLastRunAt`; a run that throws before aggregating is closed
-  out and alerts; a close-out that itself fails doesn't mask the original
-  error). Anti-vacuous — every case asserts on a real webhook delivery.
+  sweep end to end (recorded `ABANDONED` and not paged, stranded execution
+  stamped outside the down vocabulary, idempotent second pass, in-flight run
+  untouched, and the three transition sequences in the table above) plus the
+  processor's crash paths (alert survives a failing `touchLastRunAt`; a run
+  that throws before aggregating is recorded not paged; a finalize that
+  itself fails doesn't mask the original error). Anti-vacuous: the cases
+  that assert silence drive a real failing run afterwards and assert the
+  webhook _does_ arrive, so silence can't be a broken binding.
 - **Manual real-path e2e** — `tests/ui/qa-alerting.e2e.spec.ts`
   (`bun run test:ui:e2e:qa-alerting`). Runs a real QA project through
   the worker (run-now → BullMQ → Playwright → aggregation → dispatch)

@@ -1,5 +1,6 @@
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { QA_EXEC_ABANDONED, QA_RUN_ABANDONED, QA_RUN_VERDICTS } from '../../constants.ts';
 import {
   monitorRegions,
   qaGeneratedTests,
@@ -232,12 +233,19 @@ export const qaProjectRepo = {
   },
 
   /**
-   * Atomically claim the one-shot alert for a run: sets outcome + alertedAt
-   * only if alertedAt was still NULL. Returns true iff THIS call won the
-   * claim, so exactly one caller (even under the concurrent last-two-results
-   * race) proceeds to fire the transition alert.
+   * Atomically claim the one-shot finalization of a run: sets outcome +
+   * alertedAt only if alertedAt was still NULL. Returns true iff THIS call won
+   * the claim, so exactly one caller (even under the concurrent
+   * last-two-results race) proceeds.
+   *
+   * `alertedAt` reads as "this run has been finalized, nobody else may act on
+   * it" — a `QA_RUN_ABANDONED` claim sets it without any alert being sent,
+   * which is the point: it stops a late straggler re-finalizing the run.
    */
-  async claimRunAlert(runId: number, outcome: 'SUCCESS' | 'FAILED'): Promise<boolean> {
+  async claimRunAlert(
+    runId: number,
+    outcome: (typeof QA_RUN_VERDICTS)[number] | typeof QA_RUN_ABANDONED,
+  ): Promise<boolean> {
     const rows = await db
       .update(qaRuns)
       .set({ outcome, alertedAt: new Date() })
@@ -278,53 +286,20 @@ export const qaProjectRepo = {
   },
 
   /**
-   * True iff a run for the same `(project, region)` started after `startedAt`
-   * and reached a verdict. The abandoned-run sweep needs this because the
-   * transition detector only ever looks *backwards*: it compares a run to its
-   * immediate predecessor and ignores everything newer.
-   *
-   * That matters because the sweep runs late by design. With the defaults
-   * (15 min cutoff, 5 min interval) two or three good runs have normally
-   * completed by the time a dead run ages out — and `findDue` re-schedules
-   * the project immediately, since a run that died never stamped
-   * `lastRunAt`. Alerting on the dead run then pages an outage for a monitor
-   * that has been green for ten minutes, and no recovery can follow: later
-   * runs compare against their own predecessors and never see it again.
-   *
-   * So the sweep records the verdict either way, but only notifies when the
-   * abandoned run is still the newest thing we know about.
-   */
-  async hasNewerCompletedRun(
-    projectId: number,
-    regionId: number | null,
-    startedAt: Date,
-  ): Promise<boolean> {
-    const rows = await db
-      .select({ id: qaRuns.id })
-      .from(qaRuns)
-      .where(
-        and(
-          eq(qaRuns.projectId, projectId),
-          regionId === null ? isNull(qaRuns.regionId) : eq(qaRuns.regionId, regionId),
-          gt(qaRuns.startedAt, startedAt),
-          isNotNull(qaRuns.outcome),
-        ),
-      )
-      .limit(1);
-    return rows.length > 0;
-  },
-
-  /**
    * Close out the executions of an abandoned run: every row still missing a
-   * `completedAt` becomes `error` with `message`. Without this the detail
-   * page shows those tests "running" forever, and a late-arriving agent
-   * result could push `runProgress` to completion long after the sweep
-   * already alerted. Returns the ids it stamped so the caller can emit SSE.
+   * `completedAt` becomes `QA_EXEC_ABANDONED` with `message`. Without this the
+   * detail page shows those tests "running" forever, and a late-arriving agent
+   * result could push `runProgress` to completion long after the run was
+   * finalized. Returns the ids it stamped so the caller can emit SSE.
+   *
+   * Deliberately NOT `error`: that status counts as _down_ for status-page
+   * bars and uptime, which would turn our own broken machinery into the
+   * monitored target's downtime. See QA_EXEC_ABANDONED.
    */
   async markRunTestsAbandoned(runId: number, message: string): Promise<number[]> {
     const rows = await db
       .update(qaTestExecutions)
-      .set({ status: 'error', errorMessage: message, completedAt: new Date() })
+      .set({ status: QA_EXEC_ABANDONED, errorMessage: message, completedAt: new Date() })
       .where(and(eq(qaTestExecutions.runId, runId), isNull(qaTestExecutions.completedAt)))
       .returning({ id: qaTestExecutions.id });
     return rows.map((r) => r.id);
