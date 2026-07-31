@@ -11,6 +11,7 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import type { Redis } from 'ioredis';
+import fs from 'node:fs/promises';
 import { db } from '../../src/config/db.ts';
 import { apiKeys, qaRuns, qaTestExecutions, regions } from '../../src/db/schema.ts';
 import { qaProjectRepo } from '../../src/db/repositories/qa-project.repo.ts';
@@ -449,6 +450,24 @@ describe('qa processor closes out a run that throws', () => {
     expect(received.length).toBe(0);
     const run = await qaProjectRepo.findRunById(abortedRunId);
     expect(run?.outcome).toBe(QA_RUN_ABANDONED);
+  });
+
+  test('a scratch-dir cleanup failure does not eat the verdict', async () => {
+    await resetHistory();
+    await seedRun('FAILED', new Date(Date.now() - 60 * 60_000), null);
+    // rm sits between "every test has reported" and "claim the aggregate".
+    // Unguarded, an EBUSY here threw into the catch, which claimed the run
+    // ABANDONED — discarding a verdict we already had, and with it the alert.
+    const realRm = fs.rm;
+    (fs as { rm: unknown }).rm = () => Promise.reject(new Error('EBUSY'));
+    try {
+      await createQaProjectProcessor(redisStub)(job());
+    } finally {
+      (fs as { rm: unknown }).rm = realRm;
+    }
+
+    expect(received.length).toBe(1);
+    expect(received[0].event).toBe('recovery');
   });
 
   test('a finalize that itself fails is swallowed, not masking the original error', async () => {

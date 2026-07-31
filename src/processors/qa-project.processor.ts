@@ -260,7 +260,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
       const testResults = await Promise.all(testPromises);
       results.push(...testResults);
 
-      await fs.rm(runDir, { recursive: true, force: true });
+      await cleanupRunDir(runDir);
 
       const passed = results.filter((r) => r.status === 'passed').length;
       const failed = results.filter((r) => r.status === 'failed').length;
@@ -308,7 +308,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`QA Project ${projectId} run failed: ${msg}`);
-      await fs.rm(runDir, { recursive: true, force: true });
+      await cleanupRunDir(runDir);
       // The run blew up before it could be aggregated (storage, Playwright
       // launch, DB blip...). Finalize it now rather than leaving the row for
       // the scheduler's sweep 15 minutes later — same outcome either way,
@@ -321,6 +321,31 @@ export const createQaProjectProcessor = (redis: Redis) => {
     }
   };
 };
+
+/**
+ * Delete a run's scratch directory. Never throws.
+ *
+ * It sits on both exit paths and must not become one. On the success path it
+ * runs AFTER every test has reported but BEFORE the aggregate is claimed, so
+ * an EBUSY/EPERM here (a Playwright process still holding a handle) used to
+ * throw into the catch, which would then claim the run ABANDONED — silently
+ * discarding a real FAILED verdict we already had in hand, and with it the
+ * outage the owner should have been paged for. On the failure path a throw
+ * would skip the finalize entirely and replace the original error. Same
+ * reasoning as keeping `touchLastRunAt` behind the claim: janitorial work
+ * never gates the verdict.
+ */
+async function cleanupRunDir(runDir: string): Promise<void> {
+  try {
+    await fs.rm(runDir, { recursive: true, force: true });
+  } catch (err) {
+    logger.error(
+      `qa run dir cleanup failed for ${runDir} (leaving it for the next boot sweep): ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
+}
 
 /**
  * Best-effort close-out for a master run that threw mid-flight. Kept out of

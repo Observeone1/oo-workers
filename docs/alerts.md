@@ -123,9 +123,12 @@ before. Mailpit is intentionally **not** in the shipped
   untouched, and the three transition sequences in the table above) plus the
   processor's crash paths (alert survives a failing `touchLastRunAt`; a run
   that throws before aggregating is recorded not paged; a finalize that
-  itself fails doesn't mask the original error). Anti-vacuous: the cases
-  that assert silence drive a real failing run afterwards and assert the
-  webhook _does_ arrive, so silence can't be a broken binding.
+  itself fails doesn't mask the original error, and a scratch-dir cleanup
+  failure doesn't eat a real verdict). Anti-vacuity: most sweep cases assert
+  _silence_, which would also pass against a dead webhook binding — so
+  several of them go on to drive a real failing run and assert a hook **does**
+  arrive on the same channel. The whole file shares one `beforeAll` fixture
+  and binding, so those cases cover their silent siblings.
 - **Manual real-path e2e** — `tests/ui/qa-alerting.e2e.spec.ts`
   (`bun run test:ui:e2e:qa-alerting`). Runs a real QA project through
   the worker (run-now → BullMQ → Playwright → aggregation → dispatch)
