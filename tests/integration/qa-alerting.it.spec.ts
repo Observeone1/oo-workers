@@ -310,6 +310,49 @@ describe('abandoned qa runs are swept and alerted', () => {
     expect(run?.outcome).toBe('FAILED');
   });
 
+  test('a superseded abandoned run is recorded but does NOT page', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    // The ordinary shape, not an edge case: the cutoff (15m) is 3x the
+    // default interval (5m), and a run that dies never stamps lastRunAt, so
+    // findDue re-schedules immediately and good runs land while the dead one
+    // is still ageing out. The detector only looks backwards, so alerting
+    // here would page an outage against the pre-death SUCCESS and no later
+    // run could ever fire the recovery.
+    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
+    const { runId, execId } = await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
+    await seedRun('SUCCESS', new Date(Date.now() - 30 * 60_000), null);
+
+    await tickAbandonedQaRuns();
+
+    expect(received.length).toBe(0);
+    // Still recorded: the row must not stay NULL-invisible to the
+    // previous-outcome lookup, and its executions must stop showing running.
+    const run = await qaProjectRepo.findRunById(runId);
+    expect(run?.outcome).toBe('FAILED');
+    expect(run?.alertedAt).not.toBeNull();
+    const [exec] = await db
+      .select({ status: qaTestExecutions.status })
+      .from(qaTestExecutions)
+      .where(eq(qaTestExecutions.id, execId));
+    expect(exec.status).toBe('error');
+  });
+
+  test('a newer run without a verdict does not count as superseding', async () => {
+    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+    received.length = 0;
+    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
+    await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
+    // A second dead run is not evidence the monitor recovered.
+    await seedAbandonedRun(new Date(Date.now() - 45 * 60_000));
+
+    await tickAbandonedQaRuns();
+
+    // The older one pages; the newer one is FAILED→FAILED, so it stays quiet.
+    expect(received.length).toBe(1);
+    expect(received[0].event).toBe('outage');
+  });
+
   test('a swept run becomes the baseline, so the next green run fires recovery', async () => {
     await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
     received.length = 0;

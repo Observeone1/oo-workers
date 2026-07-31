@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
 import {
   monitorRegions,
@@ -275,6 +275,43 @@ export const qaProjectRepo = {
       .where(and(isNull(qaRuns.outcome), isNull(qaRuns.alertedAt), lt(qaRuns.startedAt, cutoff)))
       .orderBy(qaRuns.id)
       .limit(limit);
+  },
+
+  /**
+   * True iff a run for the same `(project, region)` started after `startedAt`
+   * and reached a verdict. The abandoned-run sweep needs this because the
+   * transition detector only ever looks *backwards*: it compares a run to its
+   * immediate predecessor and ignores everything newer.
+   *
+   * That matters because the sweep runs late by design. With the defaults
+   * (15 min cutoff, 5 min interval) two or three good runs have normally
+   * completed by the time a dead run ages out — and `findDue` re-schedules
+   * the project immediately, since a run that died never stamped
+   * `lastRunAt`. Alerting on the dead run then pages an outage for a monitor
+   * that has been green for ten minutes, and no recovery can follow: later
+   * runs compare against their own predecessors and never see it again.
+   *
+   * So the sweep records the verdict either way, but only notifies when the
+   * abandoned run is still the newest thing we know about.
+   */
+  async hasNewerCompletedRun(
+    projectId: number,
+    regionId: number | null,
+    startedAt: Date,
+  ): Promise<boolean> {
+    const rows = await db
+      .select({ id: qaRuns.id })
+      .from(qaRuns)
+      .where(
+        and(
+          eq(qaRuns.projectId, projectId),
+          regionId === null ? isNull(qaRuns.regionId) : eq(qaRuns.regionId, regionId),
+          gt(qaRuns.startedAt, startedAt),
+          isNotNull(qaRuns.outcome),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   },
 
   /**

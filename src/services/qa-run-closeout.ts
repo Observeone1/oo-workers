@@ -21,13 +21,21 @@ import { emitExecution } from './exec-events.ts';
 import { maybeAlertOnQaRunTransition } from './transition-detector.ts';
 
 /**
- * Record `runId` as FAILED, close out its still-running executions, and fire
- * the normal transition alert.
+ * Record `runId` as FAILED, close out its still-running executions, and —
+ * unless `notify` is false — fire the normal transition alert.
  *
  * `claimRunAlert` is claimed FIRST because it is the atomic gate: if a
  * straggler result lands at the same moment and wins the claim, that caller
  * owns the run and we must not touch its rows. Returns true iff this call
- * won the claim and dispatched.
+ * won the claim.
+ *
+ * Recording and notifying are separable because the two callers sit at
+ * different distances from the event. The processor's catch fires as the run
+ * dies, so its verdict is the current state of the monitor and always worth
+ * paging. The sweep runs up to 15 minutes late, by which point newer runs
+ * may have already reported — there the verdict is bookkeeping (it stops the
+ * row being invisible to the previous-outcome lookup, which skips NULL
+ * outcomes) and paging would be a lie about the monitor's current state.
  *
  * `errorMessage` rides into the alert body so an operator can tell a dead
  * run from a genuine test failure; `execMessage` is stamped on the stranded
@@ -37,6 +45,7 @@ export async function failUnfinishedQaRun(
   run: { id: number; projectId: number; regionId: number | null },
   errorMessage: string,
   execMessage: string,
+  notify = true,
 ): Promise<boolean> {
   if (!(await qaProjectRepo.claimRunAlert(run.id, 'FAILED'))) return false;
 
@@ -53,6 +62,6 @@ export async function failUnfinishedQaRun(
     });
   }
 
-  await maybeAlertOnQaRunTransition(run.id, { errorMessage });
+  if (notify) await maybeAlertOnQaRunTransition(run.id, { errorMessage });
   return true;
 }

@@ -66,14 +66,27 @@ Two backstops close that hole:
   `FAILED` through the same one-shot `claimRunAlert` guard, its stranded
   executions are closed out as `error` (so the detail page stops showing
   them "running"), and the normal transition alert fires with an
-  `errorMessage` naming the cause ("run abandoned — 2 of 3 test(s) never
-  reported within 18m…") so an operator can tell a dead run from a
-  genuine test failure.
+  `errorMessage` naming the cause ("run abandoned — none of 3 test(s)
+  reported a result within 18m…") so an operator can tell a dead run from
+  a genuine test failure.
 
 Alert semantics are unchanged: this only supplies the missing verdict.
 An abandoned run after a green one fires an outage; after an
 already-failing one it stays quiet; and because the run now carries a
 verdict, the next green run fires the recovery it previously couldn't.
+
+**Recording is not the same as paging.** The sweep runs late by design —
+the cutoff is 3x the default interval, and a run that died never stamped
+`last_run_at`, so the scheduler re-runs the project immediately and good
+runs usually land while the dead one is still ageing out. Since the
+detector only ever looks _backwards_ (a run is compared to its immediate
+predecessor), alerting on a superseded dead run would page an outage
+against the pre-death success for a monitor that has been green for
+minutes — and no later run could fire the recovery, because none of them
+ever looks at that row again. So the sweep always records the verdict,
+but only notifies when the abandoned run is still the newest run with an
+outcome for that `(project, region)`. The processor's crash path always
+notifies: it fires as the run dies, so its verdict _is_ the current state.
 
 ## Dev: Mailpit
 
@@ -95,8 +108,9 @@ before. Mailpit is intentionally **not** in the shipped
   full table (first-run / up→down / down→up / noop), asserts per-region
   scoping and `claimRunAlert` idempotency, and covers the abandoned-run
   sweep end to end (swept → outage with cause, idempotent second pass,
-  in-flight run untouched, quiet after an already-failing run, recovery
-  on the next green run) plus the processor's crash paths (alert survives a
+  in-flight run untouched, quiet after an already-failing run, recorded
+  but not paged once superseded, a newer _verdictless_ run not counting as
+  superseding, recovery on the next green run) plus the processor's crash paths (alert survives a
   failing `touchLastRunAt`; a run that throws before aggregating is closed
   out and alerts; a close-out that itself fails doesn't mask the original
   error). Anti-vacuous — every case asserts on a real webhook delivery.

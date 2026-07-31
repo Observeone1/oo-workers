@@ -641,13 +641,28 @@ export async function tickAbandonedQaRuns(): Promise<void> {
     const errorMessage =
       `run abandoned — none of ${run.expectedTests} test(s) reported a result within ` +
       `${ageMin}m (worker or region agent likely died mid-run)`;
+    // Only page if this dead run is still the newest thing we know about.
+    // A run that died never stamped lastRunAt, so findDue re-schedules the
+    // project right away and later runs usually beat the sweep here; paging
+    // then would claim an outage for a monitor that has been green for
+    // minutes, and no recovery could follow it. Record the verdict either
+    // way so the row stops being invisible to the previous-outcome lookup.
+    const superseded = await qaProjectRepo.hasNewerCompletedRun(
+      run.projectId,
+      run.regionId,
+      run.startedAt,
+    );
     const closed = await failUnfinishedQaRun(
       run,
       errorMessage,
       `abandoned: run produced no result within ${ageMin}m`,
+      !superseded,
     );
     if (closed) {
-      logger.error(`qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}`);
+      logger.error(
+        `qa run #${run.id} (project #${run.projectId}) → FAILED: ${errorMessage}` +
+          (superseded ? ' [not alerted — a newer run has since reported]' : ''),
+      );
     }
   }
 }
