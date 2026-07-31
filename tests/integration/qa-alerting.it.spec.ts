@@ -238,6 +238,26 @@ async function seedAbandonedRun(startedAt: Date): Promise<{ runId: number; execI
   return { runId: run.id, execId: exec.id };
 }
 
+/** Drop this project's run history and forget any hooks it delivered. */
+async function resetHistory(): Promise<void> {
+  await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
+  received.length = 0;
+}
+
+/**
+ * The arrangement every sweep case needs: clear history, seed a prior
+ * verdict, strand a run past the cutoff, sweep it. Returns the stranded ids.
+ */
+async function sweepRunAbandonedAfter(
+  prior: 'SUCCESS' | 'FAILED',
+): Promise<{ runId: number; execId: number }> {
+  await resetHistory();
+  await seedRun(prior, new Date(Date.now() - 3 * 60 * 60_000), null);
+  const seeded = await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
+  await tickAbandonedQaRuns();
+  return seeded;
+}
+
 /** Insert an already-aggregated run and drive the detector over it. */
 async function completeRun(outcome: 'SUCCESS' | 'FAILED', when = new Date()): Promise<void> {
   const [run] = await db
@@ -256,15 +276,10 @@ async function completeRun(outcome: 'SUCCESS' | 'FAILED', when = new Date()): Pr
 
 describe('abandoned qa runs are recorded, never paged', () => {
   test('a run stuck without an outcome is recorded ABANDONED and does NOT page', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
     // Previously green. Under a naive "mark it FAILED" sweep this is exactly
     // the shape that would fire an outage — but the run died on OUR side, so
     // it says nothing about the target and the owner must not be paged.
-    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
-    const { runId, execId } = await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
-
-    await tickAbandonedQaRuns();
+    const { runId, execId } = await sweepRunAbandonedAfter('SUCCESS');
 
     expect(received.length).toBe(0);
 
@@ -297,12 +312,7 @@ describe('abandoned qa runs are recorded, never paged', () => {
   });
 
   test('the sweep is idempotent — a second pass re-finalizes nothing', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
-    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
-    const { runId } = await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
-
-    await tickAbandonedQaRuns();
+    const { runId } = await sweepRunAbandonedAfter('SUCCESS');
     const first = await qaProjectRepo.findRunById(runId);
 
     await tickAbandonedQaRuns();
@@ -314,8 +324,7 @@ describe('abandoned qa runs are recorded, never paged', () => {
   });
 
   test('a run younger than the cutoff is left alone', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
+    await resetHistory();
     await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
     // Started just now — still legitimately in flight.
     const { runId } = await seedAbandonedRun(new Date());
@@ -332,46 +341,26 @@ describe('abandoned qa runs are recorded, never paged', () => {
   // abandoned one would find a predecessor that normalizes to 'other', bail
   // early, and QA alerting would go permanently silent from the first
   // abandoned run onward — strictly worse than the rotting NULL row.
-  test('SUCCESS → ABANDONED → FAILED still fires an outage', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
-    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
-    await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
-    await tickAbandonedQaRuns();
-    expect(received.length).toBe(0);
-
-    await completeRun('FAILED');
-
-    expect(received.length).toBe(1);
-    expect(received[0].event).toBe('outage');
-  });
-
-  test('FAILED → ABANDONED → SUCCESS still fires a recovery', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
-    await seedRun('FAILED', new Date(Date.now() - 3 * 60 * 60_000), null);
-    await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
-    await tickAbandonedQaRuns();
-    expect(received.length).toBe(0);
-
-    await completeRun('SUCCESS');
-
-    expect(received.length).toBe(1);
-    expect(received[0].event).toBe('recovery');
-  });
-
-  test('an abandoned run contributes nothing: SUCCESS → ABANDONED → SUCCESS is silent', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
-    await seedRun('SUCCESS', new Date(Date.now() - 3 * 60 * 60_000), null);
-    await seedAbandonedRun(new Date(Date.now() - 60 * 60_000));
-    await tickAbandonedQaRuns();
-
-    await completeRun('SUCCESS');
-
+  // Table-driven so the three cases stay one block: written out longhand they
+  // are token-identical bar the literals, and Sonar's CPD anonymizes literals
+  // in TS — three near-copies would trip new_duplicated_lines_density.
+  const ACROSS_ABANDONED = [
+    { prior: 'SUCCESS', next: 'FAILED', expected: 'outage' },
+    { prior: 'FAILED', next: 'SUCCESS', expected: 'recovery' },
     // No phantom outage on the way in, so no dangling recovery on the way out.
-    expect(received.length).toBe(0);
-  });
+    { prior: 'SUCCESS', next: 'SUCCESS', expected: null },
+  ] as const;
+
+  for (const { prior, next, expected } of ACROSS_ABANDONED) {
+    test(`${prior} → ABANDONED → ${next} ⇒ ${expected ?? 'silent'}`, async () => {
+      await sweepRunAbandonedAfter(prior);
+      expect(received.length).toBe(0); // the sweep itself never pages
+
+      await completeRun(next);
+
+      expect(received.map((h) => h.event)).toEqual(expected ? [expected] : []);
+    });
+  }
 });
 
 /**
@@ -414,8 +403,7 @@ describe('qa processor closes out a run that throws', () => {
   });
 
   test('a run with no tests aggregates SUCCESS and alerts on the flip', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
+    await resetHistory();
     await seedRun('FAILED', new Date(Date.now() - 60 * 60_000), null);
 
     await createQaProjectProcessor(redisStub)(job());
@@ -425,8 +413,7 @@ describe('qa processor closes out a run that throws', () => {
   });
 
   test('the alert survives a failing touchLastRunAt', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
+    await resetHistory();
     await seedRun('FAILED', new Date(Date.now() - 60 * 60_000), null);
     // Cosmetic write, but it used to sit ahead of the claim — a blip here
     // swallowed the notification entirely.
@@ -441,8 +428,7 @@ describe('qa processor closes out a run that throws', () => {
   });
 
   test('a run that throws before aggregating is recorded ABANDONED, not paged', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
+    await resetHistory();
     await seedRun('SUCCESS', new Date(Date.now() - 60 * 60_000), null);
     // Blow up on the in-band claim only; the catch's own claim goes through,
     // which is exactly the "run died before it had an outcome" case.
@@ -466,8 +452,7 @@ describe('qa processor closes out a run that throws', () => {
   });
 
   test('a finalize that itself fails is swallowed, not masking the original error', async () => {
-    await db.delete(qaRuns).where(eq(qaRuns.projectId, projectId));
-    received.length = 0;
+    await resetHistory();
     await seedRun('SUCCESS', new Date(Date.now() - 60 * 60_000), null);
     qaProjectRepo.claimRunAlert = () => {
       throw new Error('claim exploded');
