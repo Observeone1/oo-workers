@@ -55,7 +55,7 @@ export const qaProjectRepo = {
       type: 'qa' as const,
       testCount: tc?.count ?? 0,
       latest: projectLatest(l, p.intervalSeconds, (l, proj) => ({
-        id: l.id as number,
+        id: l.id,
         status: proj.status,
         durationMs: l.durationMs,
         errorMessage: proj.errorMessage,
@@ -407,7 +407,7 @@ async function maybeUploadScripts(
   rows: Array<typeof qaGeneratedTests.$inferSelect>,
 ): Promise<void> {
   if (!isStorageConfigured() || rows.length === 0) return;
-  const projectId = rows[0]!.projectId;
+  const projectId = rows[0].projectId;
   const [proj] = await db
     .select({ name: qaProjects.name })
     .from(qaProjects)

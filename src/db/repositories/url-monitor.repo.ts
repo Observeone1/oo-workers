@@ -31,7 +31,7 @@ export const urlMonitorRepo = {
       ...m,
       type: 'url' as const,
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         statusCode: l.statusCode,
         responseTimeMs: l.responseTimeMs,

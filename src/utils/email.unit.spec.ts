@@ -74,7 +74,7 @@ describe('isValidEmailAddress', () => {
     [`${TAB}ops@example.com`, false],
     [`ops@example.com${NEWLINE}`, false],
   ])('matches the original contract for %j', (address, expected) => {
-    expect(isValidEmailAddress(address as string)).toBe(expected);
+    expect(isValidEmailAddress(address)).toBe(expected);
   });
 
   // The one place the scan is deliberately STRICTER than the pattern it

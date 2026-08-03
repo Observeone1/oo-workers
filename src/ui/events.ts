@@ -28,7 +28,7 @@ function attachListeners(source: EventSource): void {
     source.addEventListener(ev, (e) => {
       let data: unknown;
       try {
-        data = JSON.parse((e as MessageEvent).data);
+        data = JSON.parse(e.data);
       } catch {
         return; // malformed payload — ignore rather than break the stream
       }
@@ -63,7 +63,12 @@ export function startEventStream(): void {
  *     off();
  */
 export function on(event: string, fn: Handler): () => void {
-  (handlers[event] ??= new Set()).add(fn);
+  let eventHandlers = handlers[event];
+  if (!eventHandlers) {
+    eventHandlers = new Set();
+    handlers[event] = eventHandlers;
+  }
+  eventHandlers.add(fn);
   return () => handlers[event]?.delete(fn);
 }
 

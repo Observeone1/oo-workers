@@ -31,10 +31,16 @@ export const uniqueSuffix = () => `${Date.now().toString(36)}-${Math.random().to
 
 // Known email/password account the cookie-session specs sign in with.
 // Overridable so the same specs can run against an operator's existing
-// stack; defaults make a fresh stack self-provision.
+// stack. A password must be supplied by the test environment rather than
+// committed to the repository.
+const E2E_PASSWORD = process.env.OO_E2E_USER_PASSWORD;
+if (!E2E_PASSWORD) {
+  throw new Error('OO_E2E_USER_PASSWORD is required for UI E2E tests');
+}
+
 export const E2E_USER = {
   email: process.env.OO_E2E_USER_EMAIL ?? 'e2e-session@example.com',
-  password: process.env.OO_E2E_USER_PASSWORD ?? 'e2e-session-pw-123456',
+  password: E2E_PASSWORD,
   name: 'E2E Session User',
 };
 

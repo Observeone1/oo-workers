@@ -330,7 +330,7 @@ export async function summarizeStatusPage(slug: string): Promise<StatusPageSumma
   // The pre-fix logic collapsed every non-fully-up case to 'unknown', so a
   // page with 4 up + 1 unknown read "Status unknown" — alarming for users.
   const hasDown = monitors.some((m) => m.currentStatus === 'down');
-  const allUnknown = monitors.length === 0 || monitors.every((m) => m.currentStatus === 'unknown');
+  const allUnknown = monitors.every((m) => m.currentStatus === 'unknown');
   const allUp = monitors.length > 0 && monitors.every((m) => m.currentStatus === 'up');
   let overall: OverallStatus;
   if (hasDown) overall = 'down';

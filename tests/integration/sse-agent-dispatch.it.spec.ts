@@ -21,7 +21,6 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { eq } from 'drizzle-orm';
 import { acquireRedisDb, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 import { writeAgentResult } from '../../src/services/agent-dispatch.ts';

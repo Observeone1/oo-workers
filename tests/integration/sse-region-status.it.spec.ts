@@ -13,8 +13,6 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { sql as drizzleSql } from 'drizzle-orm';
-import { eq } from 'drizzle-orm';
 import { acquireRedisDb, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 import { tickRegionStatus } from '../../src/scheduler.ts';

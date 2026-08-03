@@ -93,7 +93,7 @@ export function buildCredentialEnv(
   if (!credentials) return env;
   for (const [key, value] of Object.entries(credentials)) {
     if (typeof value !== 'string') continue;
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (!/^[A-Za-z_]\w*$/.test(key)) continue;
     if (CREDENTIAL_ENV_DENYLIST.has(key)) continue;
     if (CREDENTIAL_ENV_DENY_PREFIXES.some((p) => key.startsWith(p))) continue;
     env[key] = value;

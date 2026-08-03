@@ -30,7 +30,7 @@ export const tcpMonitorRepo = {
       ...m,
       type: 'tcp' as const,
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         responseTimeMs: l.latencyMs,
         errorMessage: p.errorMessage,

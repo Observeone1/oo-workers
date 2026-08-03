@@ -284,7 +284,7 @@ export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> 
       .from(qaRuns)
       .where(eq(qaRuns.id, runId))
       .limit(1);
-    if (!run || !run.outcome) return;
+    if (!run?.outcome) return;
     const curOutcome = normalizeOutcome(run.outcome);
     if (curOutcome === 'other') return;
 

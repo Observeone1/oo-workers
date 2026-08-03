@@ -31,7 +31,7 @@ export const apiCheckRepo = {
       ...c,
       type: 'api' as const,
       latest: projectLatest(l, c.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         statusCode: l.statusCode,
         responseTimeMs: l.responseTimeMs,

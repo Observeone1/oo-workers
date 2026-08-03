@@ -436,7 +436,6 @@ async function uploadArtifact(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const file = Bun.file(filePath);
-      const stream = file.stream();
       const res = await fetch(
         `${cfg.masterUrl}/api/agent/qa/artifacts/${executionId}/${kind}`,
         masterFetchInit(cfg, {
@@ -448,9 +447,10 @@ async function uploadArtifact(
             Connection: 'close',
             'X-Agent-Version': packageVersion(),
           },
-          body: stream,
-          // @ts-expect-error duplex required by WHATWG fetch spec for streaming bodies
-          duplex: 'half',
+          // Pass the BunFile itself so Bun preserves the known file size when
+          // constructing Content-Length. A ReadableStream body caused Bun to
+          // omit the header even when we supplied it above.
+          body: file,
           signal: AbortSignal.timeout(120_000),
         }),
       );

@@ -23,7 +23,7 @@
 FROM oven/bun:1-debian AS prod-deps
 
 WORKDIR /app
-COPY package.json bun.lock* ./
+COPY package.json bun.lock ./
 # --ignore-scripts skips the prepare hook (husky) which isn't present without devDeps
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
@@ -35,9 +35,9 @@ WORKDIR /app
 # Create user before COPY so --chown works without a separate chown layer
 RUN addgroup -S ooworker && adduser -S ooworker -G ooworker
 
-COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
-COPY --chown=ooworker:ooworker src ./src
-COPY --chown=ooworker:ooworker package.json tsconfig.json ./
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY src ./src
+COPY package.json tsconfig.json ./
 
 ENV NODE_ENV=production
 ENV OO_WORKER_ROLE=agent
@@ -58,7 +58,7 @@ WORKDIR /app
 # Create user before COPY so --chown works without a separate chown layer
 RUN groupadd -r ooworker && useradd -r -g ooworker ooworker
 
-COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Install the Chromium headless shell only (headless: true in playwright.config.ts
 # uses the shell, not the full Chrome binary — saves ~357 MB vs full chromium).
@@ -79,8 +79,8 @@ RUN node_modules/.bin/playwright install chromium-headless-shell --with-deps && 
     chown -R ooworker:ooworker /ms-playwright && \
     mkdir -p /app/tests && chown ooworker:ooworker /app/tests
 
-COPY --chown=ooworker:ooworker src ./src
-COPY --chown=ooworker:ooworker package.json tsconfig.json ./
+COPY src ./src
+COPY package.json tsconfig.json ./
 
 ENV NODE_ENV=production
 ENV OO_WORKER_ROLE=agent
@@ -96,7 +96,7 @@ WORKDIR /app
 # Create user before COPY so --chown works without a separate chown layer
 RUN groupadd -r ooworker && useradd -r -g ooworker ooworker
 
-COPY --from=prod-deps --chown=ooworker:ooworker /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 # Install the Chromium headless shell only (headless: true in playwright.config.ts
 # uses the shell, not the full Chrome binary — saves ~357 MB vs full chromium).
@@ -117,7 +117,7 @@ RUN node_modules/.bin/playwright install chromium-headless-shell --with-deps && 
     mkdir -p /app/tests && chown ooworker:ooworker /app/tests
 
 # Copy app source (.dockerignore excludes node_modules, .git, tests/, docs/, etc.)
-COPY --chown=ooworker:ooworker . .
+COPY . .
 
 # Bundle the UI into ./public so the server can serve it.
 # Uses bun's native bundler — no devDependencies required.

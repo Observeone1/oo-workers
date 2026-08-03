@@ -230,7 +230,7 @@ export async function restore(
 /** tar header has `ustar` (with optional null) starting at byte 257. */
 function isTarMagic(peek: Buffer): boolean {
   if (peek.length < 263) return false;
-  return peek.slice(257, 262).toString('ascii') === 'ustar';
+  return peek.subarray(257, 262).toString('ascii') === 'ustar';
 }
 
 /** Split an already-gunzipped stream into NDJSON lines. */
@@ -305,7 +305,7 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
 
     if (name === 'meta.json' || name === 'dump.ndjson') {
       const chunks: Buffer[] = [];
-      for await (const c of entry) chunks.push(c as Buffer);
+      for await (const c of entry) chunks.push(c);
       const body = Buffer.concat(chunks);
       if (name === 'meta.json') {
         meta = JSON.parse(body.toString('utf8')) as TarMeta;
@@ -316,16 +316,16 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
     }
 
     if (!name.startsWith('artifacts/')) {
-      for await (const _ of entry) {
-        void _;
+      for await (const _chunk of entry) {
+        // Drain unknown tar entries before continuing.
       }
       continue;
     }
 
     seenArtifact = true;
     if (!isStorageConfigured()) {
-      for await (const _ of entry) {
-        void _;
+      for await (const _chunk of entry) {
+        // Drain artifacts when object storage is not configured.
       }
       continue;
     }
@@ -335,17 +335,17 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
     // Tar-slip guard: a crafted .oodump.tar.gz could carry an entry name that
     // escapes the artifacts/ prefix (e.g. ../ or a leading /). Reject those
     // before the key reaches object storage.
-    if (!key || key.startsWith('/') || key.split('/').some((seg) => seg === '..')) {
+    if (!key || key.startsWith('/') || key.split('/').includes('..')) {
       failed += 1;
       logger.warn(`restore: skipped artifact with unsafe key ${JSON.stringify(name)}`);
-      for await (const _ of entry) {
-        void _;
+      for await (const _chunk of entry) {
+        // Drain unsafe entries without passing them to storage.
       }
       continue;
     }
     const contentType = guessContentType(key);
     const chunks: Buffer[] = [];
-    for await (const c of entry) chunks.push(c as Buffer);
+    for await (const c of entry) chunks.push(c);
     const body = Buffer.concat(chunks);
     try {
       await putObject(key, body, contentType);
@@ -402,7 +402,9 @@ export async function restoreFromDir(
   const { join } = await import('node:path');
 
   const manifestRaw = await readFile(join(dir, 'manifest.json'), 'utf8');
-  const files = (await readdir(dir)).filter((f) => f.endsWith('.ndjson.gz')).sort();
+  const files = (await readdir(dir))
+    .filter((f) => f.endsWith('.ndjson.gz'))
+    .sort((a, b) => a.localeCompare(b));
 
   async function* lines(): AsyncGenerator<string> {
     yield JSON.stringify({ manifest: JSON.parse(manifestRaw) });

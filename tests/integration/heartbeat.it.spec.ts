@@ -6,7 +6,6 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { randomBytes } from 'node:crypto';
-import { Redis } from 'ioredis';
 import { eq, like } from 'drizzle-orm';
 import { acquireRedisDb, startTestServer } from './_harness.ts';
 import { db } from '../../src/config/db.ts';

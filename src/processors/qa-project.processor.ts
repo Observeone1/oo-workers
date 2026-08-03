@@ -206,7 +206,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
           return {
             testId: test.id,
             executionId,
-            status: status as 'passed' | 'failed',
+            status,
             durationMs,
             errorMessage: result.error,
             logs: result.logs,

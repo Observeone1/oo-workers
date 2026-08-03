@@ -22,7 +22,7 @@ async function appliedMigrations(sql: Sql): Promise<Set<string>> {
 
 async function listMigrationFiles(): Promise<string[]> {
   const entries = await readdir(MIGRATIONS_DIR);
-  return entries.filter((f) => f.endsWith('.sql')).sort();
+  return entries.filter((f) => f.endsWith('.sql')).sort((a, b) => a.localeCompare(b));
 }
 
 async function applyMigration(sql: Sql, filename: string) {

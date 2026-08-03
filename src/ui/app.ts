@@ -211,7 +211,7 @@ async function boot() {
     tickRelativeAges();
   }, 5_000);
 
-  window.addEventListener('hashchange', route);
+  globalThis.addEventListener('hashchange', route);
 }
 
 boot();
