@@ -309,7 +309,7 @@ describe('exportSplit', () => {
     rowsByTable[REGIONS] = [{ id: 1, slug: 'eu' }];
 
     const dir = await splitInto({ scope: 'all', sinceDays: 90 });
-    const files = (await readdir(dir)).sort();
+    const files = (await readdir(dir)).sort((a, b) => a.localeCompare(b));
 
     expect(files).toContain('manifest.json');
     expect(JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8'))).toMatchObject({

@@ -119,6 +119,6 @@ export async function signedFetchRaw(
   return fetch(url.toString(), {
     method,
     headers: { ...baseHeaders, Authorization: authHeader },
-    body: new Blob([new Uint8Array(buf).buffer as ArrayBuffer]),
+    body: new Blob([new Uint8Array(buf).buffer]),
   });
 }

@@ -28,9 +28,9 @@ export const tlsMonitorRepo = {
 
     return rows.map(({ tls_monitors: m, latest: l }) => ({
       ...m,
-      type: 'tls' as const,
+      type: 'tls',
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         responseTimeMs: l.latencyMs,
         errorMessage: p.errorMessage,

@@ -4,7 +4,6 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import { acquireRedisDb, startTestServer } from './_harness.ts';
 import { db } from '../../src/config/db.ts';

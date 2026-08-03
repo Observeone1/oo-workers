@@ -147,6 +147,12 @@ function asString(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
 }
 
+function formText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
 // Run one import row inside its own SAVEPOINT. Without this, a single failed
 // insert aborts the whole OUTER transaction server-side (Postgres 25P02
 // "current transaction is aborted"), so every later row's own try/catch runs
@@ -174,8 +180,8 @@ async function importUrlMonitors(
         const [m] = await stx
           .insert(urlMonitors)
           .values({
-            name: String(u.name),
-            url: String(u.url),
+            name: formText(u.name),
+            url: formText(u.url),
             timeoutMs: Number(u.timeoutMs ?? DEFAULTS.URL_TIMEOUT_MS),
             intervalSeconds: Number(u.intervalSeconds ?? 60),
             enabled: (u.enabled as boolean | undefined) ?? true,
@@ -186,7 +192,7 @@ async function importUrlMonitors(
           await stx.insert(urlMonitorAssertions).values(
             assertions.map((a) => ({
               urlMonitorId: m.id,
-              operator: String(a.operator),
+              operator: formText(a.operator),
               statusCode: Number(a.statusCode),
             })),
           );
@@ -194,12 +200,14 @@ async function importUrlMonitors(
         if (typeof u.id === 'number') idMaps.url.set(u.id, m.id);
         const refs = u.channelRefs as number[] | undefined;
         if (Array.isArray(refs) && refs.length > 0) {
-          bindings.url.push({ realId: m.id, refs, name: String(u.name) });
+          bindings.url.push({ realId: m.id, refs, name: formText(u.name) });
         }
         result.url++;
       });
     } catch (err) {
-      result.skipped.push(`url ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
+      result.skipped.push(
+        `url ${formText(u.name)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }
@@ -217,9 +225,9 @@ async function importApiChecks(
         const [m] = await stx
           .insert(apiChecks)
           .values({
-            name: String(a.name),
-            url: String(a.url),
-            method: String(a.method ?? 'GET'),
+            name: formText(a.name),
+            url: formText(a.url),
+            method: formText(a.method, 'GET'),
             headers: (a.headers as Record<string, string> | undefined) ?? {},
             body: asString(a.body),
             timeoutMs: Number(a.timeoutMs ?? DEFAULTS.API_TIMEOUT_IMPORT_DEFAULT_MS),
@@ -232,8 +240,8 @@ async function importApiChecks(
           await stx.insert(apiAssertions).values(
             assertions.map((ass) => ({
               apiCheckId: m.id,
-              type: String(ass.type),
-              operator: String(ass.operator),
+              type: formText(ass.type),
+              operator: formText(ass.operator),
               path: asString(ass.path),
               value: asString(ass.value),
             })),
@@ -242,12 +250,14 @@ async function importApiChecks(
         if (typeof a.id === 'number') idMaps.api.set(a.id, m.id);
         const refs = a.channelRefs as number[] | undefined;
         if (Array.isArray(refs) && refs.length > 0) {
-          bindings.api.push({ realId: m.id, refs, name: String(a.name) });
+          bindings.api.push({ realId: m.id, refs, name: formText(a.name) });
         }
         result.api++;
       });
     } catch (err) {
-      result.skipped.push(`api ${a.name}: ${err instanceof Error ? err.message : String(err)}`);
+      result.skipped.push(
+        `api ${formText(a.name)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }
@@ -261,8 +271,8 @@ async function importTcpMonitors(
     try {
       await importRow(tx, async (stx) => {
         await stx.insert(tcpMonitors).values({
-          name: String(t.name),
-          host: String(t.host),
+          name: formText(t.name),
+          host: formText(t.host),
           port: Number(t.port),
           payloadHex: asString(t.payloadHex),
           expectBanner: asString(t.expectBanner),
@@ -273,7 +283,9 @@ async function importTcpMonitors(
         result.tcp++;
       });
     } catch (err) {
-      result.skipped.push(`tcp ${t.name}: ${err instanceof Error ? err.message : String(err)}`);
+      result.skipped.push(
+        `tcp ${formText(t.name)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }
@@ -307,7 +319,7 @@ async function importHeartbeats(
           token = randomBytes(32).toString('base64url');
         }
         await stx.insert(heartbeatMonitors).values({
-          name: String(h.name),
+          name: formText(h.name),
           description: asString(h.description),
           periodSeconds: period,
           graceSeconds: grace,
@@ -318,7 +330,7 @@ async function importHeartbeats(
       });
     } catch (err) {
       result.skipped.push(
-        `heartbeat ${h.name}: ${err instanceof Error ? err.message : String(err)}`,
+        `heartbeat ${formText(h.name)}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -332,10 +344,11 @@ async function importUdpMonitors(
   for (const u of rows) {
     try {
       await importRow(tx, async (stx) => {
-        if (u.payloadHex) parseHexPayload(String(u.payloadHex));
+        const hex = formText(u.payloadHex);
+        if (hex) parseHexPayload(hex);
         await stx.insert(udpMonitors).values({
-          name: String(u.name),
-          host: String(u.host),
+          name: formText(u.name),
+          host: formText(u.host),
           port: Number(u.port),
           payloadHex: asString(u.payloadHex),
           expectResponse: (u.expectResponse as boolean | undefined) ?? false,
@@ -346,7 +359,9 @@ async function importUdpMonitors(
         result.udp++;
       });
     } catch (err) {
-      result.skipped.push(`udp ${u.name}: ${err instanceof Error ? err.message : String(err)}`);
+      result.skipped.push(
+        `udp ${formText(u.name)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }
@@ -362,8 +377,8 @@ async function importQaProjects(
         const [m] = await stx
           .insert(qaProjects)
           .values({
-            name: String(q.name),
-            targetUrl: String(q.targetUrl),
+            name: formText(q.name),
+            targetUrl: formText(q.targetUrl),
             credentials: (q.credentials as Record<string, string> | null | undefined) ?? null,
             config: (q.config as Record<string, string> | undefined) ?? {},
             intervalSeconds: Number(q.intervalSeconds ?? DEFAULTS.QA_INTERVAL_SECONDS),
@@ -376,9 +391,9 @@ async function importQaProjects(
           await stx.insert(qaGeneratedTests).values(
             tests.map((t) => ({
               projectId: m.id,
-              testName: String(t.name),
+              testName: formText(t.name),
               testType: 'browser',
-              script: String(t.script),
+              script: formText(t.script),
               description: asString(t.description),
             })),
           );
@@ -386,7 +401,9 @@ async function importQaProjects(
         result.qa++;
       });
     } catch (err) {
-      result.skipped.push(`qa ${q.name}: ${err instanceof Error ? err.message : String(err)}`);
+      result.skipped.push(
+        `qa ${formText(q.name)}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }
@@ -436,7 +453,7 @@ async function importChannels(
       });
     } catch (err) {
       result.skipped.push(
-        `channel ${ch?.name ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
+        `channel ${formText(ch?.name, '?')}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -452,12 +469,12 @@ async function wireChannelBindings(
     const out: number[] = [];
     for (const r of refs) {
       const real = idMap.channel.get(r);
-      if (real !== undefined) {
-        out.push(real);
-      } else {
+      if (real === undefined) {
         result.skipped.push(
           `${context}: channel ref ${r} did not resolve (channel may have been skipped or absent from bundle)`,
         );
+      } else {
+        out.push(real);
       }
     }
     return out;
@@ -491,6 +508,39 @@ async function wireChannelBindings(
   }
 }
 
+function resolveStatusPageMonitors(
+  monitors: Array<{ ref: number; type: 'url' | 'api' }>,
+  idMaps: IdMaps,
+): {
+  resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }>;
+  dangling: string[];
+} {
+  const resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
+  const dangling: string[] = [];
+  for (const m of monitors) {
+    const map = m.type === 'url' ? idMaps.url : idMaps.api;
+    const real = map.get(m.ref);
+    if (real === undefined) {
+      dangling.push(`${m.type} ref ${m.ref} did not resolve`);
+    } else {
+      resolved.push({ monitorType: m.type, monitorId: real });
+    }
+  }
+  return { resolved, dangling };
+}
+
+function dedupeStatusPageMonitors(
+  resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }>,
+): Array<{ monitorType: 'url' | 'api'; monitorId: number }> {
+  const seen = new Set<string>();
+  return resolved.filter((r) => {
+    const k = `${r.monitorType}:${r.monitorId}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 async function importStatusPages(
   tx: Tx,
   rows: Array<Record<string, unknown>>,
@@ -501,18 +551,7 @@ async function importStatusPages(
     try {
       const monitors =
         (sp.monitors as Array<{ ref: number; type: 'url' | 'api' }> | undefined) ?? [];
-      const resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
-      const dangling: string[] = [];
-      for (const m of monitors) {
-        const map = m.type === 'url' ? idMaps.url : idMaps.api;
-        const real = map.get(m.ref);
-        if (real !== undefined) {
-          resolved.push({ monitorType: m.type, monitorId: real });
-        } else {
-          dangling.push(`${m.type} ref ${m.ref} did not resolve`);
-        }
-      }
-      // Pre-flight: don't create a hollow shell if every binding dangled.
+      const { resolved, dangling } = resolveStatusPageMonitors(monitors, idMaps);
       if (monitors.length > 0 && resolved.length === 0) {
         result.skipped.push(
           `status_page ${sp.slug}: all monitor refs dangling (${dangling.join(', ')})`,
@@ -523,23 +562,13 @@ async function importStatusPages(
         const [page] = await stx
           .insert(statusPages)
           .values({
-            slug: String(sp.slug),
-            title: String(sp.title),
+            slug: formText(sp.slug),
+            title: formText(sp.title),
             description: asString(sp.description),
           })
           .returning({ id: statusPages.id });
         if (resolved.length > 0) {
-          // Dedup: status_page_monitors has a composite PK on
-          // (statusPageId, monitorType, monitorId). Same risk as wire()
-          // above — a bundle with two refs to the same (type,id) would
-          // abort the whole import on PK violation.
-          const seen = new Set<string>();
-          const uniqueResolved = resolved.filter((r) => {
-            const k = `${r.monitorType}:${r.monitorId}`;
-            if (seen.has(k)) return false;
-            seen.add(k);
-            return true;
-          });
+          const uniqueResolved = dedupeStatusPageMonitors(resolved);
           await stx.insert(statusPageMonitors).values(
             uniqueResolved.map((r) => ({
               statusPageId: page.id,
@@ -555,7 +584,7 @@ async function importStatusPages(
       }
     } catch (err) {
       result.skipped.push(
-        `status_page ${sp.slug}: ${err instanceof Error ? err.message : String(err)}`,
+        `status_page ${formText(sp.slug)}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }

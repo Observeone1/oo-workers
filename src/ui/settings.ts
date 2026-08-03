@@ -62,7 +62,7 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
   const visibleSections = SECTIONS.filter((s) => !(isApiKey && s.hideForApiKey));
 
   // If active tab got hidden (e.g. password when using API key), fall back
-  if (!visibleSections.find((s) => s.id === activeTab)) activeTab = 'profile';
+  if (!visibleSections.some((s) => s.id === activeTab)) activeTab = 'profile';
 
   const rail = visibleSections
     .map(
@@ -78,6 +78,12 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
     )
     .join('');
 
+  let rolePill = '';
+  if (meRes.role) {
+    const pillClass = meRes.role === 'admin' ? 'pill up' : 'pill';
+    rolePill = `<span class="${pillClass}">${esc(meRes.role)}</span>`;
+  }
+
   main.innerHTML = `
     <div class="page-head">
       <div>
@@ -85,7 +91,7 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
         <div class="sub">Manage your account, security and instance data.</div>
       </div>
       <div class="row-flex" style="gap:8px">
-        ${meRes.role ? `<span class="pill${meRes.role === 'admin' ? ' up' : ''}">${esc(meRes.role)}</span>` : ''}
+        ${rolePill}
       </div>
     </div>
 

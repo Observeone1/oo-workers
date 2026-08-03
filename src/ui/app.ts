@@ -12,15 +12,7 @@
  *   dialogs.ts  — Add / Import dialog wiring
  */
 
-import type { MonType } from './types';
-import { renderList } from './list';
-import { renderDetail } from './detail';
-import { renderRegions } from './regions';
-import { renderChannels } from './channels';
-import { renderStatusPages } from './status-pages';
-import { renderIncidents } from './incidents';
-import { renderSettings } from './settings';
-import { renderDocs } from './docs-view';
+import { routeAppHash } from './app-routing';
 import { initDialogs } from './dialogs';
 import { startEventStream, on as onStreamEvent } from './events';
 import { getRegions } from './api';
@@ -82,46 +74,7 @@ function setActiveNav(
 
 function route() {
   closeSlideover();
-  const h = location.hash;
-  if (h === '#/regions' || h.startsWith('#/regions/')) {
-    setActiveNav('regions');
-    renderRegions();
-    return;
-  }
-  if (h === '#/channels' || h.startsWith('#/channels/')) {
-    setActiveNav('channels');
-    renderChannels();
-    return;
-  }
-  if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
-    setActiveNav('status-pages');
-    renderStatusPages();
-    return;
-  }
-  if (h === '#/incidents' || h.startsWith('#/incidents/')) {
-    setActiveNav('incidents');
-    renderIncidents();
-    return;
-  }
-  if (h === '#/settings') {
-    setActiveNav(null);
-    renderSettings();
-    return;
-  }
-  if (h === '#/docs' || h.startsWith('#/docs/')) {
-    setActiveNav('docs');
-    const section = h.startsWith('#/docs/') ? h.slice('#/docs/'.length) : null;
-    renderDocs(section);
-    return;
-  }
-  const m = /^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/.exec(h);
-  if (m) {
-    setActiveNav(null);
-    renderDetail(m[1] as MonType, Number(m[2]));
-  } else {
-    setActiveNav('list');
-    renderList();
-  }
+  routeAppHash(location.hash, setActiveNav);
 }
 
 function wireSignOut(state: AuthState) {
@@ -134,6 +87,36 @@ function wireSignOut(state: AuthState) {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     location.reload();
   });
+}
+
+function wireAuthenticatedApp(state: AuthState): void {
+  wireSignOut(state);
+
+  const settingsBtn = document.getElementById('settings-btn');
+  if (settingsBtn) {
+    settingsBtn.hidden = false;
+    settingsBtn.addEventListener('click', () => {
+      location.hash = '#/settings';
+    });
+  }
+
+  const nav = document.getElementById('nav');
+  if (nav) nav.hidden = false;
+  const addBtn = document.getElementById('add-btn');
+  const importBtn = document.getElementById('import-btn');
+  const divider = document.getElementById('header-divider');
+  if (addBtn) addBtn.hidden = false;
+  if (importBtn) importBtn.hidden = false;
+  if (divider) divider.hidden = false;
+  initDialogs();
+  route();
+  void refreshRegionBadge();
+  startEventStream();
+  onStreamEvent('region', () => void refreshRegionBadge());
+  setInterval(() => {
+    if (!document.hidden) tickRelativeAges();
+  }, 5_000);
+  globalThis.addEventListener('hashchange', route);
 }
 
 async function boot() {
@@ -165,53 +148,7 @@ async function boot() {
     renderLogin();
     return;
   }
-  wireSignOut(state);
-
-  const settingsBtn = document.getElementById('settings-btn');
-  if (settingsBtn) {
-    settingsBtn.hidden = false;
-    settingsBtn.addEventListener('click', () => {
-      location.hash = '#/settings';
-    });
-  }
-
-  // Show nav and action buttons now that the user is authenticated
-  const nav = document.getElementById('nav');
-  if (nav) nav.hidden = false;
-  const addBtn = document.getElementById('add-btn');
-  const importBtn = document.getElementById('import-btn');
-  const divider = document.getElementById('header-divider');
-  if (addBtn) addBtn.hidden = false;
-  if (importBtn) importBtn.hidden = false;
-  if (divider) divider.hidden = false;
-  initDialogs();
-  route();
-  void refreshRegionBadge();
-
-  // Open the SSE stream now that we know the user is authenticated.
-  // list.ts subscribes on first renderList(); detail.ts subscribes on
-  // first renderDetail(); the stream stays open across hash changes and
-  // pauses automatically when the tab is hidden.
-  startEventStream();
-
-  // Navbar regions badge — refresh on every region online/offline flip.
-  // The scheduler's tickRegionStatus sweep emits these. No more polling.
-  onStreamEvent('region', () => void refreshRegionBadge());
-
-  // Clock-tick. SSE handles all *state* changes — new runs, status flips,
-  // lifecycle events — but does NOT advance relative timestamps. Without
-  // this, "Last run: 2s ago" stays frozen until the next event. Rather
-  // than re-render the whole view (which flickers and resets scroll/focus),
-  // tickRelativeAges() rewrites only the text inside fmtAgeLive() spans —
-  // invisible apart from the digits moving. 5s keeps "Xs ago" feeling live
-  // without per-second churn. No server load: SSE already absorbed the
-  // actual data changes.
-  setInterval(() => {
-    if (document.hidden) return;
-    tickRelativeAges();
-  }, 5_000);
-
-  window.addEventListener('hashchange', route);
+  wireAuthenticatedApp(state);
 }
 
-boot();
+await boot();

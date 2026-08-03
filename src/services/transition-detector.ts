@@ -15,25 +15,19 @@
 import { and, desc, eq, isNotNull, isNull, lt, ne } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
-  apiChecks,
   apiExecutions,
   dbExecutions,
-  dbMonitors,
-  qaProjects,
   qaRuns,
   qaTestExecutions,
   regions,
   tcpExecutions,
-  tcpMonitors,
   tlsExecutions,
-  tlsMonitors,
   udpExecutions,
-  udpMonitors,
   urlMonitorExecutions,
-  urlMonitors,
 } from '../db/schema.ts';
 import { logger } from '../utils/logger.ts';
 import { dispatchAlert } from './alert-dispatch.ts';
+import { fetchMonitorMeta } from './status-page-monitor-meta.ts';
 import type { MonitorType } from '../db/repositories/alert-channel.repo.ts';
 
 type Outcome = 'up' | 'down' | 'other';
@@ -134,68 +128,10 @@ async function monitorMeta(
   monitorType: MonitorType,
   monitorId: number,
 ): Promise<{ name: string; target: string } | null> {
-  if (monitorType === 'url') {
-    const [r] = await db
-      .select({ name: urlMonitors.name, url: urlMonitors.url })
-      .from(urlMonitors)
-      .where(eq(urlMonitors.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: r.url } : null;
-  }
-  if (monitorType === 'api') {
-    const [r] = await db
-      .select({ name: apiChecks.name, url: apiChecks.url })
-      .from(apiChecks)
-      .where(eq(apiChecks.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: r.url } : null;
-  }
-  if (monitorType === 'tcp') {
-    const [r] = await db
-      .select({ name: tcpMonitors.name, host: tcpMonitors.host, port: tcpMonitors.port })
-      .from(tcpMonitors)
-      .where(eq(tcpMonitors.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
-  }
-  if (monitorType === 'udp') {
-    const [r] = await db
-      .select({ name: udpMonitors.name, host: udpMonitors.host, port: udpMonitors.port })
-      .from(udpMonitors)
-      .where(eq(udpMonitors.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
-  }
-  if (monitorType === 'db') {
-    const [r] = await db
-      .select({
-        name: dbMonitors.name,
-        protocol: dbMonitors.protocol,
-        host: dbMonitors.host,
-        port: dbMonitors.port,
-      })
-      .from(dbMonitors)
-      .where(eq(dbMonitors.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: `${r.protocol} ${r.host}:${r.port}` } : null;
-  }
-  if (monitorType === 'tls') {
-    const [r] = await db
-      .select({ name: tlsMonitors.name, host: tlsMonitors.host, port: tlsMonitors.port })
-      .from(tlsMonitors)
-      .where(eq(tlsMonitors.id, monitorId))
-      .limit(1);
-    return r ? { name: r.name, target: `${r.host}:${r.port}` } : null;
-  }
-  // qa
-  const [r] = await db
-    .select({ name: qaProjects.name })
-    .from(qaProjects)
-    .where(eq(qaProjects.id, monitorId))
-    .limit(1);
-  return r ? { name: r.name, target: 'browser script' } : null;
+  if (monitorType === 'heartbeat') return null;
+  const row = await fetchMonitorMeta(monitorType, monitorId);
+  return row ? { name: row.name, target: row.target } : null;
 }
-
 async function regionSlugById(regionId: number | null | undefined): Promise<string | null> {
   if (regionId == null) return null;
   const [r] = await db
@@ -284,7 +220,7 @@ export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> 
       .from(qaRuns)
       .where(eq(qaRuns.id, runId))
       .limit(1);
-    if (!run || !run.outcome) return;
+    if (!run?.outcome) return;
     const curOutcome = normalizeOutcome(run.outcome);
     if (curOutcome === 'other') return;
 

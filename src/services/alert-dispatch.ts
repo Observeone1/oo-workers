@@ -53,9 +53,10 @@ function headline(ctx: AlertContext): string {
 }
 
 function description(ctx: AlertContext): string {
-  const parts: string[] = [];
-  parts.push(`**Target:** ${ctx.monitor.target}`);
-  parts.push(`**Type:** ${ctx.monitor.type.toUpperCase()}`);
+  const parts = [
+    `**Target:** ${ctx.monitor.target}`,
+    `**Type:** ${ctx.monitor.type.toUpperCase()}`,
+  ];
   if (ctx.statusCode != null) parts.push(`**Status code:** ${ctx.statusCode}`);
   if (ctx.durationMs != null) parts.push(`**Latency:** ${ctx.durationMs}ms`);
   if (ctx.regionSlug) parts.push(`**Region:** ${ctx.regionSlug}`);
@@ -184,7 +185,11 @@ function emailFields(ctx: AlertContext): Array<[string, string, boolean]> {
 
 function emailSubject(ctx: AlertContext): string {
   const t = EMAIL_TONE[ctx.event];
-  return `[oo-workers] ${t.tag === 'TEST' ? 'Test alert' : t.tag === 'RECOVERED' ? 'Recovered' : 'DOWN'}: ${ctx.monitor.name}`;
+  let tagLabel: string;
+  if (t.tag === 'TEST') tagLabel = 'Test alert';
+  else if (t.tag === 'RECOVERED') tagLabel = 'Recovered';
+  else tagLabel = 'DOWN';
+  return `[oo-workers] ${tagLabel}: ${ctx.monitor.name}`;
 }
 
 function emailText(ctx: AlertContext): string {

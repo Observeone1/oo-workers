@@ -10,20 +10,16 @@
 import { and, eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 import { db } from '../config/db.ts';
-import {
-  apiExecutions,
-  dbExecutions,
-  qaTestExecutions,
-  tcpExecutions,
-  tlsExecutions,
-  udpExecutions,
-  urlMonitorExecutions,
-} from '../db/schema.ts';
+import { dbExecutions, tcpExecutions, tlsExecutions, udpExecutions } from '../db/schema.ts';
 import type { MonitorType } from '../db/repositories/region.repo.ts';
 import { logger } from '../utils/logger.ts';
-import { maybeAlertOnQaRunTransition, maybeAlertOnTransition } from './transition-detector.ts';
+import { maybeAlertOnTransition } from './transition-detector.ts';
 import { emitExecution } from './exec-events.ts';
-import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
+import {
+  writeApiAgentResult,
+  writeQaAgentResult,
+  writeUrlAgentResult,
+} from './agent-result-writers.ts';
 
 const REGION_LIST = (slug: string) => `oo:jobs:${slug}`;
 
@@ -99,77 +95,10 @@ export async function writeAgentResult(
   const { type, executionId, status, errorMessage } = body;
 
   switch (type) {
-    case 'url': {
-      const rows = await db
-        .update(urlMonitorExecutions)
-        .set({
-          status,
-          statusCode: body.statusCode ?? null,
-          responseTimeMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          assertionResults: body.assertionResults ?? null,
-          endTime,
-        })
-        .where(
-          and(
-            eq(urlMonitorExecutions.id, executionId),
-            eq(urlMonitorExecutions.regionId, agentRegionId),
-          ),
-        )
-        .returning({ id: urlMonitorExecutions.id, monitorId: urlMonitorExecutions.urlMonitorId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('url', rows[0].monitorId, executionId, status, {
-          statusCode: body.statusCode ?? null,
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('url', rows[0].monitorId, {
-        id: executionId,
-        status,
-        statusCode: body.statusCode ?? null,
-        responseTimeMs: body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
-    }
-    case 'api': {
-      const rows = await db
-        .update(apiExecutions)
-        .set({
-          status,
-          responseStatus: body.responseStatus ?? null,
-          responseTimeMs: body.responseTimeMs ?? body.latencyMs ?? null,
-          responseBody: body.responseBody ?? null,
-          responseHeaders: body.responseHeaders ?? null,
-          errorMessage: errorMessage ?? null,
-          assertionResults: body.assertionResults ?? null,
-          endTime,
-        })
-        .where(and(eq(apiExecutions.id, executionId), eq(apiExecutions.regionId, agentRegionId)))
-        .returning({ id: apiExecutions.id, monitorId: apiExecutions.apiCheckId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-      if (status === 'SUCCESS' || status === 'FAILED') {
-        void maybeAlertOnTransition('api', rows[0].monitorId, executionId, status, {
-          statusCode: body.responseStatus ?? null,
-          durationMs: body.responseTimeMs ?? body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          regionId: agentRegionId,
-        });
-      }
-      emitExecution('api', rows[0].monitorId, {
-        id: executionId,
-        status,
-        statusCode: body.responseStatus ?? null,
-        responseTimeMs: body.responseTimeMs ?? body.latencyMs ?? null,
-        errorMessage: errorMessage ?? null,
-        regionId: agentRegionId,
-      });
-      return { updated: true };
-    }
+    case 'url':
+      return writeUrlAgentResult(agentRegionId, body, endTime);
+    case 'api':
+      return writeApiAgentResult(agentRegionId, body, endTime);
     case 'tcp': {
       const rows = await db
         .update(tcpExecutions)
@@ -227,43 +156,8 @@ export async function writeAgentResult(
         .returning({ id: tlsExecutions.id, monitorId: tlsExecutions.tlsMonitorId });
       return finishLatencyResult('tls', rows, body, agentRegionId);
     }
-    case 'qa': {
-      // QA project runs create exec rows per-test inside the processor (master-run)
-      // or via POST /api/agent/qa/executions (agent-run); the agent reports
-      // per-test results identified by executionId (the qa_test_executions row id).
-      // traceUrl + screenshotUrls are agent-uploaded artifact keys; null on pass.
-      const rows = await db
-        .update(qaTestExecutions)
-        .set({
-          status,
-          durationMs: body.latencyMs ?? null,
-          errorMessage: errorMessage ?? null,
-          completedAt: endTime,
-          traceUrl: body.traceUrl ?? null,
-          screenshotUrls: body.screenshotUrls ?? null,
-        })
-        .where(
-          and(eq(qaTestExecutions.id, executionId), eq(qaTestExecutions.regionId, agentRegionId)),
-        )
-        .returning({ id: qaTestExecutions.id, runId: qaTestExecutions.runId });
-      if (rows.length !== 1) return { updated: false, reason: 'no_match' };
-
-      // Count-based run completion: a region run reports each test result
-      // separately, so once every expected test has a completedAt we compute
-      // the aggregate, claim the one-shot alert (atomic, wins the concurrent
-      // last-two-results race), and fire the region-scoped transition alert.
-      const runId = rows[0].runId;
-      if (runId !== null) {
-        const progress = await qaProjectRepo.runProgress(runId);
-        if (progress && progress.completed >= progress.expectedTests) {
-          const outcome = progress.downCount > 0 ? 'FAILED' : 'SUCCESS';
-          if (await qaProjectRepo.claimRunAlert(runId, outcome)) {
-            void maybeAlertOnQaRunTransition(runId);
-          }
-        }
-      }
-      return { updated: true };
-    }
+    case 'qa':
+      return writeQaAgentResult(agentRegionId, body, endTime);
     default: {
       const _exhaustive: never = type;
       throw new Error(`unhandled monitor type: ${_exhaustive}`);

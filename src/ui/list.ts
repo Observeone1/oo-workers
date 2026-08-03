@@ -23,6 +23,15 @@ import type { RegionLite } from './api';
 import { confirmDialog } from './dialogs';
 import { getActiveIncidents } from './incidents';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
+import {
+  buildEmptyListBody,
+  buildShowingSummary,
+  buildStatusBanner,
+  computeFleetStats,
+  flattenAllMonitors,
+  normalizeAvailBuckets,
+  renderUptimeBars,
+} from './list-overview';
 import { on as onStreamEvent } from './events';
 
 // Live updates from the /api/events SSE stream. The list re-renders on every
@@ -207,90 +216,31 @@ export async function renderList() {
   const showingFrom = filtered.length === 0 ? 0 : start + 1;
   const showingTo = Math.min(start + PAGE_SIZE, filtered.length);
 
-  // Fleet stats
-  const allMonitors = [
-    ...data.url,
-    ...data.api,
-    ...data.qa,
-    ...data.tcp,
-    ...data.udp,
-    ...data.db,
-    ...data.tls,
-    ...data.heartbeat,
-  ];
-  const upCount = allMonitors.filter(
-    (m) => m.enabled && statusClass(m.latest?.status) === 'up',
-  ).length;
-  const downCount = allMonitors.filter(
-    (m) => m.enabled && statusClass(m.latest?.status) === 'down',
-  ).length;
-  const totalActive = allMonitors.filter((m) => m.enabled).length;
-  const totalAll = allMonitors.length;
-  const latencies = allMonitors
-    .filter((m) => m.enabled && statusClass(m.latest?.status) !== 'down')
-    .map((m) => m.latest?.responseTimeMs ?? m.latest?.durationMs)
-    .filter((l): l is number => l != null)
-    .sort((a, b) => a - b);
-  const p95 = latencies.length > 0 ? latencies[Math.floor(latencies.length * 0.95)] : null;
-  const isIncident = downCount > 0;
-
-  // 30-bar real uptime strip from historical execution data
-  const availBuckets =
-    avail.length === 30
-      ? avail
-      : Array.from({ length: 30 }, (_, i) => {
-          const d = new Date();
-          d.setUTCDate(d.getUTCDate() - (29 - i));
-          return (
-            avail.find((a) => a.date === d.toISOString().slice(0, 10)) ?? {
-              date: '',
-              total: 0,
-              passed: 0,
-            }
-          );
-        });
-  const uptimeBars = availBuckets
-    .map((day) => {
-      if (day.total === 0) return `<i class="empty" title="${day.date || 'No data'}"></i>`;
-      const pct = day.passed / day.total;
-      const label = `${day.date}: ${Math.round(pct * 100)}% (${day.passed}/${day.total})`;
-      if (pct >= 0.99) return `<i title="${label}"></i>`;
-      if (pct >= 0.5) return `<i class="warn" title="${label}"></i>`;
-      return `<i class="down" title="${label}"></i>`;
-    })
-    .join('');
-
-  const statusBanner = isIncident
-    ? `<div class="status-banner down">
-        <div class="status-icon down">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </div>
-        <div class="text">
-          <div class="head">Degraded · ${downCount} monitor${downCount !== 1 ? 's' : ''} down</div>
-          <div class="sub">${upCount}/${totalActive} active monitors passing</div>
-        </div>
-        <div class="uptime-strip">
-          <span class="label">30D availability</span>
-          <div class="uptime-bars">${uptimeBars}</div>
-        </div>
-      </div>`
-    : `<div class="status-banner ok">
-        <div class="status-icon ok">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        </div>
-        <div class="text">
-          <div class="head">All systems operational</div>
-          <div class="sub">${upCount}/${totalActive} active monitors passing</div>
-        </div>
-        <div class="uptime-strip">
-          <span class="label">30D availability</span>
-          <div class="uptime-bars">${uptimeBars}</div>
-        </div>
-      </div>`;
+  const allMonitors = flattenAllMonitors(data);
+  const fleetStats = computeFleetStats(allMonitors);
+  const { upCount, totalActive, totalAll, p95 } = fleetStats;
+  const availBuckets = normalizeAvailBuckets(avail);
+  const uptimeBars = renderUptimeBars(availBuckets);
+  const p95Value = p95 ?? '—';
+  const p95Unit = p95 == null ? '' : 'ms';
+  const showingSummary = buildShowingSummary({
+    filteredLength: filtered.length,
+    showingFrom,
+    showingTo,
+    search,
+    allForTabLength: allForTab.length,
+  });
+  const emptyListBody = buildEmptyListBody(activeTab, search);
+  const statusBanner = buildStatusBanner(fleetStats, uptimeBars);
 
   const upPct = totalActive === 0 ? '—' : ((upCount / totalActive) * 100).toFixed(2) + '%';
 
   const onlineRegionCount = regions.filter((r) => r.online).length;
+  let activeRegionSuffix = '';
+  if (onlineRegionCount > 0) {
+    const regionSuffix = onlineRegionCount === 1 ? '' : 's';
+    activeRegionSuffix = `, ${onlineRegionCount} region${regionSuffix}`;
+  }
 
   const statStrip = `
     <div class="stat-strip">
@@ -306,17 +256,20 @@ export async function renderList() {
       </div>
       <div class="stat">
         <span class="label">P95 latency</span>
-        <span class="value">${p95 != null ? p95 : '—'}<span class="unit">${p95 != null ? 'ms' : ''}</span></span>
+        <span class="value">${p95Value}<span class="unit">${p95Unit}</span></span>
         <span class="delta up">across active monitors</span>
       </div>
       <div class="stat">
         <span class="label">Total monitors</span>
         <span class="value">${totalAll}</span>
-        <span class="delta up">${totalActive} active${onlineRegionCount > 0 ? `, ${onlineRegionCount} region${onlineRegionCount !== 1 ? 's' : ''}` : ''}</span>
+        <span class="delta up">${totalActive} active${activeRegionSuffix}</span>
       </div>
     </div>`;
 
   const onlineRegions = regions.filter((r) => r.online).length;
+  let fleetDotClass = '';
+  if (onlineRegions === regions.length) fleetDotClass = 'up';
+  else if (onlineRegions > 0) fleetDotClass = 'warn';
   const fleetSection =
     regions.length === 0
       ? ''
@@ -326,7 +279,7 @@ export async function renderList() {
         <div class="panel-head">
           <span class="h"><em>Region fleet</em> · last 24h</span>
           <span class="right">
-            <span class="dot ${onlineRegions === regions.length ? 'up' : onlineRegions > 0 ? 'warn' : ''}"></span>
+            <span class="dot ${fleetDotClass}"></span>
             ${onlineRegions}/${regions.length} online
             <a href="#/regions" style="color:var(--accent);font-size:var(--fs-12);margin-left:4px">Manage →</a>
           </span>
@@ -368,22 +321,12 @@ export async function renderList() {
     <div class="list-toolbar">
       <input id="search-input" data-testid="monitors-search-input" class="search" type="search" placeholder="Filter by name or URL…" value="${esc(search)}" autocomplete="off" />
       <span class="showing-count" data-testid="monitors-summary">
-        ${
-          filtered.length === 0
-            ? search
-              ? `No matches for "${esc(search)}"`
-              : 'No monitors'
-            : `${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
-        }
+        ${showingSummary}
       </span>
     </div>
     ${
       pageRows.length === 0
-        ? `<div class="empty" data-testid="list-empty">${
-            search
-              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search data-testid="search-clear-link">Clear search</a>.`
-              : `No ${activeTab.toUpperCase()} monitors yet. <a href="#" class="empty-cta" data-tab-add="${activeTab}" data-testid="empty-state-add-link">Add a ${activeTab.toUpperCase()} monitor</a> to create one.`
-          }</div>`
+        ? `<div class="empty" data-testid="list-empty">${emptyListBody}</div>`
         : `<div class="tbl-wrap">
           <table>
             <thead><tr><th></th><th>Name</th><th>Interval</th><th>Last run</th><th>Latency · 30 runs</th><th></th></tr></thead>
@@ -515,6 +458,10 @@ function rowFor(m: Monitor): string {
     m.type === 'heartbeat'
       ? fmtAgeLive(m.lastPingAt ?? undefined)
       : fmtAgeLive(m.latest?.startTime);
+  let latencyCell: string;
+  if (m.type === 'heartbeat') latencyCell = '—';
+  else if (latency == null) latencyCell = '—';
+  else latencyCell = `${latency}<span class="dim">ms</span>`;
   return `
     <tr class="clickable${m.enabled ? '' : ' disabled'}" data-open data-type="${m.type}" data-id="${m.id}">
       <td class="col-status"><span class="dot ${cls}"></span></td>
@@ -525,7 +472,7 @@ function rowFor(m: Monitor): string {
       <td><span class="pill">${schedule}</span></td>
       <td class="cell-meta">${lastEvent}</td>
       <td class="cell-num">
-        ${m.type === 'heartbeat' ? '—' : latency != null ? `${latency}<span class="dim">ms</span>` : '—'}
+        ${latencyCell}
       </td>
       <td class="col-actions">
         <div class="row-actions">

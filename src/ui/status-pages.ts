@@ -18,10 +18,11 @@ import {
 import type { MonType } from './types';
 import { confirmDialog, alertDialog } from './dialogs';
 import { openSlideover, closeSlideover } from './slideover';
-
-// Cache detail for the active page so switching tabs doesn't double-fetch
-let cachedDetail: StatusPageDetail | null = null;
-let cachedDetailId: number | null = null;
+import {
+  invalidateStatusPageDetailCache,
+  loadListPageDetail,
+  resolveActiveListPage,
+} from './status-pages-list-helpers';
 
 let lastBanner: { kind: 'ok' | 'err'; text: string } | null = null;
 let activePageId: number | null = null;
@@ -64,41 +65,16 @@ function monitorPreviewCard(name: string, _type: string, seed: number): string {
 async function renderList() {
   const main = $('#main');
   const pages = await getStatusPages();
-  if (pages.length > 0 && activePageId === null) activePageId = pages[0].id;
+  const resolved = resolveActiveListPage(pages, activePageId);
+  activePageId = resolved.activePageId;
+  const activePage = resolved.activePage;
 
-  const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null;
-
-  // Fetch the full detail + all monitor names for the preview
   let detail: StatusPageDetail | null = null;
-  let monitorNames: Map<string, string> = new Map();
+  let monitorNames = new Map<string, string>();
   if (activePage) {
-    if (cachedDetailId === activePage.id && cachedDetail) {
-      detail = cachedDetail;
-    } else {
-      try {
-        [detail] = await Promise.all([
-          getStatusPage(activePage.id),
-          (async () => {
-            try {
-              const all = await getMonitors();
-              for (const m of all.url) monitorNames.set(`url:${m.id}`, m.name);
-              for (const m of all.api) monitorNames.set(`api:${m.id}`, m.name);
-              for (const m of all.qa) monitorNames.set(`qa:${m.id}`, m.name);
-              for (const m of all.tcp) monitorNames.set(`tcp:${m.id}`, m.name);
-              for (const m of all.udp) monitorNames.set(`udp:${m.id}`, m.name);
-              for (const m of all.db) monitorNames.set(`db:${m.id}`, m.name);
-              for (const m of all.tls) monitorNames.set(`tls:${m.id}`, m.name);
-            } catch {
-              /* non-fatal */
-            }
-          })(),
-        ]);
-        cachedDetail = detail;
-        cachedDetailId = activePage.id;
-      } catch {
-        detail = null;
-      }
-    }
+    const loaded = await loadListPageDetail(activePage);
+    detail = loaded.detail;
+    monitorNames = loaded.monitorNames;
   }
 
   const monitorCount = detail?.monitors.length ?? 0;
@@ -138,6 +114,9 @@ async function renderList() {
     </div>`;
   }
 
+  const activePageDescription = activePage?.description
+    ? `<div style="color:var(--muted);font-size:var(--fs-13);margin-bottom:6px">${esc(activePage.description)}</div>`
+    : '';
   const previewContent = activePage
     ? `
       <div class="preview-bar">
@@ -148,7 +127,7 @@ async function renderList() {
       <div class="frame">
         <header class="public-head" style="margin-bottom:var(--s-5)">
           <h1 style="font-size:22px;margin:0 0 6px">${esc(activePage.title)}</h1>
-          ${activePage.description ? `<div style="color:var(--muted);font-size:var(--fs-13);margin-bottom:6px">${esc(activePage.description)}</div>` : ''}
+          ${activePageDescription}
           <span class="summary"><span class="dot up"></span> All services healthy</span>
         </header>
         <div class="sp-monitor-list">${monitorRows}</div>
@@ -204,8 +183,7 @@ function wireListView(pages: StatusPageLite[]) {
   document.querySelectorAll<HTMLElement>('.sp-item').forEach((item) => {
     item.addEventListener('click', () => {
       activePageId = Number(item.dataset.id);
-      cachedDetail = null; // force fresh detail fetch
-      cachedDetailId = null;
+      invalidateStatusPageDetailCache();
       renderList();
     });
   });
@@ -230,8 +208,8 @@ function wireListView(pages: StatusPageLite[]) {
         return;
       }
       lastBanner = { kind: 'ok', text: `Deleted '${slug}'.` };
-      const remaining = pages.filter((p) => p.id !== id);
-      activePageId = remaining[0]?.id ?? null;
+      const nextActive = pages.find((p) => p.id !== id);
+      activePageId = nextActive?.id ?? null;
       await renderList();
     });
   });
@@ -423,8 +401,7 @@ function wireEditorForm(detail: StatusPageDetail) {
       kind: 'ok',
       text: `Saved — ${monitors.length} monitor${monitors.length === 1 ? '' : 's'} on this page.`,
     };
-    cachedDetail = null; // bust cache so list view re-fetches
-    cachedDetailId = null;
+    invalidateStatusPageDetailCache();
     await renderEditor(detail.id);
   });
 }

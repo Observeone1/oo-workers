@@ -44,6 +44,24 @@ export interface MailpitProbe {
   to?: string;
 }
 
+function matchingMessage(
+  messages: MailpitListItem[],
+  subjectIncludes: string,
+  want: string | undefined,
+  to: string | null | undefined,
+): MailpitProbe | null {
+  for (const message of messages) {
+    const subject = message.Subject ?? '';
+    if (!subject.includes(subjectIncludes)) continue;
+    const addresses = (message.To ?? [])
+      .map((recipient) => recipient.Address?.trim().toLowerCase())
+      .filter((address): address is string => !!address);
+    if (want && !addresses.includes(want)) continue;
+    return { delivered: true, subject, to: to ?? undefined };
+  }
+  return null;
+}
+
 /**
  * Poll Mailpit for the most recent message matching `subjectIncludes`
  * (substring) and addressed to `to`. Best-effort: any error / timeout →
@@ -66,15 +84,8 @@ export async function findRecentTestMessage(opts: {
       });
       if (res.ok) {
         const body = (await res.json()) as { messages?: MailpitListItem[] };
-        for (const m of body.messages ?? []) {
-          const subject = m.Subject ?? '';
-          if (!subject.includes(opts.subjectIncludes)) continue;
-          const addrs = (m.To ?? [])
-            .map((t) => t.Address?.trim().toLowerCase())
-            .filter((a): a is string => !!a);
-          if (want && !addrs.includes(want)) continue;
-          return { delivered: true, subject, to: opts.to ?? undefined };
-        }
+        const match = matchingMessage(body.messages ?? [], opts.subjectIncludes, want, opts.to);
+        if (match) return match;
       }
     } catch {
       /* unreachable / aborted — fall through to retry or timeout */

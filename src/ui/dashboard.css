@@ -686,6 +686,7 @@ button.bare {
   position: relative;
   z-index: 1;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .status-banner .head {
   font-size: var(--fs-16);
@@ -709,9 +710,6 @@ button.bare {
   align-items: flex-end;
   gap: 4px;
   flex: 0 0 auto;
-}
-.status-banner .text {
-  flex: 1 1 auto;
 }
 .uptime-strip .label {
   font-size: 10px;
@@ -777,16 +775,14 @@ button.bare {
 }
 .stat .label {
   white-space: nowrap;
-}
-.stat:last-child {
-  border-right: none;
-}
-.stat .label {
   font-size: 10px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: var(--fw-medium);
+}
+.stat:last-child {
+  border-right: none;
 }
 .stat .value {
   font-family: var(--font-mono);
@@ -1876,6 +1872,10 @@ dialog .dialog-actions {
   background: color-mix(in srgb, var(--up) 10%, transparent);
   border-color: color-mix(in srgb, var(--up) 36%, transparent);
   color: var(--up-text);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  font-size: var(--fs-13);
+  margin: var(--s-3) 0 0;
 }
 .banner.err {
   background: color-mix(in srgb, var(--down) 10%, transparent);
@@ -4085,18 +4085,18 @@ dialog.v2 .dialog-shell {
   flex-direction: column;
   gap: 6px;
 }
-.assertion-row {
+.assertion-list .assertion-row {
   display: grid;
   grid-template-columns: 1fr 110px 1fr 32px;
   gap: 6px;
   align-items: stretch;
 }
-.assertion-row input,
-.assertion-row select {
+.assertion-list .assertion-row input,
+.assertion-list .assertion-row select {
   font-family: var(--font-mono);
   font-size: var(--fs-12);
 }
-.assertion-row .rm-btn {
+.assertion-list .assertion-row .rm-btn {
   background: var(--panel);
 }
 .assertion-list .add-row {
@@ -4792,17 +4792,6 @@ dialog.v2 .dialog-shell {
 .set-foot-note {
   color: var(--muted);
   font-size: var(--fs-12);
-  margin: var(--s-3) 0 0;
-}
-
-/* ---- Success/error banner ---- */
-.banner.ok {
-  background: color-mix(in srgb, var(--up) 12%, transparent);
-  color: var(--up-text);
-  border: 1px solid color-mix(in srgb, var(--up) 25%, transparent);
-  border-radius: var(--r);
-  padding: 8px 12px;
-  font-size: var(--fs-13);
   margin: var(--s-3) 0 0;
 }
 

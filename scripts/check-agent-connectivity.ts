@@ -59,22 +59,21 @@ function fail(msg: string, hint?: string): never {
   process.exit(1);
 }
 
-async function main() {
-  const { masterUrl, agentKey, regionSlug } = parseArgs();
-  console.log('oo-workers agent preflight\n');
-
+function requireAgentEnv(args: Args): void {
   console.log('1. config');
-  if (!masterUrl)
+  if (!args.masterUrl)
     fail('OO_MASTER_URL is not set', 'export OO_MASTER_URL=https://master.example.com');
-  if (!agentKey)
+  if (!args.agentKey)
     fail('OO_AGENT_KEY is not set', 'paste the cleartext key returned from create-region');
-  if (!regionSlug)
+  if (!args.regionSlug)
     fail(
       'OO_REGION_SLUG is not set',
       'set to the slug used when the region was created (e.g. us-east)',
     );
-  ok(`master ${masterUrl}, region '${regionSlug}', key ${agentKey.slice(0, 11)}…`);
+  ok(`master ${args.masterUrl}, region '${args.regionSlug}', key ${args.agentKey.slice(0, 11)}…`);
+}
 
+function parseMasterUrl(masterUrl: string): URL {
   console.log('\n2. URL');
   let parsed: URL;
   try {
@@ -89,46 +88,60 @@ async function main() {
     fail(`unsupported protocol ${parsed.protocol}`, 'use http:// or https://');
   }
   ok(`${parsed.protocol}//${parsed.host}`);
+  return parsed;
+}
 
+function classifyReachabilityError(
+  msg: string,
+  parsed: URL,
+): { message: string; hint: string } | null {
+  if (/self.signed|unable to verify|UNABLE_TO_VERIFY|CERT/i.test(msg)) {
+    return {
+      message: `TLS handshake failed: ${msg}`,
+      hint: "self-signed certs aren't supported. Use a real cert (Let's Encrypt) or a private CA installed system-wide.",
+    };
+  }
+  if (/ENOTFOUND|EAI_AGAIN/i.test(msg)) {
+    return {
+      message: `DNS lookup failed: ${msg}`,
+      hint: `cannot resolve ${parsed.hostname}. Check /etc/resolv.conf or the URL.`,
+    };
+  }
+  if (/ECONNREFUSED/i.test(msg)) {
+    return {
+      message: `connection refused: ${msg}`,
+      hint: `master not reachable at ${parsed.host}. Is it running? Is OO_BIND_ADDR=0.0.0.0?`,
+    };
+  }
+  if (/timeout/i.test(msg)) {
+    return {
+      message: `connection timed out: ${msg}`,
+      hint: `${parsed.host} is unreachable from this box. Check firewall / VPN.`,
+    };
+  }
+  return null;
+}
+
+async function fetchAgentMe(masterUrl: string, agentKey: string, parsed: URL): Promise<Response> {
   console.log('\n3. reachability');
   const meUrl = new URL('/api/agent/me', masterUrl).toString();
-  let res: Response;
   try {
-    res = await fetch(meUrl, {
+    const res = await fetch(meUrl, {
       method: 'GET',
       headers: { Authorization: `Bearer ${agentKey}`, Connection: 'close' },
       signal: AbortSignal.timeout(10_000),
     });
+    ok(`HTTP ${res.status} from ${meUrl}`);
+    return res;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/self.signed|unable to verify|UNABLE_TO_VERIFY|CERT/i.test(msg)) {
-      fail(
-        `TLS handshake failed: ${msg}`,
-        "self-signed certs aren't supported. Use a real cert (Let's Encrypt) or a private CA installed system-wide.",
-      );
-    }
-    if (/ENOTFOUND|EAI_AGAIN/i.test(msg)) {
-      fail(
-        `DNS lookup failed: ${msg}`,
-        `cannot resolve ${parsed.hostname}. Check /etc/resolv.conf or the URL.`,
-      );
-    }
-    if (/ECONNREFUSED/i.test(msg)) {
-      fail(
-        `connection refused: ${msg}`,
-        `master not reachable at ${parsed.host}. Is it running? Is OO_BIND_ADDR=0.0.0.0?`,
-      );
-    }
-    if (/timeout/i.test(msg)) {
-      fail(
-        `connection timed out: ${msg}`,
-        `${parsed.host} is unreachable from this box. Check firewall / VPN.`,
-      );
-    }
+    const classified = classifyReachabilityError(msg, parsed);
+    if (classified) fail(classified.message, classified.hint);
     fail(`network error: ${msg}`);
   }
-  ok(`HTTP ${res.status} from ${meUrl}`);
+}
 
+async function verifyAgentAuth(res: Response): Promise<void> {
   console.log('\n4. auth');
   if (res.status === 401) {
     fail(
@@ -153,7 +166,9 @@ async function main() {
     fail(`unexpected ${res.status} from /api/agent/me`, text.slice(0, 200));
   }
   ok('key accepted, agent scope confirmed');
+}
 
+async function verifyRegionBinding(res: Response, regionSlug: string): Promise<void> {
   console.log('\n5. region binding');
   const body = (await res.json()) as { region?: { id: number; slug: string; label: string } };
   const bound = body.region;
@@ -170,11 +185,24 @@ async function main() {
     );
   }
   ok(`bound to region #${bound.id} '${bound.slug}' (${bound.label})`);
+}
+
+async function main() {
+  const args = parseArgs();
+  console.log('oo-workers agent preflight\n');
+
+  requireAgentEnv(args);
+  const parsed = parseMasterUrl(args.masterUrl);
+  const res = await fetchAgentMe(args.masterUrl, args.agentKey, parsed);
+  await verifyAgentAuth(res);
+  await verifyRegionBinding(res, args.regionSlug);
 
   console.log('\nall green — agent is ready to start.');
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('\npreflight crashed:', err);
   process.exit(1);
-});
+}

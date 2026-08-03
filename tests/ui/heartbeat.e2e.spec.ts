@@ -58,7 +58,7 @@ test('create heartbeat via dialog + detail view exposes the public URL', async (
 
   // Cleanup via API — find the id by scraping the page URL hash.
   const hash = await page.evaluate(() => location.hash);
-  const match = hash.match(/heartbeat\/(\d+)/);
+  const match = /heartbeat\/(\d+)/.exec(hash);
   if (match) {
     await deleteMonitorViaApi(request, 'heartbeat', Number(match[1]));
   }

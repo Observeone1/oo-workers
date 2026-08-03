@@ -28,9 +28,9 @@ export const dbMonitorRepo = {
 
     return rows.map(({ db_monitors: m, latest: l }) => ({
       ...m,
-      type: 'db' as const,
+      type: 'db',
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         responseTimeMs: l.latencyMs,
         errorMessage: p.errorMessage,

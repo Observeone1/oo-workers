@@ -45,7 +45,7 @@ const VALIDATE_KEY_CACHE_MAX = 1024;
 export function extractKey(c: Context): string | null {
   const header = c.req.header('authorization');
   if (header) {
-    const match = header.match(/^Bearer\s+(\S+)$/i);
+    const match = /^Bearer\s+(\S+)$/i.exec(header);
     if (match) return match[1];
   }
   const cookie = c.req.header('cookie');

@@ -138,7 +138,7 @@ async function tarDump(entries: [string, string | Buffer][]): Promise<Readable> 
   }
   pack.finalize();
   const chunks: Buffer[] = [];
-  for await (const c of pack) chunks.push(c as Buffer);
+  for await (const c of pack) chunks.push(c);
   return Readable.from([gzipSync(Buffer.concat(chunks))]);
 }
 

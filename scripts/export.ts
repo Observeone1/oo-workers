@@ -36,45 +36,77 @@ interface Args {
   includeArtifacts: boolean;
 }
 
+function readValueArg(argv: string[], index: number, flag: string): string | null {
+  const value = argv[index + 1];
+  if (value == null) {
+    console.error(`${flag} requires a value`);
+    process.exit(2);
+  }
+  return value;
+}
+
+function applyFlag(args: Args, argv: string[], index: number): number {
+  const arg = argv[index];
+  if (arg === '--scope') {
+    const v = readValueArg(argv, index, '--scope');
+    if (v !== 'none' && v !== 'window' && v !== 'all') {
+      console.error(`--scope must be none|window|all, got '${v}'`);
+      process.exit(2);
+    }
+    args.scope = v;
+    return index + 2;
+  }
+  if (arg === '--since') {
+    const since = Number(readValueArg(argv, index, '--since'));
+    if (!Number.isFinite(since) || since <= 0) {
+      console.error('--since must be a positive number of days');
+      process.exit(2);
+    }
+    args.since = since;
+    args.scope = 'window';
+    return index + 2;
+  }
+  if (arg === '-o' || arg === '--out') {
+    args.out = readValueArg(argv, index, arg);
+    return index + 2;
+  }
+  if (arg === '--split') {
+    args.split = readValueArg(argv, index, '--split');
+    return index + 2;
+  }
+  if (arg === '--include-artifacts') {
+    args.includeArtifacts = true;
+    return index + 1;
+  }
+  if (arg === '--help' || arg === '-h') {
+    console.log(
+      'Usage: bun scripts/export.ts [--scope none|window|all] [--since <days>]\n' +
+        '                            [-o <file> | --split <dir>] [--include-artifacts]',
+    );
+    process.exit(0);
+  }
+  console.error(`unknown argument: ${arg}`);
+  process.exit(2);
+}
+
 function parseArgs(): Args {
   const argv = process.argv.slice(2);
-  let scope: DataScope = 'window';
-  let since = DEFAULT_SINCE_DAYS;
-  let out: string | null = null;
-  let split: string | null = null;
-  let includeArtifacts = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--scope') {
-      const v = argv[++i];
-      if (v !== 'none' && v !== 'window' && v !== 'all') {
-        console.error(`--scope must be none|window|all, got '${v}'`);
-        process.exit(2);
-      }
-      scope = v;
-    } else if (arg === '--since') {
-      since = Number(argv[++i]);
-      if (!Number.isFinite(since) || since <= 0) {
-        console.error('--since must be a positive number of days');
-        process.exit(2);
-      }
-      scope = 'window';
-    } else if (arg === '-o' || arg === '--out') out = argv[++i] ?? null;
-    else if (arg === '--split') split = argv[++i] ?? null;
-    else if (arg === '--include-artifacts') includeArtifacts = true;
-    else if (arg === '--help' || arg === '-h') {
-      console.log(
-        'Usage: bun scripts/export.ts [--scope none|window|all] [--since <days>]\n' +
-          '                            [-o <file> | --split <dir>] [--include-artifacts]',
-      );
-      process.exit(0);
-    }
+  const args: Args = {
+    scope: 'window',
+    since: DEFAULT_SINCE_DAYS,
+    out: null,
+    split: null,
+    includeArtifacts: false,
+  };
+  let index = 0;
+  while (index < argv.length) {
+    index = applyFlag(args, argv, index);
   }
-  if (includeArtifacts && split) {
+  if (args.includeArtifacts && args.split) {
     console.error('--include-artifacts is not compatible with --split (use -o instead)');
     process.exit(2);
   }
-  return { scope, since, out, split, includeArtifacts };
+  return args;
 }
 
 async function main() {
@@ -96,7 +128,9 @@ async function main() {
   await sql.end();
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('export failed:', err);
   process.exit(1);
-});
+}

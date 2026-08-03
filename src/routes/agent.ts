@@ -56,7 +56,7 @@ export function registerAgentRoutes(app: Hono, { blockingConn }: RouteDeps): voi
     const region = c.get('region');
     let body: AgentResultBody;
     try {
-      body = (await c.req.json()) as AgentResultBody;
+      body = await c.req.json();
     } catch {
       return c.json({ error: 'invalid JSON body' }, 400);
     }
@@ -87,7 +87,7 @@ export function registerAgentRoutes(app: Hono, { blockingConn }: RouteDeps): voi
     const region = c.get('region');
     let body: { projectId?: number; testIds?: number[] };
     try {
-      body = (await c.req.json()) as typeof body;
+      body = await c.req.json();
     } catch {
       return c.json({ error: 'invalid JSON body' }, 400);
     }

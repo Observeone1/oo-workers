@@ -20,13 +20,17 @@ import { executePlaywrightTest } from '../../src/services/playwright.service.ts'
 // test writes must live there too — Playwright silently finds 0 tests
 // for paths outside the configured testDir.
 let runDir = '';
-let canRun = true;
-
-beforeAll(async () => {
+const canRun = (() => {
   try {
     require.resolve('@playwright/test');
+    return true;
   } catch {
-    canRun = false;
+    return false;
+  }
+})();
+
+beforeAll(async () => {
+  if (!canRun) {
     console.warn('[playwright-runner.it] @playwright/test not installed — SKIPPED');
     return;
   }
@@ -42,9 +46,8 @@ afterAll(async () => {
   if (runDir) await rm(runDir, { recursive: true, force: true });
 }, 30_000);
 
-describe('executePlaywrightTest — env injection + crash surfacing', () => {
+describe.skipIf(!canRun)('executePlaywrightTest — env injection + crash surfacing', () => {
   test('A. PLAYWRIGHT_TARGET_URL reaches the spawned process', async () => {
-    if (!canRun) return;
     // Spec that *only* passes if the env var matches the URL we passed.
     // No network — we just read process.env inside the test.
     const expectedUrl = 'https://example.com/health';
@@ -70,7 +73,6 @@ test('env injected', () => {
   }, 120_000);
 
   test('B. runner crash → error includes the actual stderr, not just exit-code msg', async () => {
-    if (!canRun) return;
     // Spec that fails to import — Playwright exits before any test runs.
     const specPath = path.join(runDir, 'bad-import.spec.ts');
     await writeFile(

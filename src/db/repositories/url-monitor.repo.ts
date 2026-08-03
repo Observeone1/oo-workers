@@ -29,9 +29,9 @@ export const urlMonitorRepo = {
 
     return rows.map(({ url_monitors: m, latest: l }) => ({
       ...m,
-      type: 'url' as const,
+      type: 'url',
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         statusCode: l.statusCode,
         responseTimeMs: l.responseTimeMs,

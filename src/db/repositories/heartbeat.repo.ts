@@ -16,7 +16,7 @@ export const heartbeatRepo = {
    *  so the unified GET /api/monitors response stays homogeneous. */
   async list(): Promise<Array<HeartbeatRow & { type: 'heartbeat' }>> {
     const rows = await db.select().from(heartbeatMonitors).orderBy(desc(heartbeatMonitors.id));
-    return rows.map((r) => ({ ...r, type: 'heartbeat' as const }));
+    return rows.map((r) => ({ ...r, type: 'heartbeat' }));
   },
 
   findById(id: number) {

@@ -13,10 +13,9 @@ import { createServer } from 'node:net';
 import postgres from 'postgres';
 import { Redis } from 'ioredis';
 import { runMigrations } from '../../src/db/migrate.ts';
-import { startWorkers } from '../../src/workers.ts';
 import type { IntegrationCtx } from './setup.ts';
 
-export { startWorkers };
+export { startWorkers } from '../../src/workers.ts';
 
 /**
  * Connects to the shared testcontainer Postgres via DATABASE_URL (set by
@@ -37,7 +36,7 @@ function ctx(): IntegrationCtx {
   return c;
 }
 
-export function freePort(): Promise<number> {
+function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
     srv.once('error', reject);

@@ -1,6 +1,6 @@
 import { exec } from 'node:child_process';
 import { promisify, stripVTControlCharacters } from 'node:util';
-import path from 'node:path';
+import { parsePlaywrightJsonOutput, processPlaywrightSuite } from './playwright-result-parser.ts';
 
 const execAsync = promisify(exec);
 
@@ -93,7 +93,7 @@ export function buildCredentialEnv(
   if (!credentials) return env;
   for (const [key, value] of Object.entries(credentials)) {
     if (typeof value !== 'string') continue;
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    if (!/^[A-Za-z_]\w*$/.test(key)) continue;
     if (CREDENTIAL_ENV_DENYLIST.has(key)) continue;
     if (CREDENTIAL_ENV_DENY_PREFIXES.some((p) => key.startsWith(p))) continue;
     env[key] = value;
@@ -129,8 +129,10 @@ export async function executePlaywrightTest(
   const artifacts: PlaywrightArtifact[] = [];
 
   try {
-    logs.push(`Preparing to execute test via native Playwright runner...`);
-    logs.push(`Script path: ${scriptPath}`);
+    logs.push(
+      `Preparing to execute test via native Playwright runner...`,
+      `Script path: ${scriptPath}`,
+    );
 
     // Build the command. We need:
     //   --reporter json       parse-able output on stdout
@@ -171,102 +173,29 @@ export async function executePlaywrightTest(
       success = false;
     }
 
-    let parsedResult;
-    try {
-      const jsonStart = stdout.indexOf('{');
-      const jsonEnd = stdout.lastIndexOf('}');
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        const jsonStr = stdout.substring(jsonStart, jsonEnd + 1);
-        parsedResult = JSON.parse(jsonStr);
-      }
-    } catch {
-      logs.push('Failed to parse Playwright JSON output');
-    }
+    const parsedResult = parsePlaywrightJsonOutput(stdout);
+    if (!parsedResult) logs.push('Failed to parse Playwright JSON output');
 
-    if (parsedResult?.suites?.length > 0) {
-      const stripAnsi = stripVTControlCharacters;
-
-      const flattenTests = (suite: any): any[] => {
-        let tests: any[] = [];
-        if (suite.specs) {
-          suite.specs.forEach((spec: any) => {
-            if (spec.tests && spec.tests.length > 0 && spec.tests[0].results.length > 0) {
-              tests.push({ title: spec.title, result: spec.tests[0].results[0] });
-            }
-          });
-        }
-        if (suite.suites) {
-          suite.suites.forEach((child: any) => {
-            tests = tests.concat(flattenTests(child));
-          });
-        }
-        return tests;
-      };
-
-      const allTests = flattenTests(parsedResult.suites[0]);
-
-      for (const test of allTests) {
-        const testRun = test.result;
-
-        if (testRun.status === 'passed') {
-          logs.push(`✅ Test passed: ${test.title}`);
-        } else {
-          logs.push(`❌ Test failed: ${test.title}`);
-          if (testRun.error) {
-            const cleanError = stripAnsi(testRun.error.message);
-            logs.push(`Error: ${cleanError}`);
-            if (testRun.error.snippet) logs.push(stripAnsi(testRun.error.snippet));
-            executionError = cleanError;
-          }
-        }
-
-        if (testRun.stdout) {
-          testRun.stdout.forEach((l: any) => logs.push(`[STDOUT] ${stripAnsi(l.text)}`));
-        }
-        if (testRun.stderr) {
-          testRun.stderr.forEach((l: any) => logs.push(`[STDERR] ${stripAnsi(l.text)}`));
-        }
-
-        // Pull attachments. Playwright's JSON reporter emits one entry per
-        // captured file (trace, screenshot, video). Names are stable enough
-        // to route on. We resolve relative paths against cwd so the caller
-        // gets absolutes.
-        if (Array.isArray(testRun.attachments)) {
-          for (const att of testRun.attachments) {
-            if (!att?.path) continue;
-            artifacts.push({
-              name: String(att.name ?? 'attachment'),
-              path: path.isAbsolute(att.path) ? att.path : path.resolve(process.cwd(), att.path),
-              contentType: String(att.contentType ?? 'application/octet-stream'),
-            });
-          }
-        }
-      }
-
-      if (executionError) success = false;
-    } else {
-      if (!success) {
-        // Two error sources for a "no suites" failure:
-        //   1) parsedResult.errors[] — Playwright crashed before tests
-        //      (bad import, syntax, missing dep, no-tests-found). Goes
-        //      to stdout as part of the JSON reporter.
-        //   2) stderr — anything Playwright didn't structure (worker
-        //      panic, OOM, dep install crash).
-        // Prefer (1) when present, fall back to (2). Without this, the
-        // execution row used to land with the generic "Command failed
-        // with exit code 1" and no debugging signal.
-        const reporterErrors = Array.isArray(parsedResult?.errors)
-          ? parsedResult.errors
-              .map((e: { message?: string }) => (e?.message ?? '').trim())
-              .filter(Boolean)
-              .join('\n')
-          : '';
-        const stderrSummary = extractStderrSummary(stderr);
-        const detail = reporterErrors || stderrSummary;
-        logs.push(`Execution failed: ${executionError}`);
-        if (detail) logs.push(`Detail: ${detail}`);
-        if (detail) executionError = `Playwright runner failed: ${detail}`;
-      }
+    if (
+      parsedResult?.suites &&
+      Array.isArray(parsedResult.suites) &&
+      parsedResult.suites.length > 0
+    ) {
+      const processed = processPlaywrightSuite(parsedResult, logs, artifacts);
+      success = processed.success;
+      executionError = processed.executionError ?? executionError;
+    } else if (!success) {
+      const reporterErrors = Array.isArray(parsedResult?.errors)
+        ? parsedResult.errors
+            .map((e: { message?: string }) => (e?.message ?? '').trim())
+            .filter(Boolean)
+            .join('\n')
+        : '';
+      const stderrSummary = extractStderrSummary(stderr);
+      const detail = reporterErrors || stderrSummary;
+      logs.push(`Execution failed: ${executionError}`);
+      if (detail) logs.push(`Detail: ${detail}`);
+      if (detail) executionError = `Playwright runner failed: ${detail}`;
     }
 
     return {

@@ -64,9 +64,10 @@ export async function waitForMessage(opts: {
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
+  const toSuffix = opts.to ? ` to ${opts.to}` : '';
   throw new Error(
     `Mailpit: no message with subject containing "${opts.subjectIncludes}"` +
-      `${opts.to ? ` to ${opts.to}` : ''} within ${timeoutMs / 1000}s. ` +
+      `${toSuffix} within ${timeoutMs / 1000}s. ` +
       `Subjects seen: ${seen.length ? seen.join(' | ') : '(none)'}`,
   );
 }

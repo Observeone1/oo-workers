@@ -106,12 +106,14 @@ export function tcpProbe(opts: TcpProbeOptions): Promise<TcpProbeResult> {
 
     socket.once('timeout', () => {
       const banner = chunks.length > 0 ? Buffer.concat(chunks).toString('utf8') : undefined;
-      const errorMessage =
-        expectBanner && banner !== undefined
-          ? `Banner did not contain expected text within ${timeoutMs}ms (${host}:${port})`
-          : wantBanner
-            ? `No banner within ${timeoutMs}ms (${host}:${port})`
-            : `Connection timed out after ${timeoutMs}ms (${host}:${port})`;
+      let errorMessage: string;
+      if (expectBanner && banner !== undefined) {
+        errorMessage = `Banner did not contain expected text within ${timeoutMs}ms (${host}:${port})`;
+      } else if (wantBanner) {
+        errorMessage = `No banner within ${timeoutMs}ms (${host}:${port})`;
+      } else {
+        errorMessage = `Connection timed out after ${timeoutMs}ms (${host}:${port})`;
+      }
       finish({
         ok: false,
         latencyMs: Date.now() - start,

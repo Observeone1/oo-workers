@@ -282,7 +282,7 @@ describe.skipIf(!CAN_CREATE_DB)('backup-restore round-trip', () => {
     expect(buf[0]).toBe(0x1f);
     expect(buf[1]).toBe(0x8b);
     const inner = gunzipSync(buf);
-    expect(inner.slice(257, 262).toString('ascii')).toBe('ustar');
+    expect(inner.subarray(257, 262).toString('ascii')).toBe('ustar');
   }, 30_000);
 
   test('tar.gz envelope restores (DB rows round-trip)', async () => {

@@ -29,9 +29,9 @@ export const apiCheckRepo = {
 
     return rows.map(({ api_checks: c, latest: l }) => ({
       ...c,
-      type: 'api' as const,
+      type: 'api',
       latest: projectLatest(l, c.intervalSeconds, (l, p) => ({
-        id: l.id as number,
+        id: l.id,
         status: p.status,
         statusCode: l.statusCode,
         responseTimeMs: l.responseTimeMs,

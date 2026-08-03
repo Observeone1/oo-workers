@@ -28,7 +28,7 @@ test('operator posts an incident; it renders + is XSS-safe on the public page', 
   }
 
   const suffix = uniqueSuffix();
-  const slug = `inc-e2e-${suffix}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const slug = `inc-e2e-${suffix}`.toLowerCase().replaceAll(/[^a-z0-9-]/g, '');
   const title = `Checkout degraded ${suffix}`;
   const XSS = '<script>alert(1)</script>';
   let pageId = 0;

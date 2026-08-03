@@ -15,7 +15,7 @@ import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Redis } from 'ioredis';
 import { and, eq } from 'drizzle-orm';
-import { acquireRedisDb, freePort, startTestServer } from './_harness.ts';
+import { acquireRedisDb, startTestServer } from './_harness.ts';
 import { db } from '../../src/config/db.ts';
 import { isStorageConfigured, getObject } from '../../src/services/object-storage.ts';
 import { handleQaJob, type JobPayload } from '../../src/agent.ts';

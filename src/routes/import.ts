@@ -11,7 +11,7 @@ import { logger } from '../utils/logger.ts';
 
 export function registerImportRoutes(app: Hono): void {
   app.post('/api/import', async (c) => {
-    const body = (await c.req.json()) as { version?: number; [k: string]: unknown };
+    const body: { version?: number; [k: string]: unknown } = await c.req.json();
     try {
       const result = await runImport(body);
       return c.json(result);

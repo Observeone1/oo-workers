@@ -34,7 +34,7 @@ export const userRepo = {
   },
 
   count(): Promise<number> {
-    return db.$count(users).then((r) => r as number);
+    return db.$count(users);
   },
 
   updateUser(

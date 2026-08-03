@@ -31,6 +31,11 @@
  */
 
 import { adaptSaaSExport } from './adapt-cli-export.ts';
+import {
+  ensureNoNameCollisions,
+  logAdaptSummary,
+  postImportPayload,
+} from './import-from-saas-helpers.ts';
 
 interface Args {
   from: string | null;
@@ -95,23 +100,7 @@ async function main() {
   const { payload, skipped, warnings } = adaptSaaSExport(
     (await loadSaasExport(from)) as Parameters<typeof adaptSaaSExport>[0],
   );
-  const notTransferred = Object.entries(skipped).filter(([, n]) => n > 0);
-
-  console.log(
-    `adapted: urlMonitors=${payload.urlMonitors.length} apiChecks=${payload.apiChecks.length} qaProjects=${payload.qaProjects.length} channels=${payload.channels.length}`,
-  );
-  if (notTransferred.length) {
-    console.log(
-      `not brought across (unsupported, invalid, or no self-host import yet): ${notTransferred
-        .map(([k, n]) => `${k}=${n}`)
-        .join(', ')}`,
-    );
-  }
-  if (warnings.length) {
-    console.log('\n⚠ ACTION NEEDED — these imported but will NOT fully work yet:');
-    for (const w of warnings) console.log(`  • ${w}`);
-    console.log('');
-  }
+  logAdaptSummary(payload, skipped, warnings);
 
   if (dryRun) {
     console.log('--dry-run: nothing posted.');
@@ -123,93 +112,13 @@ async function main() {
     process.exit(2);
   }
 
-  // Pre-flight: /api/import has no unique-name constraint, so re-running
-  // duplicates rather than skipping. Refuse colliding names up front.
-  const [listRes, chRes] = await Promise.all([
-    fetch(`${url}/api/monitors`, { headers: { authorization: `Bearer ${key}` } }),
-    fetch(`${url}/api/channels`, { headers: { authorization: `Bearer ${key}` } }),
-  ]);
-  if (listRes.ok) {
-    const existing = (await listRes.json()) as Record<string, Array<{ name: string }>>;
-    // /api/channels deliberately omits the secret URL, so the only
-    // collision key available is the channel name — but a duplicate
-    // channel means double-alerting on every outage forever, so this
-    // guard matters more than the monitor one.
-    const existingChannels = chRes.ok ? ((await chRes.json()) as Array<{ name: string }>) : [];
-    const have = new Set([
-      ...(existing.url ?? []).map((m) => `url:${m.name}`),
-      ...(existing.api ?? []).map((m) => `api:${m.name}`),
-      ...(existing.heartbeat ?? []).map((m) => `heartbeat:${m.name}`),
-      ...existingChannels.map((ch) => `channel:${ch.name}`),
-    ]);
-    const collisions = [
-      ...payload.urlMonitors.filter((m) => have.has(`url:${m.name}`)).map((m) => `url ${m.name}`),
-      ...payload.apiChecks.filter((m) => have.has(`api:${m.name}`)).map((m) => `api ${m.name}`),
-      ...(payload.heartbeats ?? [])
-        .filter((h) => have.has(`heartbeat:${h.name}`))
-        .map((h) => `heartbeat ${h.name}`),
-      ...payload.channels
-        .filter((ch) => have.has(`channel:${ch.name}`))
-        .map((ch) => `channel ${ch.name}`),
-    ];
-    if (collisions.length && !allowDuplicates) {
-      console.error(
-        `\n⚠ ${collisions.length} name(s) already exist on the target. /api/import is not ` +
-          `idempotent and has no unique-name constraint — posting these would create ` +
-          `DUPLICATES, not update or skip them:`,
-      );
-      for (const c of collisions) console.error(`  - ${c}`);
-      console.error(
-        '\nTreat import as a one-time seed. Re-run with --allow-duplicates to override.',
-      );
-      process.exit(1);
-    }
-    if (collisions.length) {
-      console.warn(
-        `⚠ proceeding with ${collisions.length} duplicate name(s) (--allow-duplicates).`,
-      );
-    }
-  }
-
-  const res = await fetch(`${url}/api/import`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    console.error(`POST ${url}/api/import → ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    process.exit(1);
-  }
-  const result = (await res.json()) as {
-    url: number;
-    api: number;
-    qa: number;
-    tcp: number;
-    udp: number;
-    heartbeat?: number;
-    channels: number;
-    skipped?: string[];
-    warnings?: string[];
-  };
-  console.log(
-    `imported: url=${result.url} api=${result.api} qa=${result.qa} heartbeat=${result.heartbeat ?? 0} channels=${result.channels}`,
-  );
-  // Server-side advisories (path-independent — also shown in the UI
-  // import dialog). Distinct from the adapter `warnings` above.
-  for (const w of result.warnings ?? []) console.log(`  • ${w}`);
-
-  // The pre-flight handles re-import collisions; anything here is a
-  // per-item server-side creation error (bad field, validation, etc.).
-  const errored = result.skipped ?? [];
-  if (errored.length) {
-    console.warn(`\n⚠ ${errored.length} item(s) the server could not create:`);
-    for (const s of errored) console.warn(`  - ${s}`);
-    process.exit(1);
-  }
-  console.log('✓ done.');
+  await ensureNoNameCollisions(url, key, payload, allowDuplicates);
+  await postImportPayload(url, key, payload);
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('import-from-saas failed:', err);
   process.exit(1);
-});
+}

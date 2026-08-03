@@ -21,7 +21,6 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { eq } from 'drizzle-orm';
 import { acquireRedisDb, connectDb } from './_harness.ts';
 import { execEvents } from '../../src/services/exec-events.ts';
 import { writeAgentResult } from '../../src/services/agent-dispatch.ts';
@@ -30,6 +29,12 @@ const TAG = `sse-ad-${Date.now()}`;
 
 let redisCtx: Awaited<ReturnType<typeof acquireRedisDb>>;
 let sql: ReturnType<typeof postgres>;
+function execTableForType(type: string): string {
+  if (type === 'api') return 'api_executions';
+  if (type === 'url') return 'url_monitor_executions';
+  return `${type}_executions`;
+}
+
 let regionId = 0;
 const insertedMonitorIds: Record<string, number> = {};
 
@@ -81,7 +86,7 @@ afterAll(async () => {
   for (const [type, id] of Object.entries(insertedMonitorIds)) {
     if (!id) continue;
     const table = `${type}_monitors`;
-    const execTable = `${type === 'api' ? 'api_executions' : type === 'url' ? 'url_monitor_executions' : `${type}_executions`}`;
+    const execTable = execTableForType(type);
     const fkCol = type === 'api' ? 'api_check_id' : `${type}_monitor_id`;
     if (type === 'api') {
       await sql.unsafe(`DELETE FROM api_executions WHERE api_check_id = ${id}`).catch(() => {});
@@ -104,7 +109,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('url branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO url_monitors (name, url, timeout_ms, interval_seconds, enabled)
-      VALUES (${`${TAG}-url`}, 'https://example.com', 10000, 60, TRUE) RETURNING id`;
+      VALUES (${TAG + '-url'}, 'https://example.com', 10000, 60, TRUE) RETURNING id`;
     insertedMonitorIds.url = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO url_monitor_executions (url_monitor_id, status, region_id)
@@ -127,7 +132,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('api branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO api_checks (name, url, method, headers, timeout_ms, interval_seconds, enabled)
-      VALUES (${`${TAG}-api`}, 'https://example.com', 'GET', '{}'::jsonb, 10000, 60, TRUE) RETURNING id`;
+      VALUES (${TAG + '-api'}, 'https://example.com', 'GET', '{}'::jsonb, 10000, 60, TRUE) RETURNING id`;
     insertedMonitorIds.api = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO api_executions (api_check_id, status, region_id)
@@ -149,7 +154,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('tcp branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO tcp_monitors (name, host, port, timeout_ms, interval_seconds, enabled)
-      VALUES (${`${TAG}-tcp`}, 'example.com', 80, 5000, 60, TRUE) RETURNING id`;
+      VALUES (${TAG + '-tcp'}, 'example.com', 80, 5000, 60, TRUE) RETURNING id`;
     insertedMonitorIds.tcp = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO tcp_executions (tcp_monitor_id, status, region_id)
@@ -168,7 +173,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('udp branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO udp_monitors (name, host, port, expect_response, timeout_ms, interval_seconds, enabled)
-      VALUES (${`${TAG}-udp`}, '8.8.8.8', 53, FALSE, 5000, 60, TRUE) RETURNING id`;
+      VALUES (${TAG + '-udp'}, '8.8.8.8', 53, FALSE, 5000, 60, TRUE) RETURNING id`;
     insertedMonitorIds.udp = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO udp_executions (udp_monitor_id, status, region_id)
@@ -187,7 +192,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('db branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO db_monitors (name, protocol, host, port, tls, timeout_ms, interval_seconds, enabled)
-      VALUES (${`${TAG}-db`}, 'postgres', 'localhost', 5432, FALSE, 5000, 60, TRUE) RETURNING id`;
+      VALUES (${TAG + '-db'}, 'postgres', 'localhost', 5432, FALSE, 5000, 60, TRUE) RETURNING id`;
     insertedMonitorIds.db = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO db_executions (db_monitor_id, status, region_id)
@@ -206,7 +211,7 @@ describe('writeAgentResult emits execution per type', () => {
   test('tls branch emits execution', async () => {
     const [m] = await sql<[{ id: number }]>`
       INSERT INTO tls_monitors (name, host, port, warn_days, interval_seconds, enabled, verify_chain, verify_hostname)
-      VALUES (${`${TAG}-tls`}, 'example.com', 443, 30, 60, TRUE, TRUE, TRUE) RETURNING id`;
+      VALUES (${TAG + '-tls'}, 'example.com', 443, 30, 60, TRUE, TRUE, TRUE) RETURNING id`;
     insertedMonitorIds.tls = m.id;
     const [e] = await sql<[{ id: number }]>`
       INSERT INTO tls_executions (tls_monitor_id, status, region_id)

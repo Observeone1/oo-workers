@@ -11,7 +11,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { createServer, type Server } from 'node:http';
 import { db } from '../../src/config/db.ts';
-import { apiKeys, qaRuns, qaTestExecutions, regions } from '../../src/db/schema.ts';
+import { apiKeys, qaRuns, regions } from '../../src/db/schema.ts';
 import { qaProjectRepo } from '../../src/db/repositories/qa-project.repo.ts';
 import {
   alertChannelRepo,
@@ -52,7 +52,7 @@ beforeAll(async () => {
     });
   });
   await new Promise<void>((r) => hookServer!.listen(0, '127.0.0.1', r));
-  const addr = hookServer!.address();
+  const addr = hookServer?.address();
   if (!addr || typeof addr !== 'object') throw new Error('no server address');
   hookUrl = `http://127.0.0.1:${addr.port}/hook`;
 

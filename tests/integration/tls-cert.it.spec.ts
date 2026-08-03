@@ -29,7 +29,10 @@ function genCert(tag: string, days: number, opts: { cn?: string; sans?: string[]
   const crt = join(dir, `${tag}.crt`);
   const cn = opts.cn ?? `oo-tls-${tag}`;
   const args = ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', key, '-out', crt, '-days', String(days), '-nodes', '-subj', `/CN=${cn}`];
-  if (opts.sans?.length) args.push('-addext', `subjectAltName=${opts.sans.map((s) => `DNS:${s}`).join(',')}`);
+  if (opts.sans?.length) {
+    const sanList = opts.sans.map((s) => 'DNS:' + s).join(',');
+    args.push('-addext', `subjectAltName=${sanList}`);
+  }
   execFileSync('openssl', args, { stdio: 'ignore' });
   return { key: readFileSync(key), cert: readFileSync(crt) };
 }
@@ -129,7 +132,7 @@ describe.skipIf(SKIP)('tls-cert probe', () => {
   test('expect_cn_regex matching CN → SUCCESS', async () => {
 
     const srv = await serve(genCert('cn', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
-    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^svc\\.prod\\.oo$' });
+    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: String.raw`^svc\.prod\.oo$` });
     srv.close();
     expect(r.ok).toBe(true);
   });
@@ -137,7 +140,7 @@ describe.skipIf(SKIP)('tls-cert probe', () => {
   test('expect_cn_regex no match → FAIL', async () => {
 
     const srv = await serve(genCert('cn2', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
-    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^nope\\.' });
+    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: String.raw`^nope\.` });
     srv.close();
     expect(r.ok).toBe(false);
     expect(/No CN\/SAN matches/i.test(r.errorMessage ?? '')).toBe(true);
@@ -146,7 +149,7 @@ describe.skipIf(SKIP)('tls-cert probe', () => {
   test('expect_cn_regex matches a DNS SAN (not CN) → SUCCESS', async () => {
 
     const srv = await serve(genCert('cn3', 825, { cn: 'svc.prod.oo', sans: ['api.prod.oo'] }));
-    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: '^api\\.prod\\.oo$' });
+    const r = await tlsProbe({ host: '127.0.0.1', port: srv.port, timeoutMs: 4000, warnDays: 30, expectCnRegex: String.raw`^api\.prod\.oo$` });
     srv.close();
     expect(r.ok).toBe(true);
   });

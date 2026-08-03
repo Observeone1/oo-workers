@@ -56,7 +56,7 @@ test('TLS assertions: endpoint validates the regex, and the new columns round-tr
         name: `tls-ok-${sfx}`,
         verifyChain: true,
         verifyHostname: true,
-        expectCnRegex: '^.*\\.example\\.com$',
+        expectCnRegex: String.raw`^.*\.example\.com$`,
       },
     });
     expect(ok.status(), `valid create → 201 (${await ok.text()})`).toBe(201);
@@ -67,7 +67,7 @@ test('TLS assertions: endpoint validates the regex, and the new columns round-tr
     expect(detail.monitor.verifyChain, 'verify_chain round-trips').toBe(true);
     expect(detail.monitor.verifyHostname, 'verify_hostname round-trips').toBe(true);
     expect(detail.monitor.expectCnRegex, 'expect_cn_regex round-trips').toBe(
-      '^.*\\.example\\.com$',
+      String.raw`^.*\.example\.com$`,
     );
 
     // Default-off must remain the shape for a plain monitor (no regression).
