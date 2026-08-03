@@ -40,7 +40,7 @@ async function fetchApiMeta(id: number): Promise<MonitorMetaRow | null> {
 }
 
 async function fetchHostPortMeta(
-  table: typeof tcpMonitors,
+  table: typeof tcpMonitors | typeof udpMonitors | typeof tlsMonitors,
   id: number,
 ): Promise<MonitorMetaRow | null> {
   const [r] = await db
