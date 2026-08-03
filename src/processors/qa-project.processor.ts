@@ -167,7 +167,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
           });
 
           const durationMs = result.duration_ms;
-          const status = result.success ? 'passed' : 'failed';
+          const status: 'passed' | 'failed' = result.success ? 'passed' : 'failed';
 
           // On failure, upload trace + screenshots to the bucket and stamp
           // the execution row. Skip cleanly when storage isn't configured
