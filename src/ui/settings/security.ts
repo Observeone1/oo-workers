@@ -182,7 +182,7 @@ function updatePwMeter(v: string, panel: HTMLElement): void {
   if (v.length >= 8) score++;
   if (v.length >= 12) score++;
   if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
-  if (/[0-9]/.test(v) && /[^A-Za-z0-9]/.test(v)) score++;
+  if (/\d/.test(v) && /[^A-Za-z0-9]/.test(v)) score++;
   const colors = ['var(--down)', 'var(--down)', 'var(--warn)', 'var(--info)', 'var(--up)'];
   const labels = ['too short', 'weak', 'fair', 'good', 'strong'];
   meter.querySelectorAll<HTMLElement>('.bar').forEach((b, i) => {
