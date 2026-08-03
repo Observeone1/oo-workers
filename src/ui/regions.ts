@@ -305,7 +305,7 @@ function wireCreateBtn() {
     openSlideover({
       title: 'New region',
       sub: 'oo agent · self-hosted',
-      body: `
+      body: String.raw`
       <div class="form-section">
         <div class="sec-head"><span class="ttl">Identity</span></div>
         <div class="field-grid cols-2">
