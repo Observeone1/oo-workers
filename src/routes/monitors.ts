@@ -40,6 +40,19 @@ const MONITOR_TYPES: ReadonlySet<MonitorType> = new Set([
   'tls',
 ]);
 
+type SocketMonitorValidation = { ok: true; port: number } | { ok: false; error: string };
+
+/** Shared host/port/payloadHex gate for TCP and UDP monitor create routes. */
+function validateSocketMonitorCreate(body: Record<string, unknown>): SocketMonitorValidation {
+  const port = Number(body.port);
+  if (!body.name || !body.host || badPort(port)) {
+    return { ok: false, error: 'name + host + port (1-65535) required' };
+  }
+  const hexErr = validatePayloadHex(body.payloadHex);
+  if (hexErr) return { ok: false, error: hexErr };
+  return { ok: true, port };
+}
+
 export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
   // ---------- API: list ----------
   app.get('/api/monitors', async (c) => {
@@ -138,15 +151,12 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
 
   app.post('/api/monitors/tcp', async (c) => {
     const body = await c.req.json();
-    const port = Number(body.port);
-    if (!body.name || !body.host || badPort(port))
-      return c.json({ error: 'name + host + port (1-65535) required' }, 400);
-    const hexErr = validatePayloadHex(body.payloadHex);
-    if (hexErr) return c.json({ error: hexErr }, 400);
+    const validated = validateSocketMonitorCreate(body);
+    if (!validated.ok) return c.json({ error: validated.error }, 400);
     const [m] = await tcpMonitorRepo.create({
       name: body.name,
       host: body.host,
-      port,
+      port: validated.port,
       payloadHex: body.payloadHex ?? null,
       expectBanner: body.expectBanner ?? null,
       timeoutMs: body.timeoutMs ?? DEFAULTS.TCP_TIMEOUT_MS,
@@ -159,15 +169,12 @@ export function registerMonitorRoutes(app: Hono, deps: RouteDeps): void {
 
   app.post('/api/monitors/udp', async (c) => {
     const body = await c.req.json();
-    const port = Number(body.port);
-    if (!body.name || !body.host || badPort(port))
-      return c.json({ error: 'name + host + port (1-65535) required' }, 400);
-    const hexErr = validatePayloadHex(body.payloadHex);
-    if (hexErr) return c.json({ error: hexErr }, 400);
+    const validated = validateSocketMonitorCreate(body);
+    if (!validated.ok) return c.json({ error: validated.error }, 400);
     const [m] = await udpMonitorRepo.create({
       name: body.name,
       host: body.host,
-      port,
+      port: validated.port,
       payloadHex: body.payloadHex ?? null,
       expectResponse: body.expectResponse ?? false,
       timeoutMs: body.timeoutMs ?? DEFAULTS.UDP_TIMEOUT_MS,

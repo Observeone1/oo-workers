@@ -301,29 +301,38 @@ export async function deleteObject(key: string): Promise<void> {
  * List all object keys under the given prefix. Pages through ListObjectsV2
  * until the bucket is exhausted. Used by the boot-time orphan sweep.
  */
+async function fetchListObjectsV2Page(
+  cfg: Config,
+  prefix: string,
+  continuationToken?: string,
+): Promise<{ xml: string; continuationToken?: string }> {
+  const url = new URL(cfg.endpoint);
+  url.pathname = `/${cfg.bucket}`;
+  url.searchParams.set('list-type', '2');
+  url.searchParams.set('prefix', prefix);
+  if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
+
+  const res = await sign(cfg, 'GET', url, null);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ObjectStorageError(
+      `LIST ${prefix} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      res.status,
+    );
+  }
+  const xml = await res.text();
+  const nextMatch = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
+  return { xml, continuationToken: nextMatch?.[1] };
+}
+
 export async function listObjects(prefix: string): Promise<string[]> {
   const cfg = requireConfig();
   const out: string[] = [];
   let continuationToken: string | undefined;
   do {
-    const url = new URL(cfg.endpoint);
-    url.pathname = `/${cfg.bucket}`;
-    url.searchParams.set('list-type', '2');
-    url.searchParams.set('prefix', prefix);
-    if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-
-    const res = await sign(cfg, 'GET', url, null);
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new ObjectStorageError(
-        `LIST ${prefix} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
-        res.status,
-      );
-    }
-    const xml = await res.text();
-    for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) out.push(m[1]);
-    const nextMatch = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
-    continuationToken = nextMatch?.[1];
+    const page = await fetchListObjectsV2Page(cfg, prefix, continuationToken);
+    for (const m of page.xml.matchAll(/<Key>([^<]+)<\/Key>/g)) out.push(m[1]);
+    continuationToken = page.continuationToken;
   } while (continuationToken);
   return out;
 }
@@ -341,28 +350,13 @@ export async function listObjectsWithSize(
   const out: { key: string; size: number }[] = [];
   let continuationToken: string | undefined;
   do {
-    const url = new URL(cfg.endpoint);
-    url.pathname = `/${cfg.bucket}`;
-    url.searchParams.set('list-type', '2');
-    url.searchParams.set('prefix', prefix);
-    if (continuationToken) url.searchParams.set('continuation-token', continuationToken);
-
-    const res = await sign(cfg, 'GET', url, null);
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new ObjectStorageError(
-        `LIST ${prefix} failed: HTTP ${res.status} ${text.slice(0, 200)}`,
-        res.status,
-      );
-    }
-    const xml = await res.text();
-    for (const m of xml.matchAll(
+    const page = await fetchListObjectsV2Page(cfg, prefix, continuationToken);
+    for (const m of page.xml.matchAll(
       /<Key>([^<]+)<\/Key>\s*(?:<[^>]+>[^<]*<\/[^>]+>\s*)*<Size>(\d+)<\/Size>/g,
     )) {
       out.push({ key: m[1], size: Number(m[2]) });
     }
-    const nextMatch = /<NextContinuationToken>([^<]+)<\/NextContinuationToken>/.exec(xml);
-    continuationToken = nextMatch?.[1];
+    continuationToken = page.continuationToken;
   } while (continuationToken);
   return out;
 }
