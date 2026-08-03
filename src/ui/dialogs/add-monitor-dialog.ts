@@ -12,7 +12,6 @@ import type { MonType } from '../types';
 import { $, esc } from '../helpers';
 import { getChannels, getRegions, type ChannelLite, type RegionLite } from '../api';
 import { getActiveTab } from '../list';
-import { alertDialog } from '../dialogs';
 import { prefillEditMonitorFields } from './add-monitor-edit-prefill';
 import { syncRailToSection, wireAddDialogRail } from './add-monitor-dialog-wiring';
 import { handleAddMonitorSubmit } from './add-monitor-dialog-submit';
