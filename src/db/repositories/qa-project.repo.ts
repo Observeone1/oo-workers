@@ -52,7 +52,7 @@ export const qaProjectRepo = {
 
     return rows.map(({ qa_projects: p, latest: l, test_counts: tc }) => ({
       ...p,
-      type: 'qa' as const,
+      type: 'qa',
       testCount: tc?.count ?? 0,
       latest: projectLatest(l, p.intervalSeconds, (l, proj) => ({
         id: l.id,

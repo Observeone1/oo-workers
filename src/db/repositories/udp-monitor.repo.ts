@@ -28,7 +28,7 @@ export const udpMonitorRepo = {
 
     return rows.map(({ udp_monitors: m, latest: l }) => ({
       ...m,
-      type: 'udp' as const,
+      type: 'udp',
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
         id: l.id,
         status: p.status,

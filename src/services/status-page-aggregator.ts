@@ -14,22 +14,16 @@
 import { and, gte, sql } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
-  apiChecks,
   apiExecutions,
   dbExecutions,
-  dbMonitors,
-  qaProjects,
   qaTestExecutions,
   tcpExecutions,
-  tcpMonitors,
   tlsExecutions,
-  tlsMonitors,
   udpExecutions,
-  udpMonitors,
   urlMonitorExecutions,
-  urlMonitors,
 } from '../db/schema.ts';
 import type { MonitorType } from '../db/repositories/status-page.repo.ts';
+import { fetchMonitorMeta } from './status-page-monitor-meta.ts';
 
 export type DayState = 'up' | 'down' | 'unknown';
 
@@ -66,109 +60,8 @@ function normalize(status: string): DayState {
   return 'unknown';
 }
 
-async function monitorMeta(
-  type: MonitorType,
-  id: number,
-): Promise<{ name: string; target: string; intervalSeconds: number } | null> {
-  if (type === 'url') {
-    const [r] = await db
-      .select({
-        name: urlMonitors.name,
-        url: urlMonitors.url,
-        intervalSeconds: urlMonitors.intervalSeconds,
-      })
-      .from(urlMonitors)
-      .where(sql`${urlMonitors.id} = ${id}`)
-      .limit(1);
-    return r ? { name: r.name, target: r.url, intervalSeconds: r.intervalSeconds } : null;
-  }
-  if (type === 'api') {
-    const [r] = await db
-      .select({
-        name: apiChecks.name,
-        url: apiChecks.url,
-        intervalSeconds: apiChecks.intervalSeconds,
-      })
-      .from(apiChecks)
-      .where(sql`${apiChecks.id} = ${id}`)
-      .limit(1);
-    return r ? { name: r.name, target: r.url, intervalSeconds: r.intervalSeconds } : null;
-  }
-  if (type === 'tcp') {
-    const [r] = await db
-      .select({
-        name: tcpMonitors.name,
-        host: tcpMonitors.host,
-        port: tcpMonitors.port,
-        intervalSeconds: tcpMonitors.intervalSeconds,
-      })
-      .from(tcpMonitors)
-      .where(sql`${tcpMonitors.id} = ${id}`)
-      .limit(1);
-    return r
-      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
-      : null;
-  }
-  if (type === 'udp') {
-    const [r] = await db
-      .select({
-        name: udpMonitors.name,
-        host: udpMonitors.host,
-        port: udpMonitors.port,
-        intervalSeconds: udpMonitors.intervalSeconds,
-      })
-      .from(udpMonitors)
-      .where(sql`${udpMonitors.id} = ${id}`)
-      .limit(1);
-    return r
-      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
-      : null;
-  }
-  if (type === 'db') {
-    const [r] = await db
-      .select({
-        name: dbMonitors.name,
-        protocol: dbMonitors.protocol,
-        host: dbMonitors.host,
-        port: dbMonitors.port,
-        intervalSeconds: dbMonitors.intervalSeconds,
-      })
-      .from(dbMonitors)
-      .where(sql`${dbMonitors.id} = ${id}`)
-      .limit(1);
-    return r
-      ? {
-          name: r.name,
-          target: `${r.protocol} ${r.host}:${r.port}`,
-          intervalSeconds: r.intervalSeconds,
-        }
-      : null;
-  }
-  if (type === 'tls') {
-    const [r] = await db
-      .select({
-        name: tlsMonitors.name,
-        host: tlsMonitors.host,
-        port: tlsMonitors.port,
-        intervalSeconds: tlsMonitors.intervalSeconds,
-      })
-      .from(tlsMonitors)
-      .where(sql`${tlsMonitors.id} = ${id}`)
-      .limit(1);
-    return r
-      ? { name: r.name, target: `${r.host}:${r.port}`, intervalSeconds: r.intervalSeconds }
-      : null;
-  }
-  // type === 'qa' — the last remaining case. Switching to exhaustive branches
-  // above (rather than the previous fall-through) avoids the silent-mis-render
-  // bug where adding a type to MonitorType but not here would point status-page
-  // bindings of that type at the qa_projects table with the same numeric id.
-  const [r] = await db
-    .select({ name: qaProjects.name, intervalSeconds: qaProjects.intervalSeconds })
-    .from(qaProjects)
-    .where(sql`${qaProjects.id} = ${id}`)
-    .limit(1);
-  return r ? { name: r.name, target: 'browser script', intervalSeconds: r.intervalSeconds } : null;
+async function monitorMeta(type: MonitorType, id: number) {
+  return fetchMonitorMeta(type, id);
 }
 
 function startTimeCol(type: MonitorType) {

@@ -28,7 +28,7 @@ export const tcpMonitorRepo = {
 
     return rows.map(({ tcp_monitors: m, latest: l }) => ({
       ...m,
-      type: 'tcp' as const,
+      type: 'tcp',
       latest: projectLatest(l, m.intervalSeconds, (l, p) => ({
         id: l.id,
         status: p.status,

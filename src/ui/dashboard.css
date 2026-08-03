@@ -777,16 +777,14 @@ button.bare {
 }
 .stat .label {
   white-space: nowrap;
-}
-.stat:last-child {
-  border-right: none;
-}
-.stat .label {
   font-size: 10px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: var(--fw-medium);
+}
+.stat:last-child {
+  border-right: none;
 }
 .stat .value {
   font-family: var(--font-mono);
