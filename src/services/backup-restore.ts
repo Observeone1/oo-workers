@@ -59,6 +59,55 @@ async function targetIsEmpty(): Promise<boolean> {
   return true;
 }
 
+function drainLineBuffer(buf: string): { lines: string[]; rest: string } {
+  const lines: string[] = [];
+  let rest = buf;
+  let nl = rest.indexOf('\n');
+  while (nl >= 0) {
+    const line = rest.slice(0, nl);
+    rest = rest.slice(nl + 1);
+    if (line) lines.push(line);
+    nl = rest.indexOf('\n');
+  }
+  return { lines, rest };
+}
+
+async function* linesFromText(text: string): AsyncGenerator<string> {
+  const { lines, rest } = drainLineBuffer(text);
+  for (const line of lines) yield line;
+  if (rest.trim()) yield rest;
+}
+
+type RestoreTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function applyManifestChecks(
+  manifest: Manifest,
+  opts: { force: boolean },
+  tx: RestoreTx,
+): Promise<void> {
+  if (manifest.format !== BACKUP_FORMAT) {
+    throw new RestoreError(`unsupported backup format ${manifest.format}`);
+  }
+  const head = await schemaHead();
+  if (manifest.schemaHead !== head) {
+    throw new RestoreError(
+      `schema mismatch: dump is "${manifest.schemaHead}", this instance is "${head}". ` +
+        'Run the target through migrations to the same version first.',
+    );
+  }
+  const empty = await targetIsEmpty();
+  if (!empty && !opts.force) {
+    throw new RestoreError(
+      'target database is not empty. Restore replaces all data — re-run with force to confirm.',
+    );
+  }
+  if (!empty) {
+    await tx.execute(
+      dsql.raw(`TRUNCATE TABLE ${ALL_TABLE_NAMES.join(', ')} RESTART IDENTITY CASCADE`),
+    );
+  }
+}
+
 /**
  * Pipe a gzip stream and yield decoded NDJSON lines. We split manually
  * rather than use `readline` — Bun's readline-over-gunzip async iterator
@@ -71,13 +120,9 @@ async function* gunzipLines(input: Readable): AsyncGenerator<string> {
   let buf = '';
   for await (const chunk of gz) {
     buf += (chunk as Buffer).toString('utf8');
-    let nl = buf.indexOf('\n');
-    while (nl >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      if (line) yield line;
-      nl = buf.indexOf('\n');
-    }
+    const drained = drainLineBuffer(buf);
+    for (const line of drained.lines) yield line;
+    buf = drained.rest;
   }
   if (buf.trim()) yield buf;
 }
@@ -113,27 +158,7 @@ async function restoreLines(
 
       if (obj.manifest) {
         manifest = obj.manifest as Manifest;
-        if (manifest.format !== BACKUP_FORMAT) {
-          throw new RestoreError(`unsupported backup format ${manifest.format}`);
-        }
-        const head = await schemaHead();
-        if (manifest.schemaHead !== head) {
-          throw new RestoreError(
-            `schema mismatch: dump is "${manifest.schemaHead}", this instance is "${head}". ` +
-              'Run the target through migrations to the same version first.',
-          );
-        }
-        const empty = await targetIsEmpty();
-        if (!empty && !opts.force) {
-          throw new RestoreError(
-            'target database is not empty. Restore replaces all data — re-run with force to confirm.',
-          );
-        }
-        if (!empty) {
-          await tx.execute(
-            dsql.raw(`TRUNCATE TABLE ${ALL_TABLE_NAMES.join(', ')} RESTART IDENTITY CASCADE`),
-          );
-        }
+        await applyManifestChecks(manifest, opts, tx);
         checked = true;
         continue;
       }
@@ -239,13 +264,9 @@ async function* linesFromStream(s: Readable): AsyncGenerator<string> {
   let buf = '';
   for await (const chunk of s) {
     buf += typeof chunk === 'string' ? chunk : (chunk as Buffer).toString('utf8');
-    let nl = buf.indexOf('\n');
-    while (nl >= 0) {
-      const line = buf.slice(0, nl);
-      buf = buf.slice(nl + 1);
-      if (line) yield line;
-      nl = buf.indexOf('\n');
-    }
+    const drained = drainLineBuffer(buf);
+    for (const line of drained.lines) yield line;
+    buf = drained.rest;
   }
   if (buf.trim()) yield buf;
 }
@@ -263,76 +284,11 @@ async function* linesFromStream(s: Readable): AsyncGenerator<string> {
  * and continued so partial-S3-outage doesn't roll back the DB. Missing-
  * object 404s on browser-run trace links degrade gracefully.
  */
-async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promise<RestoreResult> {
-  const extract = tar.extract();
-  let meta: TarMeta | undefined;
-  let dumpBuf: Buffer | undefined;
-  let dbRestore: Promise<RestoreResult> | null = null;
-  let uploaded = 0;
-  let failed = 0;
-  let seenArtifact = false;
-
-  const startDbRestore = (): Promise<RestoreResult> => {
-    if (dbRestore) return dbRestore;
-    if (!meta) throw new RestoreError('tar dump missing meta.json');
-    if (meta.format !== BACKUP_FORMAT) {
-      throw new RestoreError(`unsupported backup format ${meta.format}`);
-    }
-    if (!dumpBuf) throw new RestoreError('tar dump missing dump.ndjson');
-    async function* lines(): AsyncGenerator<string> {
-      let buf = dumpBuf!.toString('utf8');
-      let nl = buf.indexOf('\n');
-      while (nl >= 0) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        if (line) yield line;
-        nl = buf.indexOf('\n');
-      }
-      if (buf.trim()) yield buf;
-    }
-    dbRestore = restoreLines(lines(), opts);
-    return dbRestore;
-  };
-
-  gunzipped.pipe(extract);
-
-  for await (const entry of extract as AsyncIterable<
-    {
-      header: { name: string };
-      [Symbol.asyncIterator](): AsyncIterator<Buffer>;
-    } & NodeJS.ReadableStream
-  >) {
-    const name = entry.header.name;
-
-    if (name === 'meta.json' || name === 'dump.ndjson') {
-      const body = await readTarEntryBuffer(entry);
-      if (name === 'meta.json') {
-        meta = JSON.parse(body.toString('utf8')) as TarMeta;
-      } else {
-        dumpBuf = body;
-      }
-      continue;
-    }
-
-    if (!name.startsWith('artifacts/')) {
-      await drainTarEntry(entry);
-      continue;
-    }
-
-    seenArtifact = true;
-    if (!isStorageConfigured()) {
-      await drainTarEntry(entry);
-      continue;
-    }
-    await startDbRestore();
-
-    const outcome = await uploadTarArtifact(name, entry, guessContentType);
-    if (outcome === 'uploaded') uploaded += 1;
-    else if (outcome === 'failed' || outcome === 'skipped-unsafe') failed += 1;
-  }
-
-  const result = await startDbRestore();
-
+async function finalizeTarArtifacts(
+  seenArtifact: boolean,
+  uploaded: number,
+  failed: number,
+): Promise<void> {
   if (seenArtifact && isStorageConfigured()) {
     logger.info(`restore: artifacts uploaded=${uploaded} failed=${failed}`);
     try {
@@ -343,12 +299,84 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
         `restore: post-restore backfill failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  } else if (seenArtifact && !isStorageConfigured()) {
+    return;
+  }
+  if (seenArtifact && !isStorageConfigured()) {
     logger.warn(
       `restore: artifacts present in dump but OO_OBJECT_STORAGE_* not configured — skipped`,
     );
   }
+}
 
+type TarEntry = {
+  header: { name: string };
+  [Symbol.asyncIterator](): AsyncIterator<Buffer>;
+} & NodeJS.ReadableStream;
+
+async function handleTarMetaOrDump(
+  name: string,
+  entry: TarEntry,
+  state: { meta?: TarMeta; dumpBuf?: Buffer },
+): Promise<void> {
+  const body = await readTarEntryBuffer(entry);
+  if (name === 'meta.json') {
+    state.meta = JSON.parse(body.toString('utf8')) as TarMeta;
+  } else {
+    state.dumpBuf = body;
+  }
+}
+
+async function handleTarArtifactEntry(
+  name: string,
+  entry: TarEntry,
+  counters: { uploaded: number; failed: number; seenArtifact: boolean },
+  startDbRestore: () => Promise<RestoreResult>,
+): Promise<void> {
+  counters.seenArtifact = true;
+  if (!isStorageConfigured()) {
+    await drainTarEntry(entry);
+    return;
+  }
+  await startDbRestore();
+  const outcome = await uploadTarArtifact(name, entry, guessContentType);
+  if (outcome === 'uploaded') counters.uploaded += 1;
+  else if (outcome === 'failed' || outcome === 'skipped-unsafe') counters.failed += 1;
+}
+
+async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promise<RestoreResult> {
+  const extract = tar.extract();
+  const tarState: { meta?: TarMeta; dumpBuf?: Buffer } = {};
+  let dbRestore: Promise<RestoreResult> | null = null;
+  const counters = { uploaded: 0, failed: 0, seenArtifact: false };
+
+  const startDbRestore = (): Promise<RestoreResult> => {
+    if (dbRestore) return dbRestore;
+    if (!tarState.meta) throw new RestoreError('tar dump missing meta.json');
+    if (tarState.meta.format !== BACKUP_FORMAT) {
+      throw new RestoreError(`unsupported backup format ${tarState.meta.format}`);
+    }
+    if (!tarState.dumpBuf) throw new RestoreError('tar dump missing dump.ndjson');
+    dbRestore = restoreLines(linesFromText(tarState.dumpBuf.toString('utf8')), opts);
+    return dbRestore;
+  };
+
+  gunzipped.pipe(extract);
+
+  for await (const entry of extract as AsyncIterable<TarEntry>) {
+    const name = entry.header.name;
+    if (name === 'meta.json' || name === 'dump.ndjson') {
+      await handleTarMetaOrDump(name, entry, tarState);
+      continue;
+    }
+    if (!name.startsWith('artifacts/')) {
+      await drainTarEntry(entry);
+      continue;
+    }
+    await handleTarArtifactEntry(name, entry, counters, startDbRestore);
+  }
+
+  const result = await startDbRestore();
+  await finalizeTarArtifacts(counters.seenArtifact, counters.uploaded, counters.failed);
   return result;
 }
 

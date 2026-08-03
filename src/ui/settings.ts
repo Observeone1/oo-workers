@@ -78,9 +78,11 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
     )
     .join('');
 
-  const rolePill = meRes.role
-    ? `<span class="pill${meRes.role === 'admin' ? ' up' : ''}">${esc(meRes.role)}</span>`
-    : '';
+  let rolePill = '';
+  if (meRes.role) {
+    const pillClass = meRes.role === 'admin' ? 'pill up' : 'pill';
+    rolePill = `<span class="${pillClass}">${esc(meRes.role)}</span>`;
+  }
 
   main.innerHTML = `
     <div class="page-head">

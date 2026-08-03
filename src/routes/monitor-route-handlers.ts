@@ -5,12 +5,10 @@ import type { RouteDeps } from './types.ts';
 import { dispatchMonitorDetail } from './monitor-route-detail-handlers.ts';
 import { dispatchMonitorUpdate } from './monitor-route-update-handlers.ts';
 import { dispatchMonitorRun } from './monitor-route-run-handlers.ts';
-import { badPort, validateApiAssertions, validatePayloadHex } from './monitor-route-validation.ts';
 import type { MonitorRouteResult } from './monitor-route-types.ts';
 
-export type { MonitorRouteResult };
-
-export { badPort, validateApiAssertions, validatePayloadHex };
+export type { MonitorRouteResult } from './monitor-route-types.ts';
+export { badPort, validateApiAssertions, validatePayloadHex } from './monitor-route-validation.ts';
 
 export async function getMonitorDetail(type: string, id: number): Promise<MonitorRouteResult> {
   return dispatchMonitorDetail(type, id);

@@ -508,6 +508,39 @@ async function wireChannelBindings(
   }
 }
 
+function resolveStatusPageMonitors(
+  monitors: Array<{ ref: number; type: 'url' | 'api' }>,
+  idMaps: IdMaps,
+): {
+  resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }>;
+  dangling: string[];
+} {
+  const resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
+  const dangling: string[] = [];
+  for (const m of monitors) {
+    const map = m.type === 'url' ? idMaps.url : idMaps.api;
+    const real = map.get(m.ref);
+    if (real === undefined) {
+      dangling.push(`${m.type} ref ${m.ref} did not resolve`);
+    } else {
+      resolved.push({ monitorType: m.type, monitorId: real });
+    }
+  }
+  return { resolved, dangling };
+}
+
+function dedupeStatusPageMonitors(
+  resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }>,
+): Array<{ monitorType: 'url' | 'api'; monitorId: number }> {
+  const seen = new Set<string>();
+  return resolved.filter((r) => {
+    const k = `${r.monitorType}:${r.monitorId}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 async function importStatusPages(
   tx: Tx,
   rows: Array<Record<string, unknown>>,
@@ -518,18 +551,7 @@ async function importStatusPages(
     try {
       const monitors =
         (sp.monitors as Array<{ ref: number; type: 'url' | 'api' }> | undefined) ?? [];
-      const resolved: Array<{ monitorType: 'url' | 'api'; monitorId: number }> = [];
-      const dangling: string[] = [];
-      for (const m of monitors) {
-        const map = m.type === 'url' ? idMaps.url : idMaps.api;
-        const real = map.get(m.ref);
-        if (real === undefined) {
-          dangling.push(`${m.type} ref ${m.ref} did not resolve`);
-        } else {
-          resolved.push({ monitorType: m.type, monitorId: real });
-        }
-      }
-      // Pre-flight: don't create a hollow shell if every binding dangled.
+      const { resolved, dangling } = resolveStatusPageMonitors(monitors, idMaps);
       if (monitors.length > 0 && resolved.length === 0) {
         result.skipped.push(
           `status_page ${sp.slug}: all monitor refs dangling (${dangling.join(', ')})`,
@@ -546,17 +568,7 @@ async function importStatusPages(
           })
           .returning({ id: statusPages.id });
         if (resolved.length > 0) {
-          // Dedup: status_page_monitors has a composite PK on
-          // (statusPageId, monitorType, monitorId). Same risk as wire()
-          // above — a bundle with two refs to the same (type,id) would
-          // abort the whole import on PK violation.
-          const seen = new Set<string>();
-          const uniqueResolved = resolved.filter((r) => {
-            const k = `${r.monitorType}:${r.monitorId}`;
-            if (seen.has(k)) return false;
-            seen.add(k);
-            return true;
-          });
+          const uniqueResolved = dedupeStatusPageMonitors(resolved);
           await stx.insert(statusPageMonitors).values(
             uniqueResolved.map((r) => ({
               statusPageId: page.id,

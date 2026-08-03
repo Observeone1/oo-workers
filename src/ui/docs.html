@@ -19,7 +19,7 @@
             document.documentElement.dataset.theme = t;
           }
         } catch {
-          document.documentElement.removeAttribute('data-theme');
+          delete document.documentElement.dataset.theme;
         }
       })();
     </script>

@@ -232,31 +232,37 @@ export function adaptStatusPages(src: { status_pages?: SaaSStatusPage[] }): {
   return { statusPages, statusPagesSkipped };
 }
 
-export function adaptHeartbeats(src: { heartbeats?: unknown[] }): {
-  heartbeats: NonNullable<ImportPayload['heartbeats']>;
-  warnings: string[];
+function parseHeartbeatRow(h: Record<string, unknown>): {
+  row: NonNullable<ImportPayload['heartbeats']>[number] | null;
+  tokenless: boolean;
 } {
-  const heartbeats: NonNullable<ImportPayload['heartbeats']> = [];
-  const warnings: string[] = [];
-  let heartbeatsTokenless = 0;
-  for (const h of (src.heartbeats ?? []) as Array<Record<string, unknown>>) {
-    if (typeof h.name !== 'string') continue;
-    const period = typeof h.period === 'number' ? h.period : null;
-    const grace = typeof h.grace_period === 'number' ? h.grace_period : 60;
-    if (period === null || !Number.isFinite(period) || period < 30) continue;
-    const token = typeof h.ping_key === 'string' ? h.ping_key : undefined;
-    if (token === undefined) heartbeatsTokenless++;
-    heartbeats.push({
+  if (typeof h.name !== 'string') return { row: null, tokenless: false };
+  const period = typeof h.period === 'number' ? h.period : null;
+  const grace = typeof h.grace_period === 'number' ? h.grace_period : 60;
+  if (period === null || !Number.isFinite(period) || period < 30) {
+    return { row: null, tokenless: false };
+  }
+  const token = typeof h.ping_key === 'string' ? h.ping_key : undefined;
+  return {
+    row: {
       name: h.name,
       ...(typeof h.description === 'string' ? { description: h.description } : {}),
       periodSeconds: period,
       graceSeconds: grace,
       ...(token !== undefined && { token }),
-    });
-  }
-  if (heartbeatsTokenless > 0) {
+    },
+    tokenless: token === undefined,
+  };
+}
+
+function appendHeartbeatWarnings(
+  heartbeats: NonNullable<ImportPayload['heartbeats']>,
+  tokenless: number,
+  warnings: string[],
+): void {
+  if (tokenless > 0) {
     warnings.push(
-      `${heartbeatsTokenless} heartbeat(s) imported without ping_key (CLI < v1.26.0). ` +
+      `${tokenless} heartbeat(s) imported without ping_key (CLI < v1.26.0). ` +
         `New ping URLs were generated; update the services posting to them.`,
     );
   }
@@ -266,5 +272,21 @@ export function adaptHeartbeats(src: { heartbeats?: unknown[] }): {
         'Rewire alert channels on the self-host side after import.',
     );
   }
+}
+
+export function adaptHeartbeats(src: { heartbeats?: unknown[] }): {
+  heartbeats: NonNullable<ImportPayload['heartbeats']>;
+  warnings: string[];
+} {
+  const heartbeats: NonNullable<ImportPayload['heartbeats']> = [];
+  const warnings: string[] = [];
+  let heartbeatsTokenless = 0;
+  for (const h of (src.heartbeats ?? []) as Array<Record<string, unknown>>) {
+    const parsed = parseHeartbeatRow(h);
+    if (!parsed.row) continue;
+    if (parsed.tokenless) heartbeatsTokenless++;
+    heartbeats.push(parsed.row);
+  }
+  appendHeartbeatWarnings(heartbeats, heartbeatsTokenless, warnings);
   return { heartbeats, warnings };
 }

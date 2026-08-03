@@ -8,6 +8,18 @@ import { tlsMonitorRepo } from '../db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from '../db/repositories/heartbeat.repo.ts';
 import type { MonitorRouteResult } from './monitor-route-types.ts';
 
+type LatencyRepo = {
+  findById: (id: number) => Promise<unknown[]>;
+  findExecutionsByMonitorId: (id: number) => Promise<Array<{ latencyMs: number | null }>>;
+};
+
+const LATENCY_REPOS: Record<'tcp' | 'udp' | 'db' | 'tls', LatencyRepo> = {
+  tcp: tcpMonitorRepo,
+  udp: udpMonitorRepo,
+  db: dbMonitorRepo,
+  tls: tlsMonitorRepo,
+};
+
 function mapLatencyRuns(runs: Array<{ latencyMs: number | null }>) {
   return runs.map((r) => ({ ...r, responseTimeMs: r.latencyMs }));
 }
@@ -46,14 +58,7 @@ async function detailLatency(
   type: 'tcp' | 'udp' | 'db' | 'tls',
   id: number,
 ): Promise<MonitorRouteResult> {
-  const repo =
-    type === 'tcp'
-      ? tcpMonitorRepo
-      : type === 'udp'
-        ? udpMonitorRepo
-        : type === 'db'
-          ? dbMonitorRepo
-          : tlsMonitorRepo;
+  const repo = LATENCY_REPOS[type];
   const [m] = await repo.findById(id);
   if (!m) return { status: 404, body: { error: 'not found' } };
   const runs = await repo.findExecutionsByMonitorId(id);

@@ -36,6 +36,24 @@ interface Args {
   includeArtifacts: boolean;
 }
 
+function parseScopeArg(argv: string[], index: number): { scope: DataScope; next: number } | null {
+  const v = argv[index + 1];
+  if (v !== 'none' && v !== 'window' && v !== 'all') {
+    console.error(`--scope must be none|window|all, got '${v}'`);
+    process.exit(2);
+  }
+  return { scope: v, next: index + 1 };
+}
+
+function parseSinceArg(argv: string[], index: number): { since: number; next: number } | null {
+  const since = Number(argv[index + 1]);
+  if (!Number.isFinite(since) || since <= 0) {
+    console.error('--since must be a positive number of days');
+    process.exit(2);
+  }
+  return { since, next: index + 1 };
+}
+
 function parseArgs(): Args {
   const argv = process.argv.slice(2);
   let scope: DataScope = 'window';
@@ -46,19 +64,18 @@ function parseArgs(): Args {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--scope') {
-      const v = argv[++i];
-      if (v !== 'none' && v !== 'window' && v !== 'all') {
-        console.error(`--scope must be none|window|all, got '${v}'`);
-        process.exit(2);
+      const parsed = parseScopeArg(argv, i);
+      if (parsed) {
+        scope = parsed.scope;
+        i = parsed.next;
       }
-      scope = v;
     } else if (arg === '--since') {
-      since = Number(argv[++i]);
-      if (!Number.isFinite(since) || since <= 0) {
-        console.error('--since must be a positive number of days');
-        process.exit(2);
+      const parsed = parseSinceArg(argv, i);
+      if (parsed) {
+        since = parsed.since;
+        scope = 'window';
+        i = parsed.next;
       }
-      scope = 'window';
     } else if (arg === '-o' || arg === '--out') out = argv[++i] ?? null;
     else if (arg === '--split') split = argv[++i] ?? null;
     else if (arg === '--include-artifacts') includeArtifacts = true;

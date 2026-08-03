@@ -10,21 +10,12 @@
  */
 import type { MonType } from '../types';
 import { $, esc } from '../helpers';
-import {
-  createMonitor,
-  updateMonitor,
-  getChannels,
-  getRegions,
-  setMonitorChannels,
-  setMonitorRegions,
-  type ChannelLite,
-  type RegionLite,
-} from '../api';
-import { renderList, setActiveTab, getActiveTab } from '../list';
+import { getChannels, getRegions, type ChannelLite, type RegionLite } from '../api';
+import { getActiveTab } from '../list';
 import { alertDialog } from '../dialogs';
-import { buildMonitorBodyFromForm } from './add-monitor-form-body';
 import { prefillEditMonitorFields } from './add-monitor-edit-prefill';
 import { syncRailToSection, wireAddDialogRail } from './add-monitor-dialog-wiring';
+import { handleAddMonitorSubmit } from './add-monitor-dialog-submit';
 
 // Cache regions/channels for the lifetime of the dialog session. Refreshed
 // each time the operator opens "Add monitor" so freshly-created ones show up.
@@ -204,10 +195,6 @@ function addAssertionRow(
 // calls PUT /api/monitors/:type/:id instead of POST.
 let editModeId: number | null = null;
 
-/** Matches a detail-page hash like `#/url/42`. Used to decide whether to
- * navigate back to the previously-viewed detail after submit. */
-const DETAIL_HASH_RE = /^#\/(?:url|api|qa|tcp|udp|db|tls|heartbeat)\/\d+$/;
-
 export function initAddDialog(): void {
   const addDialog = $<HTMLDialogElement>('#add-dialog');
   const addForm = $<HTMLFormElement>('#add-form');
@@ -318,77 +305,20 @@ export function initAddDialog(): void {
     void openCreateDialog(t);
   });
 
-  addForm.addEventListener('submit', async (e) => {
+  addForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const fd = new FormData(addForm);
-    const type = activeAddType;
-    const built = buildMonitorBodyFromForm(type, fd, addDialog);
-    if (!built.ok) {
-      alertDialog({ title: 'Validation error', body: built.message });
-      return;
-    }
-    const body = built.body;
-    const res =
-      editModeId === null
-        ? await createMonitor(type, body)
-        : await updateMonitor(type, editModeId, body);
-    if (!res.ok) {
-      const label = editModeId === null ? 'Create failed' : 'Update failed';
-      alertDialog({ title: label, body: `Failed: ${await res.text()}` });
-      return;
-    }
-    const created = (await res.json().catch(() => null)) as { id?: number } | null;
-
-    if (created?.id) {
-      const regionIds = collectSelectedRegionIds();
-      if (regionIds.length > 0) {
-        try {
-          await setMonitorRegions(type, created.id, regionIds);
-        } catch (err) {
-          alertDialog({
-            title: 'Region binding failed',
-            body: `Monitor created but region binding failed: ${
-              err instanceof Error ? err.message : String(err)
-            }. Fix it from the Regions page.`,
-          });
-        }
-      }
-      const channelIds = collectSelectedChannelIds();
-      if (channelIds.length > 0) {
-        try {
-          await setMonitorChannels(type, created.id, channelIds);
-        } catch (err) {
-          alertDialog({
-            title: 'Channel binding failed',
-            body: `Monitor created but alert-channel binding failed: ${
-              err instanceof Error ? err.message : String(err)
-            }. Fix it from the Channels page.`,
-          });
-        }
-      }
-    }
-
-    addDialog.close();
-    addForm.reset();
-    syncFields();
-    const cameFromDetail = DETAIL_HASH_RE.test(location.hash);
-    if (editModeId === null) {
-      setActiveTab(type);
-      if (cameFromDetail) {
-        location.hash = '#/';
-      } else {
-        renderList();
-      }
-    } else {
-      const editedId = editModeId;
-      editModeId = null;
-      if (cameFromDetail) {
-        location.hash = `#/${type}/${editedId}`;
-      } else {
-        setActiveTab(type);
-        renderList();
-      }
-    }
+    void handleAddMonitorSubmit({
+      form: addForm,
+      dialog: addDialog,
+      getType: () => activeAddType,
+      getEditModeId: () => editModeId,
+      setEditModeId: (id) => {
+        editModeId = id;
+      },
+      syncFields: () => syncFields(),
+      collectRegionIds: collectSelectedRegionIds,
+      collectChannelIds: collectSelectedChannelIds,
+    });
   });
 }
 
