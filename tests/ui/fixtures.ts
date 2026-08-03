@@ -1,4 +1,4 @@
-import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { test as base, expect as playwrightExpect, type Page, type APIRequestContext } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -18,7 +18,8 @@ export const test = base.extend<{
   },
 });
 
-export { expect };
+export { expect } from '@playwright/test';
+const expect = playwrightExpect;
 
 // Wait for the list view to be ready (tabs rendered).
 // Anchored on data-testid per tests/ui/CONVENTIONS.md.
