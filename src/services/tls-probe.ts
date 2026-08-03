@@ -160,6 +160,33 @@ function parseDnsSans(san: string | undefined): string[] {
  * (ALTNAME) still counts as a trusted chain — hostname is the separate
  * `verify_hostname` knob.
  */
+function checkTlsChain(socket: TLSSocket): string | null {
+  const ae = socket.authorizationError as unknown;
+  const aeCode = ae && typeof ae === 'object' ? (ae as NodeJS.ErrnoException).code : undefined;
+  const aeMsg = ae instanceof Error ? ae.message : ae ? String(ae) : 'unauthorized';
+  const chainTrusted = socket.authorized || aeCode === 'ERR_TLS_CERT_ALTNAME_INVALID';
+  return chainTrusted ? null : `Certificate chain not trusted: ${aeMsg}`;
+}
+
+function checkTlsHostname(hostForId: string, cert: PeerCertificate): string | null {
+  const idErr = checkServerIdentity(hostForId, cert);
+  return idErr ? `Certificate not valid for ${hostForId}: ${idErr.message}` : null;
+}
+
+function checkExpectedCn(expression: string, cert: PeerCertificate): string | null {
+  let re: RegExp;
+  try {
+    re = new RegExp(expression);
+  } catch (e) {
+    return `Invalid expect_cn_regex: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const cn = cert.subject?.CN;
+  const sans = parseDnsSans(cert.subjectaltname);
+  const targets = [cn, ...sans].filter((s): s is string => typeof s === 'string' && s.length > 0);
+  if (targets.some((target) => re.test(target))) return null;
+  return `No CN/SAN matches /${expression}/ (CN=${cn ?? '?'}; SAN=${sans.join(',') || 'none'})`;
+}
+
 function evalTlsAssertions(
   opts: TlsProbeOptions,
   socket: TLSSocket,
@@ -167,37 +194,14 @@ function evalTlsAssertions(
   hostForId: string,
 ): string | null {
   if (opts.verifyChain) {
-    const ae = socket.authorizationError as unknown;
-    const aeCode = ae && typeof ae === 'object' ? (ae as NodeJS.ErrnoException).code : undefined;
-    const aeMsg = ae instanceof Error ? ae.message : ae ? String(ae) : 'unauthorized';
-    const chainTrusted = socket.authorized || aeCode === 'ERR_TLS_CERT_ALTNAME_INVALID';
-    if (!chainTrusted) return `Certificate chain not trusted: ${aeMsg}`;
+    const chainError = checkTlsChain(socket);
+    if (chainError) return chainError;
   }
-
   if (opts.verifyHostname) {
-    const idErr = checkServerIdentity(hostForId, cert);
-    if (idErr) return `Certificate not valid for ${hostForId}: ${idErr.message}`;
+    const hostnameError = checkTlsHostname(hostForId, cert);
+    if (hostnameError) return hostnameError;
   }
-
-  if (opts.expectCnRegex) {
-    let re: RegExp;
-    try {
-      re = new RegExp(opts.expectCnRegex);
-    } catch (e) {
-      // Endpoint validates at save; this is only a backstop.
-      return `Invalid expect_cn_regex: ${e instanceof Error ? e.message : String(e)}`;
-    }
-    const cn = cert.subject?.CN;
-    const sans = parseDnsSans(cert.subjectaltname);
-    const targets = [cn, ...sans].filter((s): s is string => typeof s === 'string' && s.length > 0);
-    if (!targets.some((t) => re.test(t))) {
-      return `No CN/SAN matches /${opts.expectCnRegex}/ (CN=${cn ?? '?'}; SAN=${
-        sans.join(',') || 'none'
-      })`;
-    }
-  }
-
-  return null;
+  return opts.expectCnRegex ? checkExpectedCn(opts.expectCnRegex, cert) : null;
 }
 
 function mapTlsError(err: NodeJS.ErrnoException, host: string, port: number): string {
