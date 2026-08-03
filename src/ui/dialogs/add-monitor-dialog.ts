@@ -24,6 +24,7 @@ import { renderList, setActiveTab, getActiveTab } from '../list';
 import { alertDialog } from '../dialogs';
 import { buildMonitorBodyFromForm } from './add-monitor-form-body';
 import { prefillEditMonitorFields } from './add-monitor-edit-prefill';
+import { syncRailToSection, wireAddDialogRail } from './add-monitor-dialog-wiring';
 
 // Cache regions/channels for the lifetime of the dialog session. Refreshed
 // each time the operator opens "Add monitor" so freshly-created ones show up.
@@ -235,69 +236,24 @@ export function initAddDialog(): void {
     // Update type pill, check section title, and name placeholder.
     syncDialogChrome(t, addDialog);
     // Update rail active step
-    syncRailToSection('type');
+    syncRailToSection(addDialog, 'type');
     syncRegionsRow();
   };
 
-  function syncRailToSection(step: string) {
-    addDialog.querySelectorAll<HTMLElement>('#add-rail .rail-step[data-step]').forEach((r) => {
-      r.classList.toggle('active', r.dataset.step === step);
-    });
-  }
-
-  // Wire rail scroll-spy
-  addDialog.querySelector('.dialog-body')?.addEventListener('scroll', function (this: HTMLElement) {
-    const top = this.scrollTop;
-    const sections = addDialog.querySelectorAll<HTMLElement>('.form-section[data-section]');
-    let cur = sections[0]?.dataset.section ?? 'type';
-    for (const s of sections) {
-      if (s.offsetTop - this.offsetTop - 20 <= top) cur = s.dataset.section ?? cur;
-    }
-    syncRailToSection(cur);
-  });
-
-  // Wire rail click → scroll
-  addDialog.querySelectorAll<HTMLElement>('#add-rail .rail-step[data-step]').forEach((r) => {
-    r.addEventListener('click', () => {
-      const sec = addDialog.querySelector<HTMLElement>(
-        `.form-section[data-section="${r.dataset.step}"]`,
-      );
-      const body = addDialog.querySelector<HTMLElement>('.dialog-body');
-      if (sec && body) body.scrollTo({ top: sec.offsetTop - body.offsetTop, behavior: 'smooth' });
-      syncRailToSection(r.dataset.step ?? 'type');
-    });
-  });
-
-  // Wire up the type-tile buttons
-  const typeGrid = document.getElementById('type-grid');
-  typeGrid?.querySelectorAll<HTMLButtonElement>('.type-tile').forEach((tile) => {
-    tile.addEventListener('click', () => {
-      typeGrid.querySelectorAll('.type-tile').forEach((t) => t.classList.remove('active'));
-      tile.classList.add('active');
-      activeAddType = (tile.dataset.type ?? 'url') as MonType;
-      syncFields(activeAddType);
+  wireAddDialogRail(
+    addDialog,
+    (type) => {
+      activeAddType = type;
       syncRegionsRow();
-    });
-  });
+    },
+    syncFields,
+  );
 
-  // Wire close buttons with data-close-dialog
-  addDialog.querySelectorAll('[data-close-dialog]').forEach((btn) => {
-    btn.addEventListener('click', () => addDialog.close());
-  });
-
-  // ⌘/Ctrl+Enter submits the form
   addDialog.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       addForm.requestSubmit();
     }
-  });
-
-  // Number inputs in the dialog ship with sane defaults (e.g. interval=60).
-  // Without this, clicking the field puts the cursor at the end, so typing
-  // "30" produces "6030" instead of replacing the default.
-  addDialog.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach((el) => {
-    el.addEventListener('focus', () => el.select());
   });
 
   $('#add-btn').addEventListener('click', async () => {

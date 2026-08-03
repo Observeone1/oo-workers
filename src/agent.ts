@@ -23,7 +23,7 @@ import { dbProbe, type DbProtocol } from './services/db-probe.ts';
 import { tlsProbe } from './services/tls-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
-import { executePlaywrightTest } from './services/playwright.service.ts';
+import { handleQaJobWithDeps } from './agent-qa.ts';
 import { classifyFetchError } from './utils/fetch-errors.ts';
 import { logger } from './utils/logger.ts';
 import { packageVersion } from './utils/version.ts';
@@ -475,139 +475,16 @@ async function uploadArtifact(
 }
 
 export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
-  const tests = job.tests ?? [];
-  const projectId = job.projectId;
-  if (!projectId || tests.length === 0) {
-    logger.warn(`qa job ${job.jobId} missing projectId or tests; skipping`);
-    return;
-  }
-
-  if (!(await isPlaywrightAvailable())) {
-    // Light image — surface the misconfiguration as a single FAILED test
-    // so it shows in the dashboard with a clear message. The operator
-    // redeploys with `observeone/oo-agent-qa` and the next tick succeeds.
-    const firstTest = tests[0];
-    let execMap: Map<number, number>;
-    try {
-      execMap = await createQaExecutions(cfg, projectId, [firstTest.id]);
-    } catch (err) {
-      logger.error(
-        `qa job ${job.jobId} (light image): create-executions failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return;
-    }
-    const executionId = execMap.get(firstTest.id);
-    if (!executionId) return;
-    await postResult(cfg, {
-      type: 'qa',
-      executionId,
-      status: 'ERROR',
-      errorMessage:
-        'This agent is the light variant — redeploy with `observeone/oo-agent-qa` to handle QA jobs.',
-    });
-    logger.error(
-      `qa job ${job.jobId}: light image cannot run Playwright; reported ERROR on test ${firstTest.id}`,
-    );
-    return;
-  }
-
-  // QA image — create per-test exec rows, run, upload artifacts, post results.
-  let execMap: Map<number, number>;
-  try {
-    execMap = await createQaExecutions(
-      cfg,
-      projectId,
-      tests.map((t) => t.id),
-    );
-  } catch (err) {
-    logger.error(
-      `qa job ${job.jobId}: create-executions failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return;
-  }
-
-  // Per-run dir inside the repo's tests/ tree so playwright.config.ts's
-  // `testDir: './tests'` + `screenshot: 'only-on-failure'` apply. Mirrors
-  // master's qa-project.processor.ts. Each run gets a unique subdir so
-  // multiple concurrent agent jobs don't collide.
-  const runDir = path.resolve(
-    import.meta.dir,
-    '..',
-    'tests',
-    `agent-qa-${projectId}-${Date.now()}`,
+  return handleQaJobWithDeps(
+    {
+      isPlaywrightAvailable,
+      createQaExecutions,
+      postResult,
+      uploadArtifact,
+    },
+    cfg,
+    job,
   );
-  await fs.mkdir(runDir, { recursive: true });
-
-  try {
-    await Promise.all(
-      tests.map(async (test) => {
-        const executionId = execMap.get(test.id);
-        if (!executionId) {
-          logger.warn(`qa job ${job.jobId}: no exec id for test ${test.id}; skipping`);
-          return;
-        }
-        const safeName = test.name.replaceAll(/[^a-z0-9]/gi, '_').toLowerCase();
-        const scriptPath = path.join(runDir, `${safeName}.spec.ts`);
-        const outputDir = path.join(runDir, `out-${test.id}`);
-        await fs.writeFile(scriptPath, test.script);
-
-        const result = await executePlaywrightTest(
-          scriptPath,
-          job.targetUrl ?? '',
-          job.credentials,
-          {
-            outputDir,
-          },
-        );
-
-        let traceUrl: string | null = null;
-        const screenshotUrls: string[] = [];
-        if (!result.success) {
-          let screenshotIdx = 0;
-          for (const art of result.artifacts) {
-            try {
-              const stat = await fs.stat(art.path);
-              const kind = art.name === 'trace' ? 'trace' : `screenshot-${++screenshotIdx}`;
-              const key = await uploadArtifact(
-                cfg,
-                executionId,
-                kind,
-                art.path,
-                stat.size,
-                art.contentType,
-              );
-              if (key) {
-                if (art.name === 'trace') traceUrl = key;
-                else screenshotUrls.push(key);
-              }
-            } catch (err) {
-              logger.warn(
-                `qa artifact stat/upload failed for exec ${executionId}: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
-            }
-          }
-        }
-
-        await postResult(cfg, {
-          type: 'qa',
-          executionId,
-          status: result.success ? 'SUCCESS' : 'FAILED',
-          latencyMs: result.duration_ms,
-          errorMessage: result.error ?? null,
-          traceUrl,
-          screenshotUrls: screenshotUrls.length > 0 ? screenshotUrls : null,
-        });
-      }),
-    );
-  } finally {
-    await fs.rm(runDir, { recursive: true, force: true }).catch(() => {});
-  }
 }
 
 export async function runAgent(cfg: AgentConfig): Promise<void> {

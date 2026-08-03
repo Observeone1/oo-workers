@@ -23,8 +23,9 @@ import { sql as dsql, getTableName } from 'drizzle-orm';
 import { db, sql } from '../config/db.ts';
 import * as schema from '../db/schema.ts';
 import { logger } from '../utils/logger.ts';
-import { isStorageConfigured, putObject } from './object-storage.ts';
+import { isStorageConfigured } from './object-storage.ts';
 import { runBackfill } from './storage-backfill.ts';
+import { drainTarEntry, readTarEntryBuffer, uploadTarArtifact } from './backup-restore-tar.ts';
 import {
   ALL_TABLE_NAMES,
   BACKUP_FORMAT,
@@ -304,9 +305,7 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
     const name = entry.header.name;
 
     if (name === 'meta.json' || name === 'dump.ndjson') {
-      const chunks: Buffer[] = [];
-      for await (const c of entry) chunks.push(c);
-      const body = Buffer.concat(chunks);
+      const body = await readTarEntryBuffer(entry);
       if (name === 'meta.json') {
         meta = JSON.parse(body.toString('utf8')) as TarMeta;
       } else {
@@ -316,46 +315,20 @@ async function restoreTar(gunzipped: Readable, opts: { force: boolean }): Promis
     }
 
     if (!name.startsWith('artifacts/')) {
-      for await (const _chunk of entry) {
-        // Drain unknown tar entries before continuing.
-      }
+      await drainTarEntry(entry);
       continue;
     }
 
     seenArtifact = true;
     if (!isStorageConfigured()) {
-      for await (const _chunk of entry) {
-        // Drain artifacts when object storage is not configured.
-      }
+      await drainTarEntry(entry);
       continue;
     }
     await startDbRestore();
 
-    const key = name.slice('artifacts/'.length);
-    // Tar-slip guard: a crafted .oodump.tar.gz could carry an entry name that
-    // escapes the artifacts/ prefix (e.g. ../ or a leading /). Reject those
-    // before the key reaches object storage.
-    if (!key || key.startsWith('/') || key.split('/').includes('..')) {
-      failed += 1;
-      logger.warn(`restore: skipped artifact with unsafe key ${JSON.stringify(name)}`);
-      for await (const _chunk of entry) {
-        // Drain unsafe entries without passing them to storage.
-      }
-      continue;
-    }
-    const contentType = guessContentType(key);
-    const chunks: Buffer[] = [];
-    for await (const c of entry) chunks.push(c);
-    const body = Buffer.concat(chunks);
-    try {
-      await putObject(key, body, contentType);
-      uploaded += 1;
-    } catch (err) {
-      failed += 1;
-      logger.warn(
-        `restore: artifact upload failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    const outcome = await uploadTarArtifact(name, entry, guessContentType);
+    if (outcome === 'uploaded') uploaded += 1;
+    else if (outcome === 'failed' || outcome === 'skipped-unsafe') failed += 1;
   }
 
   const result = await startDbRestore();

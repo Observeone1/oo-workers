@@ -12,15 +12,7 @@
  *   dialogs.ts  — Add / Import dialog wiring
  */
 
-import type { MonType } from './types';
-import { renderList } from './list';
-import { renderDetail } from './detail';
-import { renderRegions } from './regions';
-import { renderChannels } from './channels';
-import { renderStatusPages } from './status-pages';
-import { renderIncidents } from './incidents';
-import { renderSettings } from './settings';
-import { renderDocs } from './docs-view';
+import { routeAppHash } from './app-routing';
 import { initDialogs } from './dialogs';
 import { startEventStream, on as onStreamEvent } from './events';
 import { getRegions } from './api';
@@ -82,46 +74,7 @@ function setActiveNav(
 
 function route() {
   closeSlideover();
-  const h = location.hash;
-  if (h === '#/regions' || h.startsWith('#/regions/')) {
-    setActiveNav('regions');
-    renderRegions();
-    return;
-  }
-  if (h === '#/channels' || h.startsWith('#/channels/')) {
-    setActiveNav('channels');
-    renderChannels();
-    return;
-  }
-  if (h === '#/status-pages' || h.startsWith('#/status-pages/')) {
-    setActiveNav('status-pages');
-    renderStatusPages();
-    return;
-  }
-  if (h === '#/incidents' || h.startsWith('#/incidents/')) {
-    setActiveNav('incidents');
-    renderIncidents();
-    return;
-  }
-  if (h === '#/settings') {
-    setActiveNav(null);
-    renderSettings();
-    return;
-  }
-  if (h === '#/docs' || h.startsWith('#/docs/')) {
-    setActiveNav('docs');
-    const section = h.startsWith('#/docs/') ? h.slice('#/docs/'.length) : null;
-    renderDocs(section);
-    return;
-  }
-  const m = /^#\/(url|api|qa|tcp|udp|db|tls|heartbeat)\/(\d+)$/.exec(h);
-  if (m) {
-    setActiveNav(null);
-    renderDetail(m[1] as MonType, Number(m[2]));
-  } else {
-    setActiveNav('list');
-    renderList();
-  }
+  routeAppHash(location.hash, setActiveNav);
 }
 
 function wireSignOut(state: AuthState) {
