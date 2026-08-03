@@ -23,10 +23,15 @@ fi
 
 # The scanner image already ships a JRE; skip server-side JRE download
 # (that step has been hanging/timing out against our Community host).
+# Persist the scanner engine/plugin cache so each local run does not
+# re-download ~200MB from the Sonar host (that alone can take minutes).
+docker volume create oo-workers-sonar-cache >/dev/null
 docker run --rm --network host \
   -v "$PWD":/usr/src \
+  -v oo-workers-sonar-cache:/opt/sonar-scanner/.sonar/cache \
   "$SONAR_SCANNER_IMAGE" \
   "${SONAR_PROJECT_ARGS[@]}" \
   -Dsonar.scanner.skipJreProvisioning=true \
+  -Dsonar.scanner.skipSystemTruststore=true \
   -Dsonar.host.url="$SONAR_HOST_URL" \
   -Dsonar.token="$SONAR_TOKEN"

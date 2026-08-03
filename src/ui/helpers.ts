@@ -10,6 +10,13 @@ export const esc = (s: string) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   );
 
+/** Safe scalar coercion for form fields / unknown JSON — avoids [object Object]. */
+export function formText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
 export const fmtAge = (iso?: string | null) => {
   if (!iso) return 'never';
   const d = (Date.now() - new Date(iso).getTime()) / 1000;

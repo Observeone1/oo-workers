@@ -3,7 +3,7 @@
  * form with severity picker + dedicated Resolve button. Loaded when
  * the URL hash matches `#/incidents/<id>`.
  */
-import { $, esc, fmtAge } from '../helpers';
+import { $, esc, fmtAge, formText } from '../helpers';
 import {
   addIncidentUpdate,
   getIncident,
@@ -134,7 +134,7 @@ function wireTitleForm(inc: IncidentDetail): void {
   if (!form) return;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const title = String(new FormData(form).get('title') ?? '').trim();
+    const title = formText(new FormData(form).get('title')).trim();
     if (!title || title === inc.title) return;
     const res = await updateIncidentTitle(inc.id, title);
     if (!res.ok) {
@@ -152,8 +152,8 @@ function wireUpdateForm(inc: IncidentDetail): void {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const body = String(fd.get('body') ?? '').trim();
-    const severity = String(fd.get('severity') ?? 'investigating') as Severity;
+    const body = formText(fd.get('body')).trim();
+    const severity = formText(fd.get('severity'), 'investigating') as Severity;
     if (!body) return;
     const errEl = document.getElementById('incident-update-error') as HTMLElement;
     errEl.hidden = true;
@@ -161,7 +161,7 @@ function wireUpdateForm(inc: IncidentDetail): void {
     if (!res.ok) {
       errEl.textContent =
         data && typeof data === 'object' && 'error' in data
-          ? String((data as { error: unknown }).error)
+          ? formText((data as { error: unknown }).error)
           : `request failed (${res.status})`;
       errEl.hidden = false;
       return;
@@ -196,7 +196,7 @@ function wireResolveBtn(inc: IncidentDetail): void {
         title: 'Resolve failed',
         body:
           data && typeof data === 'object' && 'error' in data
-            ? String((data as { error: unknown }).error)
+            ? formText((data as { error: unknown }).error)
             : `Request failed (${res.status})`,
       });
       btn.disabled = false;

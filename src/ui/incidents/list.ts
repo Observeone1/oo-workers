@@ -3,7 +3,7 @@
  * resolved) + create-incident slide-in panel + per-incident cards
  * (open + delete).
  */
-import { $, esc, fmtAge } from '../helpers';
+import { $, esc, fmtAge, formText } from '../helpers';
 import {
   createIncident,
   deleteIncident,
@@ -231,9 +231,9 @@ function wireCreateForm(): void {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const title = String(fd.get('title') ?? '').trim();
-    const body = String(fd.get('body') ?? '').trim();
-    const severity = String(fd.get('severity') ?? 'investigating') as Severity;
+    const title = formText(fd.get('title')).trim();
+    const body = formText(fd.get('body')).trim();
+    const severity = formText(fd.get('severity'), 'investigating') as Severity;
     const errEl = document.getElementById('incident-create-error') as HTMLElement;
     if (!title || !body) {
       errEl.textContent = 'Title and first update are required.';

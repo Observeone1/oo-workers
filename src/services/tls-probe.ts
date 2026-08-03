@@ -160,12 +160,18 @@ function parseDnsSans(san: string | undefined): string[] {
  * (ALTNAME) still counts as a trusted chain — hostname is the separate
  * `verify_hostname` knob.
  */
+function formText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
 function checkTlsChain(socket: TLSSocket): string | null {
   const ae = socket.authorizationError as unknown;
   const aeCode = ae && typeof ae === 'object' ? (ae as NodeJS.ErrnoException).code : undefined;
   let aeMsg: string;
   if (ae instanceof Error) aeMsg = ae.message;
-  else if (ae) aeMsg = String(ae);
+  else if (ae) aeMsg = formText(ae, 'unauthorized');
   else aeMsg = 'unauthorized';
   const chainTrusted = socket.authorized || aeCode === 'ERR_TLS_CERT_ALTNAME_INVALID';
   return chainTrusted ? null : `Certificate chain not trusted: ${aeMsg}`;

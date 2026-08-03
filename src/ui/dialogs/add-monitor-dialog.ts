@@ -9,7 +9,7 @@
  * API directly.
  */
 import type { MonType } from '../types';
-import { $, esc } from '../helpers';
+import { $, esc, formText } from '../helpers';
 import {
   createMonitor,
   updateMonitor,
@@ -417,14 +417,14 @@ export function initAddDialog(): void {
         tests: [{ name: name.replaceAll(/\s+/g, '_'), script: fd.get('qa_script') }],
       };
     } else if (type === 'tcp') {
-      const host = String(fd.get('tcp_host') ?? '').trim();
+      const host = formText(fd.get('tcp_host')).trim();
       const port = Number(fd.get('tcp_port'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
         alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
       }
-      const tcpPayloadHex = String(fd.get('tcp_payload_hex') ?? '').trim();
-      const tcpExpectBanner = String(fd.get('tcp_expect_banner') ?? '').trim();
+      const tcpPayloadHex = formText(fd.get('tcp_payload_hex')).trim();
+      const tcpExpectBanner = formText(fd.get('tcp_expect_banner')).trim();
       body = {
         name,
         host,
@@ -435,9 +435,9 @@ export function initAddDialog(): void {
         timeoutMs: (Number(fd.get('tcp_timeout')) || 5) * 1000,
       };
     } else if (type === 'db') {
-      const host = String(fd.get('db_host') ?? '').trim();
+      const host = formText(fd.get('db_host')).trim();
       const port = Number(fd.get('db_port'));
-      const protocol = String(fd.get('db_protocol') ?? '');
+      const protocol = formText(fd.get('db_protocol'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
         alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
@@ -455,7 +455,7 @@ export function initAddDialog(): void {
         intervalSeconds: Number(fd.get('db_interval_seconds')) || 60,
       };
     } else if (type === 'tls') {
-      const host = String(fd.get('tls_host') ?? '').trim();
+      const host = formText(fd.get('tls_host')).trim();
       const port = Number(fd.get('tls_port') || 443);
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
         alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
@@ -469,8 +469,8 @@ export function initAddDialog(): void {
         });
         return;
       }
-      const servername = String(fd.get('tls_servername') ?? '').trim();
-      const expectCnRegex = String(fd.get('tls_expect_cn_regex') ?? '').trim();
+      const servername = formText(fd.get('tls_servername')).trim();
+      const expectCnRegex = formText(fd.get('tls_expect_cn_regex')).trim();
       body = {
         name,
         host,
@@ -503,17 +503,17 @@ export function initAddDialog(): void {
         name,
         periodSeconds: period,
         graceSeconds: grace,
-        description: String(fd.get('hb_description') ?? '').trim() || null,
+        description: formText(fd.get('hb_description')).trim() || null,
       };
     } else {
       // udp
-      const host = String(fd.get('udp_host') ?? '').trim();
+      const host = formText(fd.get('udp_host')).trim();
       const port = Number(fd.get('udp_port'));
       if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
         alertDialog({ title: 'Validation error', body: 'Host + port (1–65535) required' });
         return;
       }
-      const payloadHex = String(fd.get('udp_payload_hex') ?? '').trim();
+      const payloadHex = formText(fd.get('udp_payload_hex')).trim();
       body = {
         name,
         host,
@@ -636,30 +636,30 @@ export async function openEditDialog(
 
   // Pre-fill shared fields.
   const nameInput = addDialog.querySelector<HTMLInputElement>('input[name="name"]');
-  if (nameInput) nameInput.value = String(monitorData.name ?? '');
+  if (nameInput) nameInput.value = formText(monitorData.name);
 
   // Pre-fill type-specific fields.
   if (type === 'url' || type === 'api' || type === 'qa') {
     const urlInput = addDialog.querySelector<HTMLInputElement>('input[name="url"]');
-    if (urlInput) urlInput.value = String(monitorData.url ?? monitorData.targetUrl ?? '');
+    if (urlInput) urlInput.value = formText(monitorData.url ?? monitorData.targetUrl);
   }
   if (type === 'url' || type === 'api') {
     const intInput = addDialog.querySelector<HTMLInputElement>('input[name="interval_seconds"]');
-    if (intInput) intInput.value = String(monitorData.intervalSeconds ?? 60);
+    if (intInput) intInput.value = formText(monitorData.intervalSeconds, '60');
   }
   if (type === 'api') {
     const methodSel = addDialog.querySelector<HTMLSelectElement>('select[name="api_method"]');
-    if (methodSel) methodSel.value = String(monitorData.method ?? 'GET');
+    if (methodSel) methodSel.value = formText(monitorData.method, 'GET');
     const container = document.getElementById('api-assertion-rows')!;
     container.innerHTML = '';
     const assertions = extra?.assertions ?? [];
     if (assertions.length > 0) {
       assertions.forEach((a) =>
         addAssertionRow({
-          type: String(a.type ?? ''),
-          operator: String(a.operator ?? ''),
-          path: a.path ? String(a.path) : '',
-          value: a.value ? String(a.value) : '',
+          type: formText(a.type),
+          operator: formText(a.operator),
+          path: formText(a.path),
+          value: formText(a.value),
         }),
       );
     } else {
@@ -668,10 +668,10 @@ export async function openEditDialog(
   }
   if (type === 'qa') {
     const intInput = addDialog.querySelector<HTMLInputElement>('input[name="interval_seconds"]');
-    if (intInput) intInput.value = String(monitorData.intervalSeconds ?? 300);
+    if (intInput) intInput.value = formText(monitorData.intervalSeconds, '300');
     const scriptArea = addDialog.querySelector<HTMLTextAreaElement>('textarea[name="qa_script"]');
     if (scriptArea && extra?.tests?.[0]) {
-      scriptArea.value = String(extra.tests[0].script ?? '');
+      scriptArea.value = formText(extra.tests[0].script);
     }
   }
   if (type === 'tcp') {
@@ -680,11 +680,11 @@ export async function openEditDialog(
     const ph = addDialog.querySelector<HTMLInputElement>('input[name="tcp_payload_hex"]');
     const eb = addDialog.querySelector<HTMLInputElement>('input[name="tcp_expect_banner"]');
     const iv = addDialog.querySelector<HTMLInputElement>('input[name="tcp_interval_seconds"]');
-    if (h) h.value = String(monitorData.host ?? '');
-    if (p) p.value = String(monitorData.port ?? '');
-    if (ph) ph.value = String(monitorData.payloadHex ?? '');
-    if (eb) eb.value = String(monitorData.expectBanner ?? '');
-    if (iv) iv.value = String(monitorData.intervalSeconds ?? 60);
+    if (h) h.value = formText(monitorData.host);
+    if (p) p.value = formText(monitorData.port);
+    if (ph) ph.value = formText(monitorData.payloadHex);
+    if (eb) eb.value = formText(monitorData.expectBanner);
+    if (iv) iv.value = formText(monitorData.intervalSeconds, '60');
   }
   if (type === 'udp') {
     const h = addDialog.querySelector<HTMLInputElement>('input[name="udp_host"]');
@@ -692,11 +692,11 @@ export async function openEditDialog(
     const ph = addDialog.querySelector<HTMLInputElement>('input[name="udp_payload_hex"]');
     const er = addDialog.querySelector<HTMLInputElement>('input[name="udp_expect_response"]');
     const iv = addDialog.querySelector<HTMLInputElement>('input[name="udp_interval_seconds"]');
-    if (h) h.value = String(monitorData.host ?? '');
-    if (p) p.value = String(monitorData.port ?? '');
-    if (ph) ph.value = String(monitorData.payloadHex ?? '');
+    if (h) h.value = formText(monitorData.host);
+    if (p) p.value = formText(monitorData.port);
+    if (ph) ph.value = formText(monitorData.payloadHex);
     if (er) er.checked = monitorData.expectResponse === true;
-    if (iv) iv.value = String(monitorData.intervalSeconds ?? 60);
+    if (iv) iv.value = formText(monitorData.intervalSeconds, '60');
   }
   if (type === 'db') {
     const pr = addDialog.querySelector<HTMLSelectElement>('select[name="db_protocol"]');
@@ -704,11 +704,11 @@ export async function openEditDialog(
     const p = addDialog.querySelector<HTMLInputElement>('input[name="db_port"]');
     const tl = addDialog.querySelector<HTMLInputElement>('input[name="db_tls"]');
     const iv = addDialog.querySelector<HTMLInputElement>('input[name="db_interval_seconds"]');
-    if (pr) pr.value = String(monitorData.protocol ?? 'postgres');
-    if (h) h.value = String(monitorData.host ?? '');
-    if (p) p.value = String(monitorData.port ?? '');
+    if (pr) pr.value = formText(monitorData.protocol, 'postgres');
+    if (h) h.value = formText(monitorData.host);
+    if (p) p.value = formText(monitorData.port);
     if (tl) tl.checked = monitorData.tls === true;
-    if (iv) iv.value = String(monitorData.intervalSeconds ?? 60);
+    if (iv) iv.value = formText(monitorData.intervalSeconds, '60');
   }
   if (type === 'tls') {
     const h = addDialog.querySelector<HTMLInputElement>('input[name="tls_host"]');
@@ -719,22 +719,22 @@ export async function openEditDialog(
     const vc = addDialog.querySelector<HTMLInputElement>('input[name="tls_verify_chain"]');
     const vh = addDialog.querySelector<HTMLInputElement>('input[name="tls_verify_hostname"]');
     const cr = addDialog.querySelector<HTMLInputElement>('input[name="tls_expect_cn_regex"]');
-    if (h) h.value = String(monitorData.host ?? '');
-    if (p) p.value = String(monitorData.port ?? 443);
-    if (sn) sn.value = String(monitorData.servername ?? '');
-    if (wd) wd.value = String(monitorData.warnDays ?? 30);
-    if (iv) iv.value = String(monitorData.intervalSeconds ?? 60);
+    if (h) h.value = formText(monitorData.host);
+    if (p) p.value = formText(monitorData.port, '443');
+    if (sn) sn.value = formText(monitorData.servername);
+    if (wd) wd.value = formText(monitorData.warnDays, '30');
+    if (iv) iv.value = formText(monitorData.intervalSeconds, '60');
     if (vc) vc.checked = monitorData.verifyChain === true;
     if (vh) vh.checked = monitorData.verifyHostname === true;
-    if (cr) cr.value = String(monitorData.expectCnRegex ?? '');
+    if (cr) cr.value = formText(monitorData.expectCnRegex);
   }
   if (type === 'heartbeat') {
     const per = addDialog.querySelector<HTMLInputElement>('input[name="hb_period_seconds"]');
     const grc = addDialog.querySelector<HTMLInputElement>('input[name="hb_grace_seconds"]');
     const dsc = addDialog.querySelector<HTMLTextAreaElement>('textarea[name="hb_description"]');
-    if (per) per.value = String(monitorData.periodSeconds ?? 60);
-    if (grc) grc.value = String(monitorData.graceSeconds ?? 60);
-    if (dsc) dsc.value = String(monitorData.description ?? '');
+    if (per) per.value = formText(monitorData.periodSeconds, '60');
+    if (grc) grc.value = formText(monitorData.graceSeconds, '60');
+    if (dsc) dsc.value = formText(monitorData.description);
   }
 
   await Promise.all([refreshRegionsPicker(), refreshChannelsPicker()]);

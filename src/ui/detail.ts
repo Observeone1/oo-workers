@@ -1,5 +1,5 @@
 import type { MonType, RunLite } from './types';
-import { $, esc, fmtAgeLive, statusClass } from './helpers';
+import { $, esc, fmtAgeLive, formText, statusClass } from './helpers';
 import { iconActive, iconPaused } from './icons';
 import { getDetail, getRegions, runMonitor, type RegionLite } from './api';
 import { openEditDialog } from './dialogs/add-monitor-dialog';
@@ -329,14 +329,14 @@ function sparklineSvg(values: number[], w: number, h: number, stroke: string): s
 // ingest URL (the operator's primary action: copy it to their cron),
 // status + last-ping age, and a copy-paste curl example.
 function renderHeartbeatDetail(m: Record<string, unknown>) {
-  const name = String(m.name ?? '');
-  const description = m.description ? String(m.description) : '';
-  const status = String(m.status ?? 'PENDING') as 'PENDING' | 'UP' | 'OVERDUE';
-  const token = String(m.token ?? '');
+  const name = formText(m.name);
+  const description = formText(m.description);
+  const status = formText(m.status, 'PENDING') as 'PENDING' | 'UP' | 'OVERDUE';
+  const token = formText(m.token);
   const periodSeconds = Number(m.periodSeconds ?? 0);
   const graceSeconds = Number(m.graceSeconds ?? 0);
   const enabled = m.enabled === true;
-  const lastPingAt = m.lastPingAt ? String(m.lastPingAt) : null;
+  const lastPingAt = m.lastPingAt ? formText(m.lastPingAt) : null;
   const pingUrl = `${location.origin}/heartbeat/${token}`;
   const curl = `curl -fsS -X POST ${pingUrl}`;
   const cronExample = `*/${Math.max(1, Math.round(periodSeconds / 60))} * * * * ${curl} >/dev/null`;
