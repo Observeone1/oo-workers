@@ -8,7 +8,11 @@
 set -euo pipefail
 
 : "${SONAR_HOST_URL:?SONAR_HOST_URL is not set}"
-: "${SONAR_TOKEN:?SONAR_TOKEN is not set}"
+# Local tooling stores the analysis token as SONAR_ANALYSIS_TOKEN.
+if [[ -z "${SONAR_TOKEN:-}" && -n "${SONAR_ANALYSIS_TOKEN:-}" ]]; then
+  SONAR_TOKEN="$SONAR_ANALYSIS_TOKEN"
+fi
+: "${SONAR_TOKEN:?SONAR_TOKEN (or SONAR_ANALYSIS_TOKEN) is not set}"
 
 # Pin the scanner image so local and CI analysis use the same CLI.
 SONAR_SCANNER_IMAGE='sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9'

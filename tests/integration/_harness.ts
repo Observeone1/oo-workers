@@ -36,7 +36,7 @@ function ctx(): IntegrationCtx {
   return c;
 }
 
-export function freePort(): Promise<number> {
+function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
     srv.once('error', reject);
