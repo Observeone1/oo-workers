@@ -78,6 +78,10 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
     )
     .join('');
 
+  const rolePill = meRes.role
+    ? `<span class="pill${meRes.role === 'admin' ? ' up' : ''}">${esc(meRes.role)}</span>`
+    : '';
+
   main.innerHTML = `
     <div class="page-head">
       <div>
@@ -85,7 +89,7 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
         <div class="sub">Manage your account, security and instance data.</div>
       </div>
       <div class="row-flex" style="gap:8px">
-        ${meRes.role ? `<span class="pill${meRes.role === 'admin' ? ' up' : ''}">${esc(meRes.role)}</span>` : ''}
+        ${rolePill}
       </div>
     </div>
 

@@ -77,7 +77,9 @@ async function main() {
   await sql.end();
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('create-region failed:', err);
   process.exit(1);
-});
+}

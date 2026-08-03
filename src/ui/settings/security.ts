@@ -6,6 +6,12 @@
 import { esc } from '../helpers';
 import { changePassword } from '../api';
 
+function browserLabelFromUserAgent(): string {
+  if (navigator.userAgent.includes('Chrome')) return 'Chrome';
+  if (navigator.userAgent.includes('Safari')) return 'Safari';
+  return 'Browser';
+}
+
 export function renderSecurity(panel: HTMLElement): void {
   panel.innerHTML = `
     <div class="set-section-head">
@@ -76,7 +82,7 @@ export function renderSecurity(panel: HTMLElement): void {
             <div class="dot up"></div>
             <div class="info">
               <div class="title">
-                ${esc(navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Safari') ? 'Safari' : 'Browser')}
+                ${esc(browserLabelFromUserAgent())}
                 <span class="pill up">this device</span>
               </div>
               <div class="meta">current session</div>

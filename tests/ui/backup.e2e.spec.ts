@@ -181,7 +181,7 @@ test('Download with checkbox ON → .oodump.tar.gz envelope', async ({ page }) =
   expect(buf[1]).toBe(0x8b);
   // ustar at offset 257 of the gunzipped body
   const inner = gunzipSync(buf);
-  expect(inner.slice(257, 262).toString('ascii')).toBe('ustar');
+  expect(inner.subarray(257, 262).toString('ascii')).toBe('ustar');
 
   // List entries: meta.json + dump.ndjson must be present.
   const entries = await listTarEntries(path);
@@ -206,7 +206,7 @@ test('Download with checkbox OFF → legacy .oodump.gz (no tar header)', async (
   const inner = gunzipSync(buf);
   // Raw NDJSON: first byte is '{' (manifest line JSON), not a tar header.
   expect(inner[0]).toBe(0x7b); // '{'
-  expect(inner.slice(257, 262).toString('ascii')).not.toBe('ustar');
+  expect(inner.subarray(257, 262).toString('ascii')).not.toBe('ustar');
 });
 
 test('full UI round-trip with artifacts (RustFS byte equality)', async ({
@@ -301,7 +301,7 @@ function preflightTarDump(path: string, keySnapshot: string | undefined) {
     expect(buf[0]).toBe(0x1f);
     expect(buf[1]).toBe(0x8b);
     const inner = gunzipSync(buf);
-    if (inner.slice(257, 262).toString('ascii') !== 'ustar') {
+    if (inner.subarray(257, 262).toString('ascii') !== 'ustar') {
       throw new Error('tar header missing in envelope');
     }
     // Quick sanity: dump.ndjson rows use {"t":"<table>","r":{...}}.

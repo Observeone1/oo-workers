@@ -29,7 +29,10 @@ function genCert(tag: string, days: number, opts: { cn?: string; sans?: string[]
   const crt = join(dir, `${tag}.crt`);
   const cn = opts.cn ?? `oo-tls-${tag}`;
   const args = ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', key, '-out', crt, '-days', String(days), '-nodes', '-subj', `/CN=${cn}`];
-  if (opts.sans?.length) args.push('-addext', `subjectAltName=${opts.sans.map((s) => `DNS:${s}`).join(',')}`);
+  if (opts.sans?.length) {
+    const sanList = opts.sans.map((s) => 'DNS:' + s).join(',');
+    args.push('-addext', `subjectAltName=${sanList}`);
+  }
   execFileSync('openssl', args, { stdio: 'ignore' });
   return { key: readFileSync(key), cert: readFileSync(crt) };
 }

@@ -138,6 +138,9 @@ async function renderList() {
     </div>`;
   }
 
+  const activePageDescription = activePage?.description
+    ? `<div style="color:var(--muted);font-size:var(--fs-13);margin-bottom:6px">${esc(activePage.description)}</div>`
+    : '';
   const previewContent = activePage
     ? `
       <div class="preview-bar">
@@ -148,7 +151,7 @@ async function renderList() {
       <div class="frame">
         <header class="public-head" style="margin-bottom:var(--s-5)">
           <h1 style="font-size:22px;margin:0 0 6px">${esc(activePage.title)}</h1>
-          ${activePage.description ? `<div style="color:var(--muted);font-size:var(--fs-13);margin-bottom:6px">${esc(activePage.description)}</div>` : ''}
+          ${activePageDescription}
           <span class="summary"><span class="dot up"></span> All services healthy</span>
         </header>
         <div class="sp-monitor-list">${monitorRows}</div>

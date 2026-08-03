@@ -21,9 +21,12 @@ if [[ -n "${SONAR_PROJECT_KEY:-}" ]]; then
   SONAR_PROJECT_ARGS+=("-Dsonar.projectKey=$SONAR_PROJECT_KEY")
 fi
 
+# The scanner image already ships a JRE; skip server-side JRE download
+# (that step has been hanging/timing out against our Community host).
 docker run --rm --network host \
   -v "$PWD":/usr/src \
   "$SONAR_SCANNER_IMAGE" \
   "${SONAR_PROJECT_ARGS[@]}" \
+  -Dsonar.scanner.skipJreProvisioning=true \
   -Dsonar.host.url="$SONAR_HOST_URL" \
   -Dsonar.token="$SONAR_TOKEN"

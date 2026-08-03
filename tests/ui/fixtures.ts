@@ -1,4 +1,4 @@
-import { test as base, expect as playwrightExpect, type Page, type APIRequestContext } from '@playwright/test';
+import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -10,7 +10,7 @@ export const test = base.extend<{
   shot: async ({ page: fixturePage }, use, testInfo) => {
     await use(async (name: string, override?: Page) => {
       const target = override ?? fixturePage;
-      const safe = `${testInfo.title.replace(/[^\w-]+/g, '_')}__${name}.png`;
+      const safe = `${testInfo.title.replaceAll(/[^\w-]+/g, '_')}__${name}.png`;
       const path = join(SHOT_DIR, safe);
       mkdirSync(dirname(path), { recursive: true });
       await target.screenshot({ path, fullPage: true });
@@ -19,7 +19,6 @@ export const test = base.extend<{
 });
 
 export { expect } from '@playwright/test';
-const expect = playwrightExpect;
 
 // Wait for the list view to be ready (tabs rendered).
 // Anchored on data-testid per tests/ui/CONVENTIONS.md.

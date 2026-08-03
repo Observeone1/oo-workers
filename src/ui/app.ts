@@ -198,4 +198,4 @@ async function boot() {
   wireAuthenticatedApp(state);
 }
 
-boot();
+await boot();

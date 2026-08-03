@@ -260,13 +260,30 @@ export async function renderList() {
     })
     .join('');
 
+  const downMonitorSuffix = downCount === 1 ? '' : 's';
+  const p95Value = p95 ?? '—';
+  const p95Unit = p95 == null ? '' : 'ms';
+  let showingSummary: string;
+  if (filtered.length === 0) {
+    showingSummary = search ? `No matches for "${esc(search)}"` : 'No monitors';
+  } else {
+    const filteredNote = search ? ` (filtered from ${allForTab.length})` : '';
+    showingSummary = `${showingFrom}–${showingTo} of ${filtered.length}${filteredNote}`;
+  }
+  let emptyListBody: string;
+  if (search) {
+    emptyListBody = `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search data-testid="search-clear-link">Clear search</a>.`;
+  } else {
+    emptyListBody = `No ${activeTab.toUpperCase()} monitors yet. <a href="#" class="empty-cta" data-tab-add="${activeTab}" data-testid="empty-state-add-link">Add a ${activeTab.toUpperCase()} monitor</a> to create one.`;
+  }
+
   const statusBanner = isIncident
     ? `<div class="status-banner down">
         <div class="status-icon down">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
         <div class="text">
-          <div class="head">Degraded · ${downCount} monitor${downCount !== 1 ? 's' : ''} down</div>
+          <div class="head">Degraded · ${downCount} monitor${downMonitorSuffix} down</div>
           <div class="sub">${upCount}/${totalActive} active monitors passing</div>
         </div>
         <div class="uptime-strip">
@@ -291,6 +308,11 @@ export async function renderList() {
   const upPct = totalActive === 0 ? '—' : ((upCount / totalActive) * 100).toFixed(2) + '%';
 
   const onlineRegionCount = regions.filter((r) => r.online).length;
+  let activeRegionSuffix = '';
+  if (onlineRegionCount > 0) {
+    const regionSuffix = onlineRegionCount === 1 ? '' : 's';
+    activeRegionSuffix = `, ${onlineRegionCount} region${regionSuffix}`;
+  }
 
   const statStrip = `
     <div class="stat-strip">
@@ -306,17 +328,20 @@ export async function renderList() {
       </div>
       <div class="stat">
         <span class="label">P95 latency</span>
-        <span class="value">${p95 != null ? p95 : '—'}<span class="unit">${p95 != null ? 'ms' : ''}</span></span>
+        <span class="value">${p95Value}<span class="unit">${p95Unit}</span></span>
         <span class="delta up">across active monitors</span>
       </div>
       <div class="stat">
         <span class="label">Total monitors</span>
         <span class="value">${totalAll}</span>
-        <span class="delta up">${totalActive} active${onlineRegionCount > 0 ? `, ${onlineRegionCount} region${onlineRegionCount !== 1 ? 's' : ''}` : ''}</span>
+        <span class="delta up">${totalActive} active${activeRegionSuffix}</span>
       </div>
     </div>`;
 
   const onlineRegions = regions.filter((r) => r.online).length;
+  let fleetDotClass = '';
+  if (onlineRegions === regions.length) fleetDotClass = 'up';
+  else if (onlineRegions > 0) fleetDotClass = 'warn';
   const fleetSection =
     regions.length === 0
       ? ''
@@ -326,7 +351,7 @@ export async function renderList() {
         <div class="panel-head">
           <span class="h"><em>Region fleet</em> · last 24h</span>
           <span class="right">
-            <span class="dot ${onlineRegions === regions.length ? 'up' : onlineRegions > 0 ? 'warn' : ''}"></span>
+            <span class="dot ${fleetDotClass}"></span>
             ${onlineRegions}/${regions.length} online
             <a href="#/regions" style="color:var(--accent);font-size:var(--fs-12);margin-left:4px">Manage →</a>
           </span>
@@ -368,22 +393,12 @@ export async function renderList() {
     <div class="list-toolbar">
       <input id="search-input" data-testid="monitors-search-input" class="search" type="search" placeholder="Filter by name or URL…" value="${esc(search)}" autocomplete="off" />
       <span class="showing-count" data-testid="monitors-summary">
-        ${
-          filtered.length === 0
-            ? search
-              ? `No matches for "${esc(search)}"`
-              : 'No monitors'
-            : `${showingFrom}–${showingTo} of ${filtered.length}${search ? ` (filtered from ${allForTab.length})` : ''}`
-        }
+        ${showingSummary}
       </span>
     </div>
     ${
       pageRows.length === 0
-        ? `<div class="empty" data-testid="list-empty">${
-            search
-              ? `No ${activeTab.toUpperCase()} monitors match "${esc(search)}". <a href="#" data-clear-search data-testid="search-clear-link">Clear search</a>.`
-              : `No ${activeTab.toUpperCase()} monitors yet. <a href="#" class="empty-cta" data-tab-add="${activeTab}" data-testid="empty-state-add-link">Add a ${activeTab.toUpperCase()} monitor</a> to create one.`
-          }</div>`
+        ? `<div class="empty" data-testid="list-empty">${emptyListBody}</div>`
         : `<div class="tbl-wrap">
           <table>
             <thead><tr><th></th><th>Name</th><th>Interval</th><th>Last run</th><th>Latency · 30 runs</th><th></th></tr></thead>
@@ -515,6 +530,10 @@ function rowFor(m: Monitor): string {
     m.type === 'heartbeat'
       ? fmtAgeLive(m.lastPingAt ?? undefined)
       : fmtAgeLive(m.latest?.startTime);
+  let latencyCell: string;
+  if (m.type === 'heartbeat') latencyCell = '—';
+  else if (latency == null) latencyCell = '—';
+  else latencyCell = `${latency}<span class="dim">ms</span>`;
   return `
     <tr class="clickable${m.enabled ? '' : ' disabled'}" data-open data-type="${m.type}" data-id="${m.id}">
       <td class="col-status"><span class="dot ${cls}"></span></td>
@@ -525,7 +544,7 @@ function rowFor(m: Monitor): string {
       <td><span class="pill">${schedule}</span></td>
       <td class="cell-meta">${lastEvent}</td>
       <td class="cell-num">
-        ${m.type === 'heartbeat' ? '—' : latency != null ? `${latency}<span class="dim">ms</span>` : '—'}
+        ${latencyCell}
       </td>
       <td class="col-actions">
         <div class="row-actions">

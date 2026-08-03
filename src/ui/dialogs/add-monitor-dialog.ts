@@ -524,11 +524,11 @@ export function initAddDialog(): void {
       };
     }
     const res =
-      editModeId !== null
-        ? await updateMonitor(type, editModeId, body)
-        : await createMonitor(type, body);
+      editModeId === null
+        ? await createMonitor(type, body)
+        : await updateMonitor(type, editModeId, body);
     if (!res.ok) {
-      const label = editModeId !== null ? 'Update failed' : 'Create failed';
+      const label = editModeId === null ? 'Create failed' : 'Update failed';
       alertDialog({ title: label, body: `Failed: ${await res.text()}` });
       return;
     }
@@ -570,18 +570,7 @@ export function initAddDialog(): void {
     addForm.reset();
     syncFields();
     const cameFromDetail = DETAIL_HASH_RE.test(location.hash);
-    if (editModeId !== null) {
-      const editedId = editModeId;
-      editModeId = null;
-      // If the dialog was opened from a detail page, navigate back there so
-      // the operator sees the updated monitor instead of a list-then-detail flash.
-      if (cameFromDetail) {
-        location.hash = `#/${type}/${editedId}`;
-      } else {
-        setActiveTab(type);
-        renderList();
-      }
-    } else {
+    if (editModeId === null) {
       setActiveTab(type);
       // If the dialog was opened from a detail page, the activeView in
       // app.ts is still 'detail' — the 5s background poll would re-render
@@ -590,6 +579,17 @@ export function initAddDialog(): void {
       if (cameFromDetail) {
         location.hash = '#/';
       } else {
+        renderList();
+      }
+    } else {
+      const editedId = editModeId;
+      editModeId = null;
+      // If the dialog was opened from a detail page, navigate back there so
+      // the operator sees the updated monitor instead of a list-then-detail flash.
+      if (cameFromDetail) {
+        location.hash = `#/${type}/${editedId}`;
+      } else {
+        setActiveTab(type);
         renderList();
       }
     }

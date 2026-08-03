@@ -88,12 +88,15 @@ export async function renderRegions() {
   // server-side (versionSkew on the row) so we only need to count.
   const skewedRegions = regions.filter((r) => r.versionSkew);
   const masterVersion = regions.find((r) => r.masterVersion)?.masterVersion;
+  const skewAgentVerb = skewedRegions.length === 1 ? 'agent is' : 'agents are';
+  const skewVersionPhrase =
+    skewedRegions.length === 1 ? 'a different version than' : 'different versions than';
   const skewBanner =
     skewedRegions.length > 0 && masterVersion
       ? `<div class="banner warn" data-testid="version-skew-banner" style="margin-bottom: 12px">
           <strong>Version skew detected.</strong>
-          ${skewedRegions.length} ${skewedRegions.length === 1 ? 'agent is' : 'agents are'} running
-          ${skewedRegions.length === 1 ? 'a different version than' : 'different versions than'}
+          ${skewedRegions.length} ${skewAgentVerb} running
+          ${skewVersionPhrase}
           the master (<code>${esc(masterVersion)}</code>):
           ${skewedRegions
             .map(

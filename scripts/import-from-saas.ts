@@ -209,7 +209,9 @@ async function main() {
   console.log('✓ done.');
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('import-from-saas failed:', err);
   process.exit(1);
-});
+}

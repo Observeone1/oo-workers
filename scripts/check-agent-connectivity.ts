@@ -174,7 +174,9 @@ async function main() {
   console.log('\nall green — agent is ready to start.');
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('\npreflight crashed:', err);
   process.exit(1);
-});
+}

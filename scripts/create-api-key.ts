@@ -78,7 +78,9 @@ async function main() {
   await sql.end();
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('create-api-key failed:', err);
   process.exit(1);
-});
+}

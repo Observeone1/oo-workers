@@ -66,8 +66,10 @@ async function main() {
 }
 
 if (import.meta.main) {
-  main().catch((err) => {
+  try {
+    await main();
+  } catch (err) {
     console.error('migration failed:', err);
     process.exit(1);
-  });
+  }
 }

@@ -162,7 +162,7 @@ describe('load', () => {
 
     const result = await poll(async () => {
       const [row] = await sql`SELECT status FROM url_monitor_executions WHERE id = ${exec.id}`;
-      return row.status !== 'PENDING' ? row.status : null;
+      return row.status === 'PENDING' ? null : row.status;
     }, 20_000);
     await sql.end();
 
@@ -230,7 +230,7 @@ describe('load', () => {
 
     const result = await poll(async () => {
       const [row] = await sql`SELECT status, assertion_results FROM api_executions WHERE id = ${exec.id}`;
-      return row.status !== 'PENDING' ? row : null;
+      return row.status === 'PENDING' ? null : row;
     }, 20_000);
     await sql.end();
 

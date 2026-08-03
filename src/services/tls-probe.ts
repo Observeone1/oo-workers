@@ -163,7 +163,10 @@ function parseDnsSans(san: string | undefined): string[] {
 function checkTlsChain(socket: TLSSocket): string | null {
   const ae = socket.authorizationError as unknown;
   const aeCode = ae && typeof ae === 'object' ? (ae as NodeJS.ErrnoException).code : undefined;
-  const aeMsg = ae instanceof Error ? ae.message : ae ? String(ae) : 'unauthorized';
+  let aeMsg: string;
+  if (ae instanceof Error) aeMsg = ae.message;
+  else if (ae) aeMsg = String(ae);
+  else aeMsg = 'unauthorized';
   const chainTrusted = socket.authorized || aeCode === 'ERR_TLS_CERT_ALTNAME_INVALID';
   return chainTrusted ? null : `Certificate chain not trusted: ${aeMsg}`;
 }

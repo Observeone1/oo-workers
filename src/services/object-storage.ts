@@ -267,8 +267,8 @@ function slug(input: string): string {
     .replaceAll(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  const capped = normalized.slice(0, 40).replace(/-+$/g, '');
+    .replaceAll(/^-+|-+$/g, '');
+  const capped = normalized.slice(0, 40).replaceAll(/-+$/g, '');
   return capped || 'untitled';
 }
 

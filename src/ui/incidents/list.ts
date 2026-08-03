@@ -39,6 +39,17 @@ export async function renderList(): Promise<void> {
   const incidents = await getIncidents(state.selectedPageId, state.filter);
   const activeCount = incidents.filter((i) => i.resolvedAt == null).length;
 
+  const filterIsAll = state.filter === 'all';
+  const filterPrefix = filterIsAll ? '' : `${state.filter} `;
+  const showAllLink = filterIsAll ? '' : '<a href="#" data-filter="all">Show all</a>';
+  const incidentListContent =
+    incidents.length === 0
+      ? `<div class="empty" style="padding:32px;text-align:center">
+               No ${filterPrefix}incidents.
+               ${showAllLink}
+             </div>`
+      : incidents.map(renderIncidentCard).join('');
+
   main.innerHTML = `
     <div class="page-head">
       <div>
@@ -81,14 +92,7 @@ export async function renderList(): Promise<void> {
     <div class="inc-layout">
       <!-- Incident list -->
       <div class="inc-list">
-        ${
-          incidents.length === 0
-            ? `<div class="empty" style="padding:32px;text-align:center">
-               No ${state.filter !== 'all' ? state.filter + ' ' : ''}incidents.
-               ${state.filter !== 'all' ? `<a href="#" data-filter="all">Show all</a>` : ''}
-             </div>`
-            : incidents.map(renderIncidentCard).join('')
-        }
+        ${incidentListContent}
       </div>
 
       <!-- Create panel -->
