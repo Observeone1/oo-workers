@@ -12,9 +12,14 @@ set -euo pipefail
 
 # Pin the scanner image so local and CI analysis use the same CLI.
 SONAR_SCANNER_IMAGE='sonarsource/sonar-scanner-cli@sha256:23ca0f137965d9dff2198074043fd48d386280bc5d0ccac8c8349cea4cf096a9'
+SONAR_PROJECT_ARGS=()
+if [[ -n "${SONAR_PROJECT_KEY:-}" ]]; then
+  SONAR_PROJECT_ARGS+=("-Dsonar.projectKey=$SONAR_PROJECT_KEY")
+fi
 
 docker run --rm --network host \
   -v "$PWD":/usr/src \
   "$SONAR_SCANNER_IMAGE" \
+  "${SONAR_PROJECT_ARGS[@]}" \
   -Dsonar.host.url="$SONAR_HOST_URL" \
   -Dsonar.token="$SONAR_TOKEN"
