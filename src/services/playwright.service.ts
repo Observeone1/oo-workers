@@ -129,8 +129,10 @@ export async function executePlaywrightTest(
   const artifacts: PlaywrightArtifact[] = [];
 
   try {
-    logs.push(`Preparing to execute test via native Playwright runner...`);
-    logs.push(`Script path: ${scriptPath}`);
+    logs.push(
+      `Preparing to execute test via native Playwright runner...`,
+      `Script path: ${scriptPath}`,
+    );
 
     // Build the command. We need:
     //   --reporter json       parse-able output on stdout
@@ -182,29 +184,18 @@ export async function executePlaywrightTest(
       const processed = processPlaywrightSuite(parsedResult, logs, artifacts);
       success = processed.success;
       executionError = processed.executionError ?? executionError;
-    } else {
-      if (!success) {
-        // Two error sources for a "no suites" failure:
-        //   1) parsedResult.errors[] — Playwright crashed before tests
-        //      (bad import, syntax, missing dep, no-tests-found). Goes
-        //      to stdout as part of the JSON reporter.
-        //   2) stderr — anything Playwright didn't structure (worker
-        //      panic, OOM, dep install crash).
-        // Prefer (1) when present, fall back to (2). Without this, the
-        // execution row used to land with the generic "Command failed
-        // with exit code 1" and no debugging signal.
-        const reporterErrors = Array.isArray(parsedResult?.errors)
-          ? parsedResult.errors
-              .map((e: { message?: string }) => (e?.message ?? '').trim())
-              .filter(Boolean)
-              .join('\n')
-          : '';
-        const stderrSummary = extractStderrSummary(stderr);
-        const detail = reporterErrors || stderrSummary;
-        logs.push(`Execution failed: ${executionError}`);
-        if (detail) logs.push(`Detail: ${detail}`);
-        if (detail) executionError = `Playwright runner failed: ${detail}`;
-      }
+    } else if (!success) {
+      const reporterErrors = Array.isArray(parsedResult?.errors)
+        ? parsedResult.errors
+            .map((e: { message?: string }) => (e?.message ?? '').trim())
+            .filter(Boolean)
+            .join('\n')
+        : '';
+      const stderrSummary = extractStderrSummary(stderr);
+      const detail = reporterErrors || stderrSummary;
+      logs.push(`Execution failed: ${executionError}`);
+      if (detail) logs.push(`Detail: ${detail}`);
+      if (detail) executionError = `Playwright runner failed: ${detail}`;
     }
 
     return {

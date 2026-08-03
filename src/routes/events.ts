@@ -25,6 +25,12 @@ import { logger } from '../utils/logger.ts';
 
 const KEEPALIVE_MS = 15_000;
 
+function writeSsePing(stream: { writeln: (line: string) => Promise<unknown> }): void {
+  stream.writeln(':ping').catch(() => {
+    // Connection closed mid-write; cleanup is driven by onAbort.
+  });
+}
+
 export function registerEventsRoutes(app: Hono): void {
   app.get('/api/events', requireAuth('read'), (c) => {
     return streamSSE(c, async (stream) => {
@@ -57,13 +63,7 @@ export function registerEventsRoutes(app: Hono): void {
       // so reverse proxies and CDNs don't drop the idle connection. The
       // hono streamSSE helper exposes the underlying writeRaw for this.
       const keepalive = setInterval(() => {
-        // writeSSE-style comment: a comment is any line beginning with a
-        // colon, terminated by an empty line. hono doesn't expose a
-        // dedicated comment helper, so write the raw bytes.
-        stream.writeln(':ping').catch(() => {
-          // Connection closed mid-write; cleanup is driven by the
-          // promise resolving below.
-        });
+        writeSsePing(stream);
       }, KEEPALIVE_MS);
 
       // Cleanup runs when hono's stream-aborted listener fires (client

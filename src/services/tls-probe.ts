@@ -76,7 +76,7 @@ export function tlsProbe(opts: TlsProbeOptions): Promise<TlsProbeResult> {
     socket.once('secureConnect', () => {
       const cert = socket.getPeerCertificate();
       const latencyMs = Date.now() - start;
-      if (!cert || !cert.valid_to) {
+      if (!cert?.valid_to) {
         finish({ ok: false, latencyMs, errorMessage: `No peer certificate (${host}:${port})` });
         return;
       }

@@ -25,7 +25,10 @@ function getTransport(): Transporter | null {
   if (resolved) return cached;
   resolved = true;
   const host = process.env.OO_SMTP_HOST;
-  if (!host) return (cached = null);
+  if (!host) {
+    cached = null;
+    return cached;
+  }
   const port = Number(process.env.OO_SMTP_PORT ?? 587);
   const user = process.env.OO_SMTP_USER;
   const pass = process.env.OO_SMTP_PASS;

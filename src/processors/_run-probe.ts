@@ -12,21 +12,26 @@ interface ProbeResult {
 
 type AnyRepo = { updateExecution(id: number, fields: any): Promise<unknown> };
 
+export interface ProbeProcessorOpts<R extends ProbeResult> {
+  job: Job;
+  type: MonitorType;
+  executionId: number;
+  monitorId: number;
+  repo: AnyRepo;
+  runProbe: () => Promise<R>;
+  successFields: (r: R) => Record<string, unknown>;
+  failFields: (r: R) => Record<string, unknown>;
+}
+
 /**
  * Shared success/fail skeleton for simple probe processors (db, tcp, tls, udp).
  * Caller supplies the probe and the per-type execution fields; this handles
  * the updateExecution → emitExecution → maybeAlertOnTransition flow.
  */
 export async function runProbeProcessor<R extends ProbeResult>(
-  job: Job,
-  type: MonitorType,
-  executionId: number,
-  monitorId: number,
-  repo: AnyRepo,
-  runProbe: () => Promise<R>,
-  successFields: (r: R) => Record<string, unknown>,
-  failFields: (r: R) => Record<string, unknown>,
+  opts: ProbeProcessorOpts<R>,
 ): Promise<{ success: true }> {
+  const { job, type, executionId, monitorId, repo, runProbe, successFields, failFields } = opts;
   logger.info(`Processing ${type.toUpperCase()} Monitor job ${job.id} (Execution: ${executionId})`);
 
   const result = await runProbe();

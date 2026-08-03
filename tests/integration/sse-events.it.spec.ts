@@ -106,7 +106,10 @@ async function openSSE(url: string, init: RequestInit) {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
         const i = queue.findIndex(pred);
-        if (i >= 0) return queue.splice(i, 1)[0]!;
+        if (i >= 0) {
+          const item = queue.splice(i, 1)[0];
+          if (item) return item;
+        }
         await new Promise((r) => setTimeout(r, 20));
       }
       throw new Error('SSE: timed out waiting for matching event');

@@ -6,13 +6,13 @@ import { runProbeProcessor } from './_run-probe.ts';
 
 export const dbMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
-  return runProbeProcessor(
+  return runProbeProcessor({
     job,
-    'db',
+    type: 'db',
     executionId,
-    monitor.id,
-    dbMonitorRepo,
-    () =>
+    monitorId: monitor.id,
+    repo: dbMonitorRepo,
+    runProbe: () =>
       dbProbe({
         host: monitor.host,
         port: monitor.port,
@@ -20,7 +20,7 @@ export const dbMonitorProcessor = async (job: Job) => {
         tls: monitor.tls,
         timeoutMs: monitor.timeoutMs || DEFAULTS.DB_TIMEOUT_MS,
       }),
-    (r) => ({ latencyMs: r.latencyMs }),
-    (r) => ({ latencyMs: r.latencyMs, errorMessage: r.errorMessage }),
-  );
+    successFields: (r) => ({ latencyMs: r.latencyMs }),
+    failFields: (r) => ({ latencyMs: r.latencyMs, errorMessage: r.errorMessage }),
+  });
 };

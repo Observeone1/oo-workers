@@ -137,6 +137,35 @@ export function adaptQaSuites(src: { suites?: SaaSSuite[] }): {
   return { qaProjects, warnings, suitesSkipped };
 }
 
+function adaptEmailChannel(
+  ch: SaaSChannel,
+  id: number | undefined,
+): ImportPayload['channels'][number] | null {
+  const to = typeof ch.config?.email === 'string' ? ch.config.email.trim() : '';
+  if (!EMAIL_RE.test(to)) return null;
+  return {
+    ...(id !== undefined && { id }),
+    name: ch.name!,
+    type: 'email',
+    config: { to },
+  };
+}
+
+function adaptWebhookChannel(
+  ch: SaaSChannel,
+  id: number | undefined,
+  type: SupportedChannelType,
+): ImportPayload['channels'][number] | null {
+  const u = typeof ch.config?.webhook_url === 'string' ? ch.config.webhook_url.trim() : '';
+  if (!HTTP_RE.test(u)) return null;
+  return {
+    ...(id !== undefined && { id }),
+    name: ch.name!,
+    type,
+    config: { url: u },
+  };
+}
+
 export function adaptAlertChannels(src: { alert_channels?: SaaSChannel[] }): {
   channels: ImportPayload['channels'];
   channelsSkipped: number;
@@ -150,33 +179,29 @@ export function adaptAlertChannels(src: { alert_channels?: SaaSChannel[] }): {
       continue;
     }
     const id = readId((ch as Record<string, unknown>).id);
-    if (type === 'email') {
-      const to = typeof ch.config?.email === 'string' ? ch.config.email.trim() : '';
-      if (!EMAIL_RE.test(to)) {
-        channelsSkipped++;
-        continue;
-      }
-      channels.push({
-        ...(id !== undefined && { id }),
-        name: ch.name,
-        type: 'email',
-        config: { to },
-      });
-    } else {
-      const u = typeof ch.config?.webhook_url === 'string' ? ch.config.webhook_url.trim() : '';
-      if (!HTTP_RE.test(u)) {
-        channelsSkipped++;
-        continue;
-      }
-      channels.push({
-        ...(id !== undefined && { id }),
-        name: ch.name,
-        type: type as SupportedChannelType,
-        config: { url: u },
-      });
+    const adapted =
+      type === 'email'
+        ? adaptEmailChannel(ch, id)
+        : adaptWebhookChannel(ch, id, type as SupportedChannelType);
+    if (!adapted) {
+      channelsSkipped++;
+      continue;
     }
+    channels.push(adapted);
   }
   return { channels, channelsSkipped };
+}
+
+function parseStatusPageMonitorRef(m: {
+  monitor_id?: unknown;
+  monitor_type?: unknown;
+}): { ref: number; type: 'url' | 'api' } | null {
+  const ref = readId(m.monitor_id);
+  const rawType = typeof m.monitor_type === 'string' ? m.monitor_type : '';
+  const apiOrNull: 'api' | null = rawType === 'api_check' || rawType === 'api' ? 'api' : null;
+  const type: 'url' | 'api' | null = rawType === 'url' ? 'url' : apiOrNull;
+  if (ref === undefined || type === null) return null;
+  return { ref, type };
 }
 
 export function adaptStatusPages(src: { status_pages?: SaaSStatusPage[] }): {
@@ -191,14 +216,7 @@ export function adaptStatusPages(src: { status_pages?: SaaSStatusPage[] }): {
       continue;
     }
     const monitors = (Array.isArray(sp.monitors) ? sp.monitors : [])
-      .map((m) => {
-        const ref = readId(m.monitor_id);
-        const rawType = typeof m.monitor_type === 'string' ? m.monitor_type : '';
-        const apiOrNull: 'api' | null = rawType === 'api_check' || rawType === 'api' ? 'api' : null;
-        const type: 'url' | 'api' | null = rawType === 'url' ? 'url' : apiOrNull;
-        if (ref === undefined || type === null) return null;
-        return { ref, type };
-      })
+      .map((m) => parseStatusPageMonitorRef(m))
       .filter((m): m is { ref: number; type: 'url' | 'api' } => m !== null);
     if (monitors.length === 0) {
       statusPagesSkipped++;

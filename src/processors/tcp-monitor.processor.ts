@@ -25,13 +25,13 @@ export const tcpMonitorProcessor = async (job: Job) => {
     throw new Error(msg);
   }
 
-  return runProbeProcessor(
+  return runProbeProcessor({
     job,
-    'tcp',
+    type: 'tcp',
     executionId,
-    monitor.id,
-    tcpMonitorRepo,
-    () =>
+    monitorId: monitor.id,
+    repo: tcpMonitorRepo,
+    runProbe: () =>
       tcpProbe({
         host: monitor.host,
         port: monitor.port,
@@ -39,7 +39,11 @@ export const tcpMonitorProcessor = async (job: Job) => {
         payload,
         expectBanner: monitor.expectBanner ?? null,
       }),
-    (r) => ({ latencyMs: r.latencyMs, banner: r.banner ?? null }),
-    (r) => ({ latencyMs: r.latencyMs, banner: r.banner ?? null, errorMessage: r.errorMessage }),
-  );
+    successFields: (r) => ({ latencyMs: r.latencyMs, banner: r.banner ?? null }),
+    failFields: (r) => ({
+      latencyMs: r.latencyMs,
+      banner: r.banner ?? null,
+      errorMessage: r.errorMessage,
+    }),
+  });
 };

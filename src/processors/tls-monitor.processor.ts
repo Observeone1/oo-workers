@@ -6,13 +6,13 @@ import { runProbeProcessor } from './_run-probe.ts';
 
 export const tlsMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
-  return runProbeProcessor(
+  return runProbeProcessor({
     job,
-    'tls',
+    type: 'tls',
     executionId,
-    monitor.id,
-    tlsMonitorRepo,
-    () =>
+    monitorId: monitor.id,
+    repo: tlsMonitorRepo,
+    runProbe: () =>
       tlsProbe({
         host: monitor.host,
         port: monitor.port,
@@ -23,18 +23,18 @@ export const tlsMonitorProcessor = async (job: Job) => {
         verifyHostname: monitor.verifyHostname ?? false,
         expectCnRegex: monitor.expectCnRegex ?? null,
       }),
-    (r) => ({
+    successFields: (r) => ({
       latencyMs: r.latencyMs,
       daysRemaining: r.daysRemaining ?? null,
       validTo: r.validTo ?? null,
       certSummary: r.certSummary ?? null,
     }),
-    (r) => ({
+    failFields: (r) => ({
       latencyMs: r.latencyMs,
       daysRemaining: r.daysRemaining ?? null,
       validTo: r.validTo ?? null,
       certSummary: r.certSummary ?? null,
       errorMessage: r.errorMessage,
     }),
-  );
+  });
 };

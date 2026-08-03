@@ -53,9 +53,10 @@ function headline(ctx: AlertContext): string {
 }
 
 function description(ctx: AlertContext): string {
-  const parts: string[] = [];
-  parts.push(`**Target:** ${ctx.monitor.target}`);
-  parts.push(`**Type:** ${ctx.monitor.type.toUpperCase()}`);
+  const parts = [
+    `**Target:** ${ctx.monitor.target}`,
+    `**Type:** ${ctx.monitor.type.toUpperCase()}`,
+  ];
   if (ctx.statusCode != null) parts.push(`**Status code:** ${ctx.statusCode}`);
   if (ctx.durationMs != null) parts.push(`**Latency:** ${ctx.durationMs}ms`);
   if (ctx.regionSlug) parts.push(`**Region:** ${ctx.regionSlug}`);

@@ -4,11 +4,10 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import { apiExecutions, qaTestExecutions, urlMonitorExecutions } from '../db/schema.ts';
-import type { AgentResultBody } from './agent-dispatch.ts';
+import type { AgentResultBody, WriteResultOutcome } from './agent-dispatch.ts';
 import { maybeAlertOnQaRunTransition, maybeAlertOnTransition } from './transition-detector.ts';
 import { emitExecution } from './exec-events.ts';
 import { qaProjectRepo } from '../db/repositories/qa-project.repo.ts';
-import type { WriteResultOutcome } from './agent-dispatch.ts';
 
 export async function writeUrlAgentResult(
   agentRegionId: number,

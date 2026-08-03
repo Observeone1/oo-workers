@@ -180,19 +180,31 @@ export async function renderDetail(type: MonType, id: number) {
   const initialFilter: Filter = preserved ?? buckets[0] ?? 'all';
   lastFilterKey = key;
   lastFilter = initialFilter;
-  renderWithFilter(type, id, m, runs, regions, regionIdsInRuns, buckets, initialFilter);
+  renderWithFilter({
+    type,
+    id,
+    m,
+    allRuns: runs,
+    regions,
+    regionOrder: regionIdsInRuns,
+    buckets,
+    filter: initialFilter,
+  });
 }
 
-function renderWithFilter(
-  type: MonType,
-  id: number,
-  m: Record<string, unknown> & { name: string; intervalSeconds: number; enabled: boolean },
-  allRuns: RunLite[],
-  regions: Map<number, RegionLite>,
-  regionOrder: number[],
-  buckets: Filter[],
-  filter: Filter,
-) {
+interface DetailRenderCtx {
+  type: MonType;
+  id: number;
+  m: Record<string, unknown> & { name: string; intervalSeconds: number; enabled: boolean };
+  allRuns: RunLite[];
+  regions: Map<number, RegionLite>;
+  regionOrder: number[];
+  buckets: Filter[];
+  filter: Filter;
+}
+
+function renderWithFilter(ctx: DetailRenderCtx) {
+  const { type, id, m, allRuns, regions, regionOrder, buckets, filter } = ctx;
   const host = m.host as string | undefined;
   const port = m.port as number | undefined;
   const url = host
@@ -305,7 +317,7 @@ function renderWithFilter(
         const next: Filter = v === 'all' || v === 'master' ? v : Number(v);
         lastFilterKey = `${type}:${id}`;
         lastFilter = next;
-        renderWithFilter(type, id, m, allRuns, regions, regionOrder, buckets, next);
+        renderWithFilter({ type, id, m, allRuns, regions, regionOrder, buckets, filter: next });
       });
     });
   }

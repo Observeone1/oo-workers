@@ -22,13 +22,13 @@ export const udpMonitorProcessor = async (job: Job) => {
     throw new Error(msg);
   }
 
-  return runProbeProcessor(
+  return runProbeProcessor({
     job,
-    'udp',
+    type: 'udp',
     executionId,
-    monitor.id,
-    udpMonitorRepo,
-    () =>
+    monitorId: monitor.id,
+    repo: udpMonitorRepo,
+    runProbe: () =>
       udpProbe({
         host: monitor.host,
         port: monitor.port,
@@ -36,7 +36,7 @@ export const udpMonitorProcessor = async (job: Job) => {
         expectResponse: !!monitor.expectResponse,
         timeoutMs: monitor.timeoutMs || DEFAULTS.UDP_TIMEOUT_MS,
       }),
-    (r) => ({ latencyMs: r.latencyMs, responseBytes: r.responseBytes ?? null }),
-    (r) => ({ latencyMs: r.latencyMs, errorMessage: r.errorMessage }),
-  );
+    successFields: (r) => ({ latencyMs: r.latencyMs, responseBytes: r.responseBytes ?? null }),
+    failFields: (r) => ({ latencyMs: r.latencyMs, errorMessage: r.errorMessage }),
+  });
 };

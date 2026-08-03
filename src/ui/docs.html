@@ -18,8 +18,8 @@
             document.documentElement.style.colorScheme = t;
             document.documentElement.dataset.theme = t;
           }
-        } catch (e) {
-          /* localStorage may be blocked */
+        } catch {
+          document.documentElement.removeAttribute('data-theme');
         }
       })();
     </script>

@@ -487,6 +487,29 @@ export async function handleQaJob(cfg: AgentConfig, job: JobPayload): Promise<vo
   );
 }
 
+async function handlePolledJob(cfg: AgentConfig, job: JobPayload): Promise<void> {
+  if (job.type === 'qa') {
+    await handleQaJob(cfg, job);
+    logger.info(`agent finished qa job=${job.jobId} (${job.tests?.length ?? 0} tests)`);
+    return;
+  }
+  const result = await runProbe(job);
+  await postResult(cfg, result);
+  const latency =
+    result.latencyMs !== undefined && result.latencyMs !== null ? ` (${result.latencyMs}ms)` : '';
+  logger.info(`agent reported exec=${job.executionId} status=${result.status}${latency}`);
+}
+
+function warnTlsInsecureIfDue(cfg: AgentConfig, lastWarnMs: number): number {
+  if (!cfg.tlsInsecure || Date.now() - lastWarnMs <= 3_600_000) return lastWarnMs;
+  logger.warn(
+    '⚠ SECURITY: OO_AGENT_TLS_INSECURE is still ON — agent→master ' +
+      'TLS verification remains disabled. Unset it once you have a ' +
+      'real cert / tunnel.',
+  );
+  return Date.now();
+}
+
 export async function runAgent(cfg: AgentConfig): Promise<void> {
   logger.info(
     `🛰  agent starting: master=${cfg.masterUrl} region=${cfg.regionSlug} wait=${cfg.pollWaitSec}s`,
@@ -520,35 +543,12 @@ export async function runAgent(cfg: AgentConfig): Promise<void> {
 
   while (running) {
     try {
-      if (cfg.tlsInsecure && Date.now() - lastInsecureWarn > 3_600_000) {
-        logger.warn(
-          '⚠ SECURITY: OO_AGENT_TLS_INSECURE is still ON — agent→master ' +
-            'TLS verification remains disabled. Unset it once you have a ' +
-            'real cert / tunnel.',
-        );
-        lastInsecureWarn = Date.now();
-      }
+      lastInsecureWarn = warnTlsInsecureIfDue(cfg, lastInsecureWarn);
       const job = await pollJob(cfg);
       backoffMs = 1000;
       if (!job) continue;
       logger.info(`agent picked up exec=${job.executionId} type=${job.type} (jobId=${job.jobId})`);
-      if (job.type === 'qa') {
-        // QA jobs spawn N per-test execs + N per-test result posts; handleQaJob
-        // creates the rows, runs Playwright, uploads artifacts, and posts each
-        // result inline. No single "result" to log here.
-        await handleQaJob(cfg, job);
-        logger.info(`agent finished qa job=${job.jobId} (${job.tests?.length ?? 0} tests)`);
-        continue;
-      }
-      const result = await runProbe(job);
-      await postResult(cfg, result);
-      logger.info(
-        `agent reported exec=${job.executionId} status=${result.status}${
-          result.latencyMs !== undefined && result.latencyMs !== null
-            ? ` (${result.latencyMs}ms)`
-            : ''
-        }`,
-      );
+      await handlePolledJob(cfg, job);
     } catch (err) {
       logger.error(
         `agent loop error: ${err instanceof Error ? err.message : String(err)}; retry in ${

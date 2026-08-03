@@ -104,7 +104,7 @@ function encodeKey(key: string): string {
     .map((seg) =>
       encodeURIComponent(seg).replaceAll(
         /[!'()*]/g,
-        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+        (c) => `%${(c.codePointAt(0) ?? 0).toString(16).toUpperCase()}`,
       ),
     )
     .join('/');

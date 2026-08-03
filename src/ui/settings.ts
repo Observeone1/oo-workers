@@ -62,7 +62,7 @@ export async function renderSettings(tab?: SettingsTab): Promise<void> {
   const visibleSections = SECTIONS.filter((s) => !(isApiKey && s.hideForApiKey));
 
   // If active tab got hidden (e.g. password when using API key), fall back
-  if (!visibleSections.find((s) => s.id === activeTab)) activeTab = 'profile';
+  if (!visibleSections.some((s) => s.id === activeTab)) activeTab = 'profile';
 
   const rail = visibleSections
     .map(
