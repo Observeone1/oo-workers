@@ -53,6 +53,7 @@ import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
 import { dispatchAlert } from './services/alert-dispatch.ts';
+import { finalizeUnfinishedQaRun } from './services/qa-run-closeout.ts';
 import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -177,6 +178,11 @@ export async function startScheduler(connection: Redis) {
         // BullMQ jobs to dispatch, just an overdue sweep that fires
         // outage alerts via the existing channel system.
         tickHeartbeats(),
+        // Browser-check runs that died mid-flight never compute an
+        // aggregate, so their rows rot at outcome NULL. Age them out and
+        // finalize them as ABANDONED — logged for operators, never
+        // alerted (our failure, not the target's).
+        tickAbandonedQaRuns(),
         // Region online/offline sweep — fires SSE `region` events on
         // every transition so the navbar badge updates live without
         // the dashboard polling every 30s.
@@ -603,6 +609,49 @@ async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
         `scheduled qa-project #${p.id} with ${tests.length} test(s)${
           target.regionSlug ? ` [${target.regionSlug}]` : ''
         }`,
+      );
+    }
+  }
+}
+
+// ---------------- abandoned qa runs ----------------
+// A QA project run only reaches an outcome once someone computes its
+// aggregate: the processor does it for master runs, agent-dispatch does
+// it for region runs once every expected test has reported. If the
+// worker or the region agent dies mid-run, neither happens —
+// `qa_runs.outcome` stays NULL forever, the row is skipped by the
+// previous-run lookup, and its executions keep claiming to be running.
+//
+// This sweep finalizes those rows: any run still without an outcome
+// QA_RUN_ABANDONED_MS after it started is recorded as ABANDONED through
+// the same one-shot `claimRunAlert` guard the live paths use.
+//
+// It does NOT alert, and that is deliberate. A run we failed to execute
+// tells us nothing about the monitored target's health — it tells us our
+// own machinery broke. The operator of the fleet needs to know (hence
+// the log line); the monitor's owner cannot act on it, so paging them
+// would be pure noise. ABANDONED sits outside QA_RUN_VERDICTS, so the
+// row is skipped when the NEXT run looks for its predecessor: an
+// abandoned run neither fires an alert nor suppresses the following
+// real one.
+const QA_RUN_ABANDONED_MS = Number(process.env.QA_RUN_ABANDONED_MS ?? DEFAULTS.QA_RUN_ABANDONED_MS);
+
+/** Exported for tests. Internal use only — the scheduler tick calls this. */
+export async function tickAbandonedQaRuns(): Promise<void> {
+  const cutoff = new Date(Date.now() - QA_RUN_ABANDONED_MS);
+  const runs = await qaProjectRepo.findAbandonedRuns(cutoff);
+  for (const run of runs) {
+    const ageMin = Math.round((Date.now() - run.startedAt.getTime()) / 60_000);
+    const finalized = await finalizeUnfinishedQaRun(
+      run,
+      `abandoned: run produced no result within ${ageMin}m`,
+    );
+    if (finalized) {
+      logger.error(
+        `qa run #${run.id} (project #${run.projectId}) → ABANDONED: none of ` +
+          `${run.expectedTests} test(s) reported a result within ${ageMin}m ` +
+          `(worker or region agent likely died mid-run). Not alerted — this is ` +
+          `our failure, not the monitored target's.`,
       );
     }
   }

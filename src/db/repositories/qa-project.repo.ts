@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../../config/db.ts';
+import { QA_EXEC_ABANDONED, QA_RUN_ABANDONED, QA_RUN_VERDICTS } from '../../constants.ts';
 import {
   monitorRegions,
   qaGeneratedTests,
@@ -232,18 +233,76 @@ export const qaProjectRepo = {
   },
 
   /**
-   * Atomically claim the one-shot alert for a run: sets outcome + alertedAt
-   * only if alertedAt was still NULL. Returns true iff THIS call won the
-   * claim, so exactly one caller (even under the concurrent last-two-results
-   * race) proceeds to fire the transition alert.
+   * Atomically claim the one-shot finalization of a run: sets outcome +
+   * alertedAt only if alertedAt was still NULL. Returns true iff THIS call won
+   * the claim, so exactly one caller (even under the concurrent
+   * last-two-results race) proceeds.
+   *
+   * `alertedAt` reads as "this run has been finalized, nobody else may act on
+   * it" — a `QA_RUN_ABANDONED` claim sets it without any alert being sent,
+   * which is the point: it stops a late straggler re-finalizing the run.
    */
-  async claimRunAlert(runId: number, outcome: 'SUCCESS' | 'FAILED'): Promise<boolean> {
+  async claimRunAlert(
+    runId: number,
+    outcome: (typeof QA_RUN_VERDICTS)[number] | typeof QA_RUN_ABANDONED,
+  ): Promise<boolean> {
     const rows = await db
       .update(qaRuns)
       .set({ outcome, alertedAt: new Date() })
       .where(and(eq(qaRuns.id, runId), isNull(qaRuns.alertedAt)))
       .returning({ id: qaRuns.id });
     return rows.length === 1;
+  },
+
+  /**
+   * Runs that never reached a verdict: `outcome IS NULL` (nobody ever
+   * aggregated them) and `started_at` older than `cutoff`. This is the
+   * only way a failing browser check can go completely unnoticed — the
+   * worker or the region agent dies mid-run, no aggregate is ever
+   * computed, so `claimRunAlert` is never called and no alert fires.
+   * Swept by the scheduler; see `tickAbandonedQaRuns`.
+   *
+   * `alertedAt IS NULL` is implied by `outcome IS NULL` (claimRunAlert
+   * writes both), but it's stated explicitly so a future writer of one
+   * column without the other can't resurrect an already-alerted run.
+   *
+   * Bounded per call: an instance that has been broken for a long time
+   * could hold thousands of these, and the sweep runs inside a scheduler
+   * tick. The remainder drains over the following ticks.
+   */
+  async findAbandonedRuns(cutoff: Date, limit = 100) {
+    return db
+      .select({
+        id: qaRuns.id,
+        projectId: qaRuns.projectId,
+        regionId: qaRuns.regionId,
+        startedAt: qaRuns.startedAt,
+        expectedTests: qaRuns.expectedTests,
+      })
+      .from(qaRuns)
+      .where(and(isNull(qaRuns.outcome), isNull(qaRuns.alertedAt), lt(qaRuns.startedAt, cutoff)))
+      .orderBy(qaRuns.id)
+      .limit(limit);
+  },
+
+  /**
+   * Close out the executions of an abandoned run: every row still missing a
+   * `completedAt` becomes `QA_EXEC_ABANDONED` with `message`. Without this the
+   * detail page shows those tests "running" forever, and a late-arriving agent
+   * result could push `runProgress` to completion long after the run was
+   * finalized. Returns the ids it stamped so the caller can emit SSE.
+   *
+   * Deliberately NOT `error`: that status counts as _down_ for status-page
+   * bars and uptime, which would turn our own broken machinery into the
+   * monitored target's downtime. See QA_EXEC_ABANDONED.
+   */
+  async markRunTestsAbandoned(runId: number, message: string): Promise<number[]> {
+    const rows = await db
+      .update(qaTestExecutions)
+      .set({ status: QA_EXEC_ABANDONED, errorMessage: message, completedAt: new Date() })
+      .where(and(eq(qaTestExecutions.runId, runId), isNull(qaTestExecutions.completedAt)))
+      .returning({ id: qaTestExecutions.id });
+    return rows.map((r) => r.id);
   },
 
   /**

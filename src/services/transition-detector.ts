@@ -12,7 +12,7 @@
  * normalizeOutcome() folds both vocabularies into 'up' | 'down'.
  */
 
-import { and, desc, eq, isNotNull, isNull, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne, notInArray } from 'drizzle-orm';
 import { db } from '../config/db.ts';
 import {
   apiExecutions,
@@ -26,6 +26,7 @@ import {
   urlMonitorExecutions,
 } from '../db/schema.ts';
 import { logger } from '../utils/logger.ts';
+import { QA_EXEC_ABANDONED, QA_RUN_VERDICTS } from '../constants.ts';
 import { dispatchAlert } from './alert-dispatch.ts';
 import { fetchMonitorMeta } from './status-page-monitor-meta.ts';
 import type { MonitorType } from '../db/repositories/alert-channel.repo.ts';
@@ -113,11 +114,23 @@ async function previousStatus(
   // qa — exec rows are per-test; alert when *any* test in the project flips.
   // For "did this project's last run pass overall" semantics, prefer
   // qa_test_executions ordered by startedAt with project_id filter.
+  //
+  // Currently unreachable: agent-dispatch routes qa to
+  // maybeAlertOnQaRunTransition, which is run-scoped. Kept correct anyway —
+  // rows that carry no verdict (`running`, `abandoned`) are excluded, because
+  // normalizeOutcome maps them to 'other' and the caller bails on 'other'. A
+  // single abandoned row as "previous" would therefore mute this monitor's
+  // next real transition, the same permanent-silence trap the run-level
+  // lookup avoids via QA_RUN_VERDICTS.
   const rows = await db
     .select({ status: qaTestExecutions.status })
     .from(qaTestExecutions)
     .where(
-      and(eq(qaTestExecutions.projectId, monitorId), ne(qaTestExecutions.id, currentExecutionId)),
+      and(
+        eq(qaTestExecutions.projectId, monitorId),
+        ne(qaTestExecutions.id, currentExecutionId),
+        notInArray(qaTestExecutions.status, [QA_EXEC_ABANDONED, 'running']),
+      ),
     )
     .orderBy(desc(qaTestExecutions.startedAt))
     .limit(1);
@@ -227,6 +240,13 @@ export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> 
     // Previous completed run for the SAME (project, region). A NULL region
     // (master run) only matches other master runs; a region only matches its
     // own runs — region_id scoping is what stops cross-region mis-blending.
+    //
+    // Restricted to real verdicts, NOT merely `outcome IS NOT NULL`. A run
+    // we abandoned (QA_RUN_VERDICTS excludes it) carries no information about
+    // the monitored target — our machinery died, that's all — so it must not
+    // become anyone's predecessor. If it could, the run after an abandoned
+    // one would normalize its predecessor to 'other' and bail, and QA
+    // alerting would go permanently silent from the first abandoned run on.
     const [prev] = await db
       .select({ outcome: qaRuns.outcome })
       .from(qaRuns)
@@ -235,7 +255,7 @@ export async function maybeAlertOnQaRunTransition(runId: number): Promise<void> 
           eq(qaRuns.projectId, run.projectId),
           run.regionId === null ? isNull(qaRuns.regionId) : eq(qaRuns.regionId, run.regionId),
           lt(qaRuns.startedAt, run.startedAt),
-          isNotNull(qaRuns.outcome),
+          inArray(qaRuns.outcome, [...QA_RUN_VERDICTS]),
         ),
       )
       .orderBy(desc(qaRuns.startedAt))

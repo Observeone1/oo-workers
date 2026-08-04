@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULTS } from '../constants.ts';
 import { maybeAlertOnQaRunTransition } from '../services/transition-detector.ts';
+import { finalizeUnfinishedQaRun } from '../services/qa-run-closeout.ts';
 import { emitExecution } from '../services/exec-events.ts';
 
 // Resolve relative to this source file (project_root/src/processors → project_root/tests).
@@ -95,6 +96,11 @@ export const createQaProjectProcessor = (redis: Redis) => {
       fileMap.set(test.id, filePath);
     }
 
+    // Hoisted out of the try so the catch below can still finalize the run.
+    // A run that dies without an outcome otherwise rots at NULL forever:
+    // skipped by the previous-run lookup, executions stuck at "running".
+    let runId: number | null = null;
+
     try {
       // A master run (region_id NULL) groups these executions so run-level
       // alerting compares this run against the previous master run.
@@ -103,6 +109,7 @@ export const createQaProjectProcessor = (redis: Redis) => {
         regionId: null,
         expectedTests: tests.length,
       });
+      runId = run.id;
 
       const testPromises = tests.map(async (test) => {
         // INSERT execution row
@@ -253,14 +260,12 @@ export const createQaProjectProcessor = (redis: Redis) => {
       const testResults = await Promise.all(testPromises);
       results.push(...testResults);
 
-      await fs.rm(runDir, { recursive: true, force: true });
+      await cleanupRunDir(runDir);
 
       const passed = results.filter((r) => r.status === 'passed').length;
       const failed = results.filter((r) => r.status === 'failed').length;
       const errors = results.filter((r) => r.status === 'error').length;
       const totalDuration = Date.now() - startTime;
-
-      await qaProjectRepo.touchLastRunAt(projectId);
 
       // QA alerting: per-project-run aggregate (all tests passed = up,
       // any failed/errored = down) vs the previous run's aggregate.
@@ -270,9 +275,16 @@ export const createQaProjectProcessor = (redis: Redis) => {
       // is the same one-shot guard the region path uses; the master path always
       // wins it (no concurrent completor) but going through it keeps qa_runs the
       // single source of truth for "this run already alerted".
+      //
+      // Runs BEFORE touchLastRunAt deliberately: that write is cosmetic
+      // (it only feeds findDue's scheduling), and when it sat first a
+      // transient DB error on it threw past the alert and swallowed the
+      // outage notification entirely.
       if (await qaProjectRepo.claimRunAlert(run.id, aggregateOutcome)) {
         await maybeAlertOnQaRunTransition(run.id);
       }
+
+      await qaProjectRepo.touchLastRunAt(projectId);
 
       const completionData = {
         type: 'run_completed',
@@ -296,11 +308,67 @@ export const createQaProjectProcessor = (redis: Redis) => {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`QA Project ${projectId} run failed: ${msg}`);
-      await fs.rm(runDir, { recursive: true, force: true });
+      await cleanupRunDir(runDir);
+      // The run blew up before it could be aggregated (storage, Playwright
+      // launch, DB blip...). Finalize it now rather than leaving the row for
+      // the scheduler's sweep 15 minutes later — same outcome either way,
+      // just sooner. Best-effort: a failure here must not mask the original
+      // error, which still propagates.
+      if (runId !== null) {
+        await closeOutAbortedRun(runId, projectId, msg);
+      }
       throw error;
     }
   };
 };
+
+/**
+ * Delete a run's scratch directory. Never throws.
+ *
+ * It sits on both exit paths and must not become one. On the success path it
+ * runs AFTER every test has reported but BEFORE the aggregate is claimed, so
+ * an EBUSY/EPERM here (a Playwright process still holding a handle) used to
+ * throw into the catch, which would then claim the run ABANDONED — silently
+ * discarding a real FAILED verdict we already had in hand, and with it the
+ * outage the owner should have been paged for. On the failure path a throw
+ * would skip the finalize entirely and replace the original error. Same
+ * reasoning as keeping `touchLastRunAt` behind the claim: janitorial work
+ * never gates the verdict.
+ */
+async function cleanupRunDir(runDir: string): Promise<void> {
+  try {
+    await fs.rm(runDir, { recursive: true, force: true });
+  } catch (err) {
+    logger.error(
+      `qa run dir cleanup failed for ${runDir} (leaving it for the next boot sweep): ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
+}
+
+/**
+ * Best-effort close-out for a master run that threw mid-flight. Kept out of
+ * the processor body so it can't add its own failure mode to the one already
+ * being handled: anything thrown here is logged and swallowed, leaving the
+ * original error to propagate. If the run had already been aggregated,
+ * `finalizeUnfinishedQaRun` loses the claim and this is a no-op.
+ *
+ * Records only — no alert. The run blew up on our side (Playwright launch,
+ * storage, a DB blip), which says nothing about the monitored target, so the
+ * monitor's owner is not paged for it. See docs/alerts.md.
+ */
+async function closeOutAbortedRun(runId: number, projectId: number, msg: string): Promise<void> {
+  try {
+    await finalizeUnfinishedQaRun({ id: runId, projectId, regionId: null }, `run aborted: ${msg}`);
+  } catch (closeOutError) {
+    logger.error(
+      `QA Project ${projectId}: failed to finalize aborted run ${runId}: ${
+        closeOutError instanceof Error ? closeOutError.message : closeOutError
+      }`,
+    );
+  }
+}
 
 /**
  * Look up the QA project name by id. Used to slug it into artifact keys so
