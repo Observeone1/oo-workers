@@ -82,7 +82,11 @@ function regionalListKey(slug: string): string {
   return `oo:jobs:${slug}`;
 }
 
-type QueueFactory = (name: string) => Queue;
+export type QueueFactory = (name: string) => {
+  add: (jobName: string, data: unknown, opts?: unknown) => Promise<unknown>;
+  drain: () => Promise<void>;
+  close: () => Promise<void>;
+};
 
 interface JobPayload {
   jobId: string;
@@ -130,14 +134,14 @@ export async function startScheduler(connection: Redis) {
   // BullMQ queues only get created for the null-region path. Regional jobs
   // skip BullMQ entirely — see dispatch().
   const queues = new Map<string, Queue>();
-  const getQueue: QueueFactory = (name) => {
+  const getQueue: QueueFactory = ((name: string) => {
     let q = queues.get(name);
     if (!q) {
       q = new Queue(name, { connection });
       queues.set(name, q);
     }
     return q;
-  };
+  }) as QueueFactory;
 
   // Drain waiting jobs left over from the previous process. After a hard
   // kill (OOM, power-off), unprocessed jobs sit in the BullMQ wait list

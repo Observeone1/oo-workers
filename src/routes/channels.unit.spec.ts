@@ -8,13 +8,14 @@
 
 import { beforeEach, describe, expect, mock, test, afterEach } from 'bun:test';
 import { Hono } from 'hono';
+import type { MailpitProbe } from '../services/mailpit.ts';
 
 import { alertChannelRepoMock, mockAlertChannelRepo } from '../test-support/shared-mocks.ts';
 
 const { list, create, findById, deleteById } = alertChannelRepoMock;
 const sendToChannel = mock(async (): Promise<boolean> => true);
 const isLocalMailpit = mock((): boolean => false);
-const findRecentTestMessage = mock(async (): Promise<unknown> => ({ delivered: false }));
+const findRecentTestMessage = mock(async (): Promise<MailpitProbe> => ({ delivered: false }));
 
 mockAlertChannelRepo();
 

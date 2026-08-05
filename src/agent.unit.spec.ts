@@ -96,7 +96,7 @@ const packageVersionMock = mock(() => '1.29.0');
 mock.module('./utils/version.ts', () => ({ packageVersion: packageVersionMock }));
 
 const executePlaywrightTestMock = mock<
-  Promise<{
+  () => Promise<{
     success: boolean;
     error: string | null;
     logs: string[];
@@ -118,9 +118,9 @@ mock.module('./services/playwright.service.ts', () => ({
 // ---- Fetch mock (global, restored after each test) ----
 
 let fetchHandler: (url: string, init: RequestInit) => Response | Promise<Response>;
-const fetchMock = mock<typeof fetch>(async (url, init) => {
+const fetchMock = mock(async (url: URL | RequestInfo, init?: RequestInit | BunFetchRequestInit) => {
   const urlStr = typeof url === 'string' ? url : url.toString();
-  return fetchHandler(urlStr, init ?? {});
+  return fetchHandler(urlStr, (init ?? {}) as RequestInit);
 });
 
 let originalFetch: typeof fetch;
@@ -198,7 +198,7 @@ beforeEach(() => {
     return new Response(null, { status: 204 });
   };
   originalFetch = globalThis.fetch;
-  globalThis.fetch = fetchMock;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
 
   // Capture signal handlers so tests can stop runAgent.
   sigintHandler = undefined;
@@ -551,6 +551,7 @@ describe('runProbe', () => {
     probeMocks.tcpProbe.mockResolvedValue({
       ok: false,
       latencyMs: 5,
+      banner: '',
       errorMessage: 'connection refused',
     });
 

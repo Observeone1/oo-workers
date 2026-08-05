@@ -9,6 +9,8 @@
 
 import { beforeEach, describe, expect, mock, test, afterEach } from 'bun:test';
 import { makeNonce, jobIdSuffix, buildJobId } from './scheduler-jobid.ts';
+import type { AlertContext } from './services/alert-dispatch.ts';
+import type { QueueFactory } from './scheduler.ts';
 import {
   mockQaProjectRepo,
   mockRegionRepo,
@@ -25,23 +27,25 @@ type Row = Record<string, unknown>;
 type QueueCall = { queue: string; name: string; data: Row; opts: Row };
 type LpushCall = { key: string; payload: Row };
 
-// ---- BullMQ Queue ----
-const queueInstances: Array<{
+type TestQueue = {
   name: string;
   add: ReturnType<typeof mock>;
   drain: ReturnType<typeof mock>;
   close: ReturnType<typeof mock>;
-}> = [];
+};
+
+// ---- BullMQ Queue ----
+const queueInstances: TestQueue[] = [];
 let queueAddCalls: QueueCall[] = [];
 let queueDrainCalls: string[] = [];
 let queueCloseCalls: string[] = [];
 let drainFailures: Set<string> = new Set();
 
-function makeQueueInstance(name: string) {
-  const q = {
+function makeQueueInstance(name: string): TestQueue {
+  const q: TestQueue = {
     name,
-    add: mock(async (jobName: string, data: Row, opts: Row) => {
-      queueAddCalls.push({ queue: name, name: jobName, data, opts });
+    add: mock(async (_jobName: string, _data: unknown, _opts?: unknown) => {
+      queueAddCalls.push({ queue: name, name: _jobName, data: _data as Row, opts: _opts as Row });
     }),
     drain: mock(async () => {
       queueDrainCalls.push(name);
@@ -119,19 +123,12 @@ const heartbeatRepoMock = {
 };
 mock.module('./db/repositories/heartbeat.repo.ts', () => ({ heartbeatRepo: heartbeatRepoMock }));
 
-// ---- Shared repo mocks (extend with scheduler-specific methods) ----
+// ---- Shared repo mocks ----
 mockRegionRepo();
-monitorRegionRepoMock.forMonitor = mock(async (_type: string, _id: number): Promise<Row[]> => []);
-
 mockQaProjectRepo();
-qaProjectRepoMock.findDue = mock(async (): Promise<Row[]> => []);
-qaProjectRepoMock.findAbandonedRuns = mock(async (_cutoff: Date): Promise<Row[]> => []);
-qaProjectRepoMock.markRunTestsAbandoned = mock(
-  async (_runId: number, _message: string): Promise<number[]> => [],
-);
 
 // ---- Services ----
-const dispatchAlertMock = mock(async (_ctx: Row): Promise<void> => {});
+const dispatchAlertMock = mock(async (_ctx: AlertContext): Promise<void> => {});
 const execEventsMock = { emit: mock(() => true) };
 
 const finalizeUnfinishedQaRunMock = mock(
@@ -290,21 +287,21 @@ function restoreTimers() {
   globalThis.clearInterval = originalClearInterval;
 }
 
-function makeQueueFactory(): (name: string) => ReturnType<typeof makeQueueInstance> {
-  const queues = new Map<string, ReturnType<typeof makeQueueInstance>>();
-  return (name: string) => {
+function makeQueueFactory(): QueueFactory {
+  const queues = new Map<string, TestQueue>();
+  return ((name: string) => {
     let q = queues.get(name);
     if (!q) {
       q = makeQueueInstance(name);
       queues.set(name, q);
     }
-    return q;
-  };
+    return q as ReturnType<QueueFactory>;
+  }) as QueueFactory;
 }
 
 beforeEach(() => {
   resetMocks();
-  schedulerDeps.execEvents = execEventsMock as typeof schedulerDeps.execEvents;
+  schedulerDeps.execEvents = execEventsMock as unknown as typeof schedulerDeps.execEvents;
   schedulerDeps.dispatchAlert = dispatchAlertMock;
   installTimerCapture();
 });
@@ -635,7 +632,7 @@ describe('tickUrlMonitors', () => {
       { id: 1, url: 'https://a.test', timeoutMs: 5000, intervalSeconds: 60, ageSeconds: 120 },
     ]);
     const factory = makeQueueFactory();
-    factory('url-monitor').add.mockRejectedValue(new Error('queue full'));
+    (factory('url-monitor') as unknown as TestQueue).add.mockRejectedValue(new Error('queue full'));
 
     await tickUrlMonitors(factory, redis as never);
 
@@ -654,7 +651,7 @@ describe('tickUrlMonitors', () => {
     ]);
     urlMonitorRepoMock.updateExecution.mockRejectedValue(new Error('db gone'));
     const factory = makeQueueFactory();
-    factory('url-monitor').add.mockRejectedValue(new Error('queue full'));
+    (factory('url-monitor') as unknown as TestQueue).add.mockRejectedValue(new Error('queue full'));
 
     await tickUrlMonitors(factory, redis as never);
 

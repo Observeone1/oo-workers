@@ -75,6 +75,7 @@ export const regionRepoMock = {
 };
 export const monitorRegionRepoMock = {
   set: mock(async (_t: string, _id: number, _r: number[]): Promise<void> => {}),
+  forMonitor: mock(async (_t: string, _id: number): Promise<AnyRow[]> => []),
 };
 
 export function mockRegionRepo(): void {
@@ -227,6 +228,9 @@ export const qaProjectRepoMock = {
   updateExecution: mock(async (_id: number, _v: AnyRow): Promise<void> => {}),
   touchLastRunAt: mock(async (_id: number): Promise<void> => {}),
   claimRunAlert: mock(async (_runId: number, _outcome: string): Promise<boolean> => true),
+  findDue: mock(async (): Promise<AnyRow[]> => []),
+  findAbandonedRuns: mock(async (_cutoff: Date, _limit = 100): Promise<AnyRow[]> => []),
+  markRunTestsAbandoned: mock(async (_runId: number, _message: string): Promise<number[]> => []),
 };
 
 export function mockQaProjectRepo(): void {
