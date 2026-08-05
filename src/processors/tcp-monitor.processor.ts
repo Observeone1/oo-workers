@@ -7,6 +7,10 @@ import { emitExecution } from '../services/exec-events.ts';
 import { maybeAlertOnTransition } from '../services/transition-detector.ts';
 import { runProbeProcessor } from './_run-probe.ts';
 
+/** Dependency hook for tests — avoids process-wide mock.module poison
+ * (matches agentProbeDeps/schedulerDeps elsewhere in the codebase). */
+export const tcpProcessorDeps = { tcpProbe };
+
 export const tcpMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
 
@@ -32,7 +36,7 @@ export const tcpMonitorProcessor = async (job: Job) => {
     monitorId: monitor.id,
     repo: tcpMonitorRepo,
     runProbe: () =>
-      tcpProbe({
+      tcpProcessorDeps.tcpProbe({
         host: monitor.host,
         port: monitor.port,
         timeoutMs: monitor.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS,

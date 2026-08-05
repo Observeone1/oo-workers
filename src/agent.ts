@@ -17,10 +17,10 @@
  */
 
 import { DEFAULTS } from './constants.ts';
-import { tcpProbe } from './services/tcp-probe.ts';
+import { tcpProbe as realTcpProbe } from './services/tcp-probe.ts';
 import { parseHexPayload, udpProbe } from './services/udp-probe.ts';
-import { dbProbe, type DbProtocol } from './services/db-probe.ts';
-import { tlsProbe } from './services/tls-probe.ts';
+import { dbProbe as realDbProbe, type DbProtocol } from './services/db-probe.ts';
+import { tlsProbe as realTlsProbe } from './services/tls-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
 import { evaluateAssertions } from './services/api-assertion.ts';
 import { handleQaJobWithDeps } from './agent-qa.ts';
@@ -241,6 +241,14 @@ async function probeApi(job: JobPayload): Promise<AgentResultBody> {
   }
 }
 
+/** Dependency hook for tests — avoids process-wide mock.module poison
+ * (matches schedulerDeps/channelRouteDeps elsewhere in the codebase). */
+export const agentProbeDeps = {
+  tcpProbe: realTcpProbe,
+  dbProbe: realDbProbe,
+  tlsProbe: realTlsProbe,
+};
+
 async function probeTcp(job: JobPayload): Promise<AgentResultBody> {
   const m = job.monitor!;
   const timeoutMs = m.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS;
@@ -255,7 +263,7 @@ async function probeTcp(job: JobPayload): Promise<AgentResultBody> {
       errorMessage: err instanceof Error ? err.message : 'invalid payload_hex',
     };
   }
-  const result = await tcpProbe({
+  const result = await agentProbeDeps.tcpProbe({
     host: m.host!,
     port: m.port!,
     timeoutMs,
@@ -306,7 +314,7 @@ async function probeUdp(job: JobPayload): Promise<AgentResultBody> {
 async function probeDb(job: JobPayload): Promise<AgentResultBody> {
   const m = job.monitor!;
   const timeoutMs = m.timeoutMs || DEFAULTS.DB_TIMEOUT_MS;
-  const result = await dbProbe({
+  const result = await agentProbeDeps.dbProbe({
     host: m.host!,
     port: m.port!,
     protocol: m.protocol as DbProtocol,
@@ -325,7 +333,7 @@ async function probeDb(job: JobPayload): Promise<AgentResultBody> {
 async function probeTls(job: JobPayload): Promise<AgentResultBody> {
   const m = job.monitor!;
   const timeoutMs = m.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS;
-  const result = await tlsProbe({
+  const result = await agentProbeDeps.tlsProbe({
     host: m.host!,
     port: m.port!,
     timeoutMs,
@@ -385,6 +393,10 @@ let _playwrightDetected: boolean | null = null;
 export function _resetPlaywrightDetected(): void {
   _playwrightDetected = null;
 }
+/** Dependency hook for tests — os.homedir() caches its result on first call
+ * and does not re-read process.env.HOME afterward, so tests must override
+ * this seam directly rather than mutating process.env.HOME at runtime. */
+export const playwrightDetectDeps = { homedir: () => os.homedir() };
 async function isPlaywrightAvailable(): Promise<boolean> {
   if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
@@ -393,7 +405,8 @@ async function isPlaywrightAvailable(): Promise<boolean> {
     // images set /ms-playwright) or its default cache. An installed Chromium —
     // full build or headless shell — appears as a `chromium*` directory.
     const base =
-      process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache', 'ms-playwright');
+      process.env.PLAYWRIGHT_BROWSERS_PATH ||
+      path.join(playwrightDetectDeps.homedir(), '.cache', 'ms-playwright');
     const entries = await fs.readdir(base);
     _playwrightDetected = entries.some((d) => d.startsWith('chromium'));
   } catch {

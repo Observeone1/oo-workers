@@ -156,7 +156,8 @@ function callsByMethod(): Record<string, unknown[][]> {
   const out: Record<string, unknown[][]> = { GET: [], PUT: [], DELETE: [] };
   for (const c of signedFetchRawMock.mock.calls) {
     const method = c[0] as string;
-    (out[method] ??= []).push(c);
+    out[method] ??= [];
+    out[method].push(c);
   }
   return out;
 }
@@ -196,7 +197,7 @@ beforeEach(() => {
   resetObjectStorageConfigCache();
   mockObjectStorageSigning();
   signedFetchRawMock.mockImplementation(async (method, url) => {
-    const u = url as URL;
+    const u = url;
     if (u.searchParams.get('list-type') === '2') {
       return new Response('<ListBucketResult></ListBucketResult>');
     }
@@ -323,6 +324,26 @@ describe('restore — single-file NDJSON dump', () => {
     expect(inserts[1].rows).toHaveLength(1);
     expect(res.counts[REGIONS]).toBe(sharedReal.WRITE_BATCH + 1);
   });
+
+  test('reassembles a dump whose gunzipped output spans multiple stream chunks', async () => {
+    // restore() peeks the first ~512 decompressed bytes to sniff the tar
+    // magic, then re-stitches that peek with the rest of the gunzip
+    // iterator. A small dump never exceeds the gunzip highWaterMark (16KB)
+    // in one chunk, so that continuation path only runs once the dump is
+    // big enough to force a second chunk — verify no rows are dropped or
+    // duplicated at that boundary.
+    const rowCount = 2000;
+    const rows = Array.from({ length: rowCount }, (_, i) =>
+      JSON.stringify({ t: REGIONS, r: { id: i + 1, slug: `region-${i}-${'x'.repeat(60)}` } }),
+    );
+
+    const res = await restore(ndjsonDump([manifestLine(), ...rows]), { force: false });
+
+    expect(res.counts[REGIONS]).toBe(rowCount);
+    const allRows = inserts.filter((ins) => ins.table === REGIONS).flatMap((ins) => ins.rows);
+    expect(allRows).toHaveLength(rowCount);
+    expect(allRows.map((r) => r.id)).toEqual(Array.from({ length: rowCount }, (_, i) => i + 1));
+  });
 });
 
 describe('restore — tar.gz artifact dump', () => {
@@ -400,7 +421,7 @@ describe('restore — tar.gz artifact dump', () => {
 
   test('an upload failure is logged and does not fail the restore', async () => {
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         return new Response('<ListBucketResult></ListBucketResult>');
       }
@@ -424,6 +445,31 @@ describe('restore — tar.gz artifact dump', () => {
     // DB is the durability anchor — it still committed.
     expect(res.counts).toEqual({ [REGIONS]: 1 });
     expect(callsByMethod().PUT).toHaveLength(2);
+  });
+
+  test('logs a warning but does not fail the restore when the post-restore backfill throws', async () => {
+    // The real runBackfill runs post-restore (see the module-level comment
+    // above). Its orphan sweep lists the bucket — fail that call so
+    // runBackfill rejects, and confirm the restore itself still succeeds.
+    signedFetchRawMock.mockImplementation(async (method, url) => {
+      const u = url;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response('list failed', { status: 500 });
+      }
+      return new Response('OK', { status: 200 });
+    });
+
+    const res = await restore(
+      await tarDump([
+        ['meta.json', meta],
+        ['dump.ndjson', dump],
+        ['artifacts/qa/a.png', 'A'],
+      ]),
+      { force: false },
+    );
+
+    expect(res.counts).toEqual({ [REGIONS]: 1 });
+    expect(callsByMethod().PUT).toHaveLength(1);
   });
 
   test('ignores tar entries that are neither meta, dump nor artifacts', async () => {

@@ -78,6 +78,7 @@ beforeEach(() => {
   keyCtl.value = null;
   needsSetup.mockResolvedValue(false);
   login.mockResolvedValue(null);
+  logoutSession.mockResolvedValue(undefined);
   validateKey.mockResolvedValue(null);
   validateSession.mockResolvedValue(null);
   changePassword.mockResolvedValue({ ok: true });

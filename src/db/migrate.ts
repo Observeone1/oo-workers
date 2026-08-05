@@ -56,7 +56,10 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
   }
 }
 
-async function main() {
+// Exported so migrate.it.spec.ts can exercise the DATABASE_URL/error branches
+// directly — import.meta.main below only fires when this file is bun's
+// actual entry point, which an imported test process can't simulate.
+export async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error('DATABASE_URL is required');

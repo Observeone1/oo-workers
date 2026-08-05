@@ -213,7 +213,7 @@ function evalTlsAssertions(
   return opts.expectCnRegex ? checkExpectedCn(opts.expectCnRegex, cert) : null;
 }
 
-function mapTlsError(err: NodeJS.ErrnoException, host: string, port: number): string {
+export function mapTlsError(err: NodeJS.ErrnoException, host: string, port: number): string {
   switch (err.code) {
     case 'ENOTFOUND':
       return `DNS resolution failed: Host not found (${host})`;

@@ -112,6 +112,10 @@ function exportTarGz(opts: BackupOptions): ReadableStream<Uint8Array> {
   const pack = tar.pack();
   const gz = createGzip();
   pack.pipe(gz);
+  // pack.destroy(err) below (list/read failure) only emits 'error' on pack —
+  // .pipe() doesn't forward it to gz, so without this the stream hangs
+  // forever instead of erroring the consumer.
+  pack.on('error', (e) => gz.destroy(e));
 
   (async () => {
     try {

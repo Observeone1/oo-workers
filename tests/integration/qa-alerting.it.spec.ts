@@ -13,7 +13,7 @@ import { createServer, type Server } from 'node:http';
 import type { Redis } from 'ioredis';
 import fs from 'node:fs/promises';
 import { db } from '../../src/config/db.ts';
-import { apiKeys, qaRuns, regions } from '../../src/db/schema.ts';
+import { apiKeys, qaRuns, qaTestExecutions, regions } from '../../src/db/schema.ts';
 import { qaProjectRepo } from '../../src/db/repositories/qa-project.repo.ts';
 import {
   alertChannelRepo,

@@ -38,7 +38,7 @@ const GOOD_KEY = 'qa-projects/12-checkout-suite/runs/345/trace.zip';
 function lastSignedUrl(): URL {
   const calls = signedFetchRawMock.mock.calls;
   expect(calls.length).toBeGreaterThan(0);
-  return calls[calls.length - 1][1] as URL;
+  return calls.at(-1)![1];
 }
 
 beforeEach(() => {

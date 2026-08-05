@@ -134,7 +134,7 @@ export function tcpProbe(opts: TcpProbeOptions): Promise<TcpProbeResult> {
   });
 }
 
-function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number): string {
+export function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number): string {
   switch (err.code) {
     case 'ENOTFOUND':
       return `DNS resolution failed: Host not found (${host})`;

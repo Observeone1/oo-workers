@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { connectDb } from './_harness.ts';
 import { qaProjectRepo } from '../../src/db/repositories/qa-project.repo.ts';
+import { resetObjectStorageConfigCache } from '../../src/services/object-storage.ts';
 
 const sql = connectDb();
 const marker = `qa-repo-it-${Date.now()}`;
@@ -79,5 +80,114 @@ describe('qaProjectRepo', () => {
     expect(await qaProjectRepo.findRunById(-1)).toBeNull();
     expect(await qaProjectRepo.findExecutionById(-1)).toBeNull();
     expect(await qaProjectRepo.findProjectNameById(-1)).toBeNull();
+  });
+});
+
+// Object storage is real (RustFS testcontainer, wired by setup.ts) for the
+// whole IT suite. These specs deliberately unconfigure/break it for the
+// scope of one call — via env + resetObjectStorageConfigCache() — to
+// exercise the not-configured and storage-failure fallback branches for
+// real, then restore the original env so later tests keep working storage.
+describe('qaProjectRepo — object storage fallbacks and failures', () => {
+  const STORAGE_ENV_KEYS = [
+    'OO_OBJECT_STORAGE_ENDPOINT',
+    'OO_OBJECT_STORAGE_REGION',
+    'OO_OBJECT_STORAGE_BUCKET',
+    'OO_OBJECT_STORAGE_ACCESS_KEY',
+    'OO_OBJECT_STORAGE_SECRET_KEY',
+    'OO_OBJECT_STORAGE_FORCE_PATH_STYLE',
+  ] as const;
+  const realEnv: Record<string, string | undefined> = {};
+  let storageProjectId = -1;
+  let fallbackTestId = -1;
+
+  function restoreStorageEnv(): void {
+    for (const k of STORAGE_ENV_KEYS) {
+      if (realEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = realEnv[k];
+    }
+    resetObjectStorageConfigCache();
+  }
+
+  beforeAll(async () => {
+    for (const k of STORAGE_ENV_KEYS) realEnv[k] = process.env[k];
+    const [project] = await qaProjectRepo.create({
+      name: `${marker}-storage`,
+      targetUrl: 'https://qa.example.test',
+      intervalSeconds: 60,
+    });
+    storageProjectId = project.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    restoreStorageEnv();
+    if (storageProjectId > 0) {
+      await sql`DELETE FROM qa_projects WHERE id = ${storageProjectId}`.catch(() => {});
+    }
+  });
+
+  test('findTestsByProjectId returns inline scripts when storage is not configured', async () => {
+    const [t] = await qaProjectRepo.createTests(storageProjectId, [
+      { testName: 'fallback-test', script: 'inline script body' },
+    ]);
+    fallbackTestId = t.id;
+
+    for (const k of STORAGE_ENV_KEYS) delete process.env[k];
+    resetObjectStorageConfigCache();
+    try {
+      const rows = await qaProjectRepo.findTestsByProjectId(storageProjectId, { includeScript: true });
+      expect(rows.find((r) => r.id === fallbackTestId)).toMatchObject({ script: 'inline script body' });
+    } finally {
+      restoreStorageEnv();
+    }
+  });
+
+  test('findTestsByProjectId falls back to the inline script when the storage GET fails', async () => {
+    await sql`UPDATE qa_generated_tests SET script_url = 'nonexistent/key/does-not-exist.ts' WHERE id = ${fallbackTestId}`;
+
+    const rows = await qaProjectRepo.findTestsByProjectId(storageProjectId, { includeScript: true });
+
+    expect(rows.find((r) => r.id === fallbackTestId)).toMatchObject({ script: 'inline script body' });
+  });
+
+  test('createTests (maybeUploadScripts) logs and leaves script_url null when the storage PUT fails', async () => {
+    process.env.OO_OBJECT_STORAGE_ENDPOINT = 'http://127.0.0.1:1';
+    resetObjectStorageConfigCache();
+    try {
+      const [t] = await qaProjectRepo.createTests(storageProjectId, [
+        { testName: 'put-fail-test', script: 'unused inline body' },
+      ]);
+      const [row] = await sql<
+        [{ script_url: string | null }]
+      >`SELECT script_url FROM qa_generated_tests WHERE id = ${t.id}`;
+      expect(row.script_url).toBeNull();
+    } finally {
+      restoreStorageEnv();
+    }
+  });
+
+  test('deleteById tolerates a storage DELETE failure and still removes the project row', async () => {
+    // Real upload against the real (restored) endpoint, so there is an
+    // actual scriptUrl for deleteById to attempt — and fail — to delete.
+    const [t] = await qaProjectRepo.createTests(storageProjectId, [
+      { testName: 'delete-fail-test', script: 'unused inline body' },
+    ]);
+    const [row] = await sql<
+      [{ script_url: string | null }]
+    >`SELECT script_url FROM qa_generated_tests WHERE id = ${t.id}`;
+    expect(row.script_url).not.toBeNull();
+
+    process.env.OO_OBJECT_STORAGE_ENDPOINT = 'http://127.0.0.1:1';
+    resetObjectStorageConfigCache();
+    const deletedProjectId = storageProjectId;
+    try {
+      await expect(qaProjectRepo.deleteById(storageProjectId)).resolves.toBeUndefined();
+    } finally {
+      restoreStorageEnv();
+      storageProjectId = -1; // already deleted; afterAll must not try again
+    }
+
+    const remaining = await sql`SELECT id FROM qa_projects WHERE id = ${deletedProjectId}`;
+    expect(remaining).toHaveLength(0);
   });
 });
