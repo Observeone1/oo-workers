@@ -6,9 +6,19 @@
  */
 import type { Hono } from 'hono';
 import { alertChannelRepo, type ChannelType } from '../db/repositories/alert-channel.repo.ts';
-import { sendToChannel } from '../services/alert-dispatch.ts';
-import { isLocalMailpit, findRecentTestMessage } from '../services/mailpit.ts';
+import { sendToChannel as realSendToChannel } from '../services/alert-dispatch.ts';
+import {
+  isLocalMailpit as realIsLocalMailpit,
+  findRecentTestMessage as realFindRecentTestMessage,
+} from '../services/mailpit.ts';
 import { isValidEmailAddress } from '../utils/email.ts';
+
+/** Dependency hook for tests — avoids process-wide mock.module poison. */
+export const channelRouteDeps = {
+  sendToChannel: realSendToChannel,
+  isLocalMailpit: realIsLocalMailpit,
+  findRecentTestMessage: realFindRecentTestMessage,
+};
 
 const VALID_CHANNEL_TYPES: ChannelType[] = ['webhook', 'discord', 'slack', 'email'];
 
@@ -64,7 +74,7 @@ export function registerChannelRoutes(app: Hono): void {
     if (!Number.isFinite(id)) return c.json({ error: 'bad id' }, 400);
     const channel = await alertChannelRepo.findById(id);
     if (!channel) return c.json({ error: 'not found' }, 404);
-    const ok = await sendToChannel(channel, {
+    const ok = await channelRouteDeps.sendToChannel(channel, {
       monitor: {
         type: 'url',
         id: 0,
@@ -83,9 +93,12 @@ export function registerChannelRoutes(app: Hono): void {
     // Dev-only: when SMTP points at a local Mailpit, confirm the test
     // email actually landed (not just "SMTP accepted"). Production has no
     // OO_MAILPIT_API → isLocalMailpit() false → identical {ok:true}.
-    if (channel.type === 'email' && isLocalMailpit()) {
+    if (channel.type === 'email' && channelRouteDeps.isLocalMailpit()) {
       const to = (channel.config as { to?: string } | null)?.to ?? null;
-      const mailpit = await findRecentTestMessage({ to, subjectIncludes: 'Test alert:' });
+      const mailpit = await channelRouteDeps.findRecentTestMessage({
+        to,
+        subjectIncludes: 'Test alert:',
+      });
       return c.json({ ok: true, mailpit });
     }
     return c.json({ ok: true });

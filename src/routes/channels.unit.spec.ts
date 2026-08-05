@@ -6,7 +6,7 @@
  * boundaries; route logic runs for real.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { beforeEach, describe, expect, mock, test, afterEach } from 'bun:test';
 import { Hono } from 'hono';
 
 import { alertChannelRepoMock, mockAlertChannelRepo } from '../test-support/shared-mocks.ts';
@@ -17,10 +17,13 @@ const isLocalMailpit = mock((): boolean => false);
 const findRecentTestMessage = mock(async (): Promise<unknown> => ({ delivered: false }));
 
 mockAlertChannelRepo();
-mock.module('../services/alert-dispatch.ts', () => ({ sendToChannel }));
-mock.module('../services/mailpit.ts', () => ({ isLocalMailpit, findRecentTestMessage }));
 
-const { registerChannelRoutes } = await import('./channels.ts');
+const { registerChannelRoutes, channelRouteDeps } = await import('./channels.ts');
+const originalDeps = {
+  sendToChannel: channelRouteDeps.sendToChannel,
+  isLocalMailpit: channelRouteDeps.isLocalMailpit,
+  findRecentTestMessage: channelRouteDeps.findRecentTestMessage,
+};
 
 function makeApp(): Hono {
   const app = new Hono();
@@ -44,6 +47,16 @@ beforeEach(() => {
   findById.mockResolvedValue(null);
   sendToChannel.mockResolvedValue(true);
   isLocalMailpit.mockReturnValue(false);
+
+  channelRouteDeps.sendToChannel = sendToChannel;
+  channelRouteDeps.isLocalMailpit = isLocalMailpit;
+  channelRouteDeps.findRecentTestMessage = findRecentTestMessage;
+});
+
+afterEach(() => {
+  channelRouteDeps.sendToChannel = originalDeps.sendToChannel;
+  channelRouteDeps.isLocalMailpit = originalDeps.isLocalMailpit;
+  channelRouteDeps.findRecentTestMessage = originalDeps.findRecentTestMessage;
 });
 
 function post(body: unknown) {

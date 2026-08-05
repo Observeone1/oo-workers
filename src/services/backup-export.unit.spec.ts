@@ -4,18 +4,13 @@
  *
  * gzip and tar are NOT mocked: every test decompresses the real bytes
  * the writer produced and parses them back, so the assertions are on
- * the on-disk format a restore actually has to read. Only the two I/O
- * boundaries are faked — the drizzle `db` reads and object storage.
+ * the on-disk format a restore actually has to read. Only the S3
+ * boundary is faked via the signedFetchRaw seam; the real
+ * object-storage.ts runs, so URL building, config parsing and error
+ * handling are exercised too.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import {
-  dbMock,
-  mockDb,
-  mockObjectStorage,
-  objectStorageMock,
-  resetObjectStorageMock,
-} from '../test-support/shared-mocks.ts';
 import { gunzipSync } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { mkdtemp, readdir, rm, readFile } from 'node:fs/promises';
@@ -24,6 +19,16 @@ import { join } from 'node:path';
 import { getTableName } from 'drizzle-orm';
 import tar from 'tar-stream';
 import * as schema from '../db/schema.ts';
+import {
+  dbMock,
+  mockDb,
+  mockObjectStorageSigning,
+  resetObjectStorageSigningMock,
+  setFullObjectStorageEnv,
+  signedFetchRawMock,
+  clearObjectStorageEnv,
+} from '../test-support/shared-mocks.ts';
+import { resetObjectStorageConfigCache } from './object-storage.ts';
 
 type Row = Record<string, unknown>;
 
@@ -58,8 +63,7 @@ function selectChain(): { from: (t: unknown) => Query } {
 const sqlTag = () => Promise.resolve([{ name: '0042_add_regions.sql' }]);
 
 mockDb();
-mockObjectStorage();
-const { listObjectsWithSize, getObjectResponse } = objectStorageMock;
+mockObjectStorageSigning();
 
 const { estimateArtifacts, exportSplit, exportStream } = await import('./backup-export.ts');
 
@@ -69,17 +73,33 @@ const URL_EXECS = getTableName(schema.urlMonitorExecutions);
 
 const tmpDirs: string[] = [];
 
+/** Return calls that look like S3 list requests. */
+function listCalls(): unknown[][] {
+  return signedFetchRawMock.mock.calls.filter(
+    (c) => (c[1] as URL).searchParams.get('list-type') === '2',
+  );
+}
+
 beforeEach(() => {
   for (const k of Object.keys(rowsByTable)) delete rowsByTable[k];
   // Shared registrations: prime our own behaviour every time.
   dbMock.db = { select: () => selectChain() };
   dbMock.sql = sqlTag;
-  resetObjectStorageMock();
-  getObjectResponse.mockImplementation(async () => new Response('x'));
+  setFullObjectStorageEnv();
+  resetObjectStorageConfigCache();
+  mockObjectStorageSigning();
+  signedFetchRawMock.mockImplementation(async (_method, url) => {
+    const u = url as URL;
+    if (u.searchParams.get('list-type') === '2') {
+      return new Response('<Contents></Contents>');
+    }
+    return new Response('x');
+  });
 });
 
 afterEach(async () => {
   for (const d of tmpDirs.splice(0)) await rm(d, { recursive: true, force: true });
+  resetObjectStorageSigningMock();
 });
 
 async function readAll(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -119,6 +139,14 @@ async function tarEntries(stream: ReadableStream<Uint8Array>): Promise<Record<st
     extract.end(raw);
   });
   return out;
+}
+
+/** Build an S3 ListObjectsV2 XML response from key/size pairs. */
+function listXml(entries: { key: string; size: number }[]): string {
+  const contents = entries
+    .map((e) => `<Contents><Key>${e.key}</Key><Size>${e.size}</Size></Contents>`)
+    .join('');
+  return `<ListBucketResult>${contents}</ListBucketResult>`;
 }
 
 describe('exportStream — gzip NDJSON', () => {
@@ -184,11 +212,18 @@ describe('exportStream — gzip NDJSON', () => {
 describe('exportStream — tar.gz artifact envelope', () => {
   test('packs meta.json, the dump and one entry per artifact', async () => {
     rowsByTable[REGIONS] = [{ id: 1 }];
-    listObjectsWithSize.mockResolvedValue([
-      { key: 'qa-projects/a.png', size: 3 },
-      { key: 'qa-projects/b.png', size: 3 },
-    ]);
-    getObjectResponse.mockImplementation(async () => new Response('abc'));
+    signedFetchRawMock.mockImplementation(async (_method, url) => {
+      const u = url as URL;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response(
+          listXml([
+            { key: 'qa-projects/a.png', size: 3 },
+            { key: 'qa-projects/b.png', size: 3 },
+          ]),
+        );
+      }
+      return new Response('abc');
+    });
 
     const entries = await tarEntries(
       exportStream({ scope: 'all', sinceDays: 90, includeArtifacts: true } as never),
@@ -225,12 +260,17 @@ describe('exportStream — tar.gz artifact envelope', () => {
   });
 
   test('a failing artifact fetch is skipped and reported in meta-actual', async () => {
-    listObjectsWithSize.mockResolvedValue([
-      { key: 'good.png', size: 3 },
-      { key: 'bad.png', size: 3 },
-    ]);
-    getObjectResponse.mockImplementation(async (key: string) => {
-      if (key === 'bad.png') throw new Error('s3 timeout');
+    signedFetchRawMock.mockImplementation(async (_method, url) => {
+      const u = url as URL;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response(
+          listXml([
+            { key: 'good.png', size: 3 },
+            { key: 'bad.png', size: 3 },
+          ]),
+        );
+      }
+      if (u.pathname.includes('bad.png')) throw new Error('s3 timeout');
       return new Response('abc');
     });
 
@@ -250,8 +290,13 @@ describe('exportStream — tar.gz artifact envelope', () => {
   });
 
   test('an artifact with no body counts as failed rather than throwing', async () => {
-    listObjectsWithSize.mockResolvedValue([{ key: 'empty.png', size: 0 }]);
-    getObjectResponse.mockImplementation(async () => new Response(null));
+    signedFetchRawMock.mockImplementation(async (_method, url) => {
+      const u = url as URL;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response(listXml([{ key: 'empty.png', size: 0 }]));
+      }
+      return new Response(null);
+    });
 
     const entries = await tarEntries(
       exportStream({ scope: 'none', sinceDays: 90, includeArtifacts: true } as never),
@@ -266,7 +311,8 @@ describe('exportStream — tar.gz artifact envelope', () => {
   });
 
   test('still emits a valid envelope when object storage is not configured', async () => {
-    objectStorageMock.configured.value = false;
+    clearObjectStorageEnv();
+    resetObjectStorageConfigCache();
 
     const entries = await tarEntries(
       exportStream({ scope: 'none', sinceDays: 90, includeArtifacts: true } as never),
@@ -274,25 +320,34 @@ describe('exportStream — tar.gz artifact envelope', () => {
 
     expect(Object.keys(entries)).toEqual(['meta.json', 'dump.ndjson', 'meta-actual.json']);
     expect(JSON.parse(entries['meta.json'].toString()).artifactCount).toBe(0);
-    expect(listObjectsWithSize).not.toHaveBeenCalled();
+    expect(listCalls()).toHaveLength(0);
   });
 });
 
 describe('estimateArtifacts', () => {
   test('sums the object sizes when storage is configured', async () => {
-    listObjectsWithSize.mockResolvedValue([
-      { key: 'a', size: 10 },
-      { key: 'b', size: 32 },
-    ]);
+    signedFetchRawMock.mockImplementation(async (_method, url) => {
+      const u = url as URL;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response(
+          listXml([
+            { key: 'a', size: 10 },
+            { key: 'b', size: 32 },
+          ]),
+        );
+      }
+      return new Response('');
+    });
 
     expect(await estimateArtifacts()).toEqual({ artifactCount: 2, artifactBytes: 42 });
   });
 
   test('reports zeros without listing when storage is not configured', async () => {
-    objectStorageMock.configured.value = false;
+    clearObjectStorageEnv();
+    resetObjectStorageConfigCache();
 
     expect(await estimateArtifacts()).toEqual({ artifactCount: 0, artifactBytes: 0 });
-    expect(listObjectsWithSize).not.toHaveBeenCalled();
+    expect(listCalls()).toHaveLength(0);
   });
 });
 

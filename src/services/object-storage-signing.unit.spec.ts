@@ -10,19 +10,22 @@
  * object-storage-signing.regression.unit.spec.ts.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 
-import { signedFetchRaw } from './object-storage-signing.ts';
+import { __resetSignedFetchRawImpl } from './object-storage-signing.ts';
 
-const realFetch = globalThis.fetch;
+__resetSignedFetchRawImpl();
+const { signedFetchRaw } = await import('./object-storage-signing.ts');
 
 interface Captured {
   url?: string;
   init?: RequestInit & { duplex?: string };
 }
 
-/** Swap fetch for a recorder and hand back what the signer sent. */
+const realFetch = globalThis.fetch;
+
+/** Swap global fetch for a recorder and hand back what the signer sent. */
 function captureFetch(): Captured {
   const captured: Captured = {};
   globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
@@ -47,8 +50,18 @@ const sign = (method: 'GET' | 'PUT' | 'DELETE', body: Buffer | ReadableStream<Ui
     'eu-test-1',
   );
 
+beforeAll(() => {
+  __resetSignedFetchRawImpl();
+});
+
 afterEach(() => {
   globalThis.fetch = realFetch;
+  __resetSignedFetchRawImpl();
+});
+
+afterAll(() => {
+  globalThis.fetch = realFetch;
+  __resetSignedFetchRawImpl();
 });
 
 describe('signedFetchRaw request bodies', () => {

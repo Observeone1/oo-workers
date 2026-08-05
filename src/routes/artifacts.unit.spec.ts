@@ -5,21 +5,21 @@
  * internals out of client responses.
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Hono } from 'hono';
 
 import {
   authMiddlewareMock,
   mockAuthMiddleware,
-  mockObjectStorage,
-  objectStorageMock,
-  resetObjectStorageMock,
+  mockObjectStorageSigning,
+  resetObjectStorageSigningMock,
+  setFullObjectStorageEnv,
+  signedFetchRawMock,
 } from '../test-support/shared-mocks.ts';
 
 const { requireAuth } = authMiddlewareMock;
-const { getObjectResponse } = objectStorageMock;
 
-mockObjectStorage();
+mockObjectStorageSigning();
 mockAuthMiddleware();
 mock.module('../utils/logger.ts', () => ({
   logger: { error: () => {}, info: () => {}, warn: () => {} },
@@ -35,12 +35,23 @@ function makeApp(): Hono {
 
 const GOOD_KEY = 'qa-projects/12-checkout-suite/runs/345/trace.zip';
 
+function lastSignedUrl(): URL {
+  const calls = signedFetchRawMock.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return calls[calls.length - 1][1] as URL;
+}
+
 beforeEach(() => {
   // Shared registrations: prime our own behaviour every time.
-  resetObjectStorageMock();
-  getObjectResponse.mockResolvedValue(
+  setFullObjectStorageEnv();
+  mockObjectStorageSigning();
+  signedFetchRawMock.mockResolvedValue(
     new Response('artifact-bytes', { headers: { 'content-type': 'application/zip' } }),
   );
+});
+
+afterEach(() => {
+  resetObjectStorageSigningMock();
 });
 
 describe('GET /api/artifacts', () => {
@@ -58,14 +69,14 @@ describe('GET /api/artifacts', () => {
     const res = await makeApp().request(`/api/artifacts?key=${encodeURIComponent(key)}`);
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'bad or unauthorized key' });
-    expect(getObjectResponse).not.toHaveBeenCalled();
+    expect(signedFetchRawMock).not.toHaveBeenCalled();
   });
 
   test('streams a zip as attachment with upstream content-type', async () => {
     const res = await makeApp().request(`/api/artifacts?key=${encodeURIComponent(GOOD_KEY)}`);
 
     expect(res.status).toBe(200);
-    expect(getObjectResponse).toHaveBeenCalledWith(GOOD_KEY);
+    expect(lastSignedUrl().pathname).toContain('/' + GOOD_KEY);
     expect(res.headers.get('content-type')).toBe('application/zip');
     expect(res.headers.get('content-disposition')).toBe('attachment; filename="trace.zip"');
     expect(res.headers.get('cache-control')).toBe('private, max-age=60');
@@ -73,7 +84,7 @@ describe('GET /api/artifacts', () => {
   });
 
   test('serves non-zip artifacts inline', async () => {
-    getObjectResponse.mockResolvedValue(
+    signedFetchRawMock.mockResolvedValue(
       new Response('png-bytes', { headers: { 'content-type': 'image/png' } }),
     );
     const key = 'qa-projects/12-checkout-suite/runs/345/failure.png';
@@ -83,7 +94,7 @@ describe('GET /api/artifacts', () => {
   });
 
   test('maps a missing object to an opaque 404', async () => {
-    getObjectResponse.mockRejectedValue(
+    signedFetchRawMock.mockRejectedValue(
       Object.assign(new Error('NoSuchKey: s3://internal-bucket/...'), { status: 404 }),
     );
 
@@ -94,7 +105,7 @@ describe('GET /api/artifacts', () => {
   });
 
   test('maps other storage failures to an opaque 502', async () => {
-    getObjectResponse.mockRejectedValue(new Error('storage endpoint rustfs:9000 down'));
+    signedFetchRawMock.mockRejectedValue(new Error('storage endpoint rustfs:9000 down'));
 
     const res = await makeApp().request(`/api/artifacts?key=${encodeURIComponent(GOOD_KEY)}`);
     expect(res.status).toBe(502);

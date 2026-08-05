@@ -44,7 +44,7 @@ import type { FanOutTarget } from './scheduler-jobid.ts';
 // fresh IDs never collide with the previous boot's artifacts.
 const BOOT_NONCE = makeNonce();
 import { urlMonitorRepo } from './db/repositories/url-monitor.repo.ts';
-import { execEvents } from './services/exec-events.ts';
+import { execEvents as realExecEvents } from './services/exec-events.ts';
 import { apiCheckRepo } from './db/repositories/api-check.repo.ts';
 import { qaProjectRepo } from './db/repositories/qa-project.repo.ts';
 import { tcpMonitorRepo } from './db/repositories/tcp-monitor.repo.ts';
@@ -52,8 +52,15 @@ import { udpMonitorRepo } from './db/repositories/udp-monitor.repo.ts';
 import { dbMonitorRepo } from './db/repositories/db-monitor.repo.ts';
 import { tlsMonitorRepo } from './db/repositories/tls-monitor.repo.ts';
 import { heartbeatRepo } from './db/repositories/heartbeat.repo.ts';
-import { dispatchAlert } from './services/alert-dispatch.ts';
+import { dispatchAlert as realDispatchAlert } from './services/alert-dispatch.ts';
 import { finalizeUnfinishedQaRun } from './services/qa-run-closeout.ts';
+
+/** Dependency hook for tests: the scheduler uses these references at runtime so
+ * unit specs can swap in stubs without process-wide mock.module poison. */
+export const schedulerDeps = {
+  execEvents: realExecEvents,
+  dispatchAlert: realDispatchAlert,
+};
 import { monitorRegionRepo, regionRepo, type MonitorType } from './db/repositories/region.repo.ts';
 import { logger } from './utils/logger.ts';
 
@@ -216,7 +223,7 @@ export async function startScheduler(connection: Redis) {
     }
   };
 
-  tick();
+  await tick();
   const handle = setInterval(tick, TICK_MS);
 
   return async () => {
@@ -253,7 +260,7 @@ async function dispatchOrMarkFailed(
 }
 
 // ---------------- url-monitor ----------------
-async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
+export async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await urlMonitorRepo.findDue();
 
   for (const m of due) {
@@ -301,7 +308,7 @@ async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- api-check ----------------
-async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
+export async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
   const due = await apiCheckRepo.findDue();
 
   for (const c of due) {
@@ -356,7 +363,7 @@ async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- tcp-monitor ----------------
-async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
+export async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await tcpMonitorRepo.findDue();
 
   for (const m of due) {
@@ -409,7 +416,7 @@ async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- udp-monitor ----------------
-async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
+export async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await udpMonitorRepo.findDue();
 
   for (const m of due) {
@@ -462,7 +469,7 @@ async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- db-monitor ----------------
-async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
+export async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await dbMonitorRepo.findDue();
 
   for (const m of due) {
@@ -514,7 +521,7 @@ async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) {
   }
 }
 
-async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
+export async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
   const due = await tlsMonitorRepo.findDue();
 
   for (const m of due) {
@@ -570,7 +577,7 @@ async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis) {
 }
 
 // ---------------- qa-project ----------------
-async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
+export async function tickQaProjects(getQueue: QueueFactory, connection: Redis) {
   const due = await qaProjectRepo.findDue();
 
   for (const p of due) {
@@ -686,7 +693,7 @@ export async function tickRegionStatus(): Promise<void> {
     }
     if (prev !== isOnline) {
       lastOnlineState.set(r.id, isOnline);
-      execEvents.emit('region', {
+      schedulerDeps.execEvents.emit('region', {
         regionId: r.id,
         status: isOnline ? 'online' : 'offline',
         lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
@@ -696,19 +703,19 @@ export async function tickRegionStatus(): Promise<void> {
   }
 }
 
-async function tickHeartbeats(): Promise<void> {
+export async function tickHeartbeats(): Promise<void> {
   const overdue = await heartbeatRepo.findOverdue();
   for (const h of overdue) {
     const transitioned = await heartbeatRepo.markOverdue(h.id);
     if (!transitioned) continue; // someone else got there (or already OVERDUE)
     logger.info(`heartbeat #${h.id} (${h.name}) → OVERDUE`);
-    execEvents.emit('monitor-state', {
+    schedulerDeps.execEvents.emit('monitor-state', {
       type: 'heartbeat',
       monitorId: h.id,
       status: 'OVERDUE',
       lastTransitionAt: new Date().toISOString(),
     });
-    await dispatchAlert({
+    await schedulerDeps.dispatchAlert({
       monitor: { type: 'heartbeat', id: h.id, name: h.name, target: h.name },
       event: 'outage',
       status: 'FAILED',

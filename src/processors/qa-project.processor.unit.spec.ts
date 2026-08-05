@@ -3,8 +3,8 @@
  * createQaProjectProcessor.
  *
  * The factory takes the Redis connection, so pub/sub is injected rather
- * than mocked at the module boundary. Playwright, object storage, the
- * repo and the transition detector are mocked at their module edges;
+ * than mocked at the module boundary. Playwright, the S3 network boundary,
+ * the repo and the transition detector are mocked at their module edges;
  * the artifact key helper (qaRunArtifactKey) is kept real so the specs
  * assert the keys actually written.
  *
@@ -19,28 +19,30 @@ import { resolve } from 'node:path';
 import {
   execEventsMock,
   mockExecEvents,
-  mockObjectStorage,
+  mockObjectStorageSigning,
   mockPlaywrightService,
   mockQaProjectRepo,
   mockTransitionDetector,
-  objectStorageMock,
   playwrightServiceMock,
   qaProjectRepoMock,
-  resetObjectStorageMock,
+  resetObjectStorageSigningMock,
+  setFullObjectStorageEnv,
+  signedFetchRawMock,
   transitionDetectorMock,
+  clearObjectStorageEnv,
 } from '../test-support/shared-mocks.ts';
+import { resetObjectStorageConfigCache } from '../services/object-storage.ts';
 
 type Row = Record<string, unknown>;
 
 mockQaProjectRepo();
 mockPlaywrightService();
-mockObjectStorage();
+mockObjectStorageSigning();
 mockTransitionDetector();
 mockExecEvents();
 
 const qaProjectRepo = qaProjectRepoMock;
 const { executePlaywrightTest } = playwrightServiceMock;
-const { putObject } = objectStorageMock;
 const { maybeAlertOnQaRunTransition } = transitionDetectorMock;
 const { emitExecution } = execEventsMock;
 
@@ -83,10 +85,24 @@ function updatesFor(status: string): Row[] {
   return published.map((p) => p.payload).filter((p) => p.status === status);
 }
 
+/** Extract the object key from a signed S3 URL pathname. */
+function keyOf(call: unknown[]): string {
+  const pathname = (call[1] as URL).pathname;
+  // Path-style URLs: /bucket/key
+  return decodeURIComponent(pathname.split('/').slice(2).join('/'));
+}
+
+/** PUT keys from signedFetchRaw calls, in call order. */
+function putKeys(): string[] {
+  return signedFetchRawMock.mock.calls.filter((c) => c[0] === 'PUT').map(keyOf);
+}
+
 beforeEach(() => {
   published.length = 0;
   // Shared registrations: prime our own behaviour every time.
-  resetObjectStorageMock();
+  setFullObjectStorageEnv();
+  resetObjectStorageConfigCache();
+  mockObjectStorageSigning();
   for (const m of [
     qaProjectRepo.findById,
     qaProjectRepo.createRun,
@@ -114,7 +130,7 @@ beforeEach(() => {
     artifacts: [],
     duration_ms: 12,
   });
-  putObject.mockResolvedValue(undefined);
+  signedFetchRawMock.mockResolvedValue(new Response('OK', { status: 200 }));
   maybeAlertOnQaRunTransition.mockResolvedValue(undefined);
   redis.publish.mockImplementation(async (channel: string, raw: string) => {
     published.push({ channel, payload: JSON.parse(raw) as Row });
@@ -129,6 +145,7 @@ afterEach(async () => {
   for (const d of await runDirs()) {
     await rm(resolve(TESTS_ROOT, d), { recursive: true, force: true });
   }
+  resetObjectStorageSigningMock();
 });
 
 describe('createQaProjectProcessor — successful run', () => {
@@ -217,7 +234,7 @@ describe('createQaProjectProcessor — failures and errors', () => {
     expect(out).toMatchObject({ results: { passed: 0, failed: 1, errors: 0 } });
     expect(qaProjectRepo.claimRunAlert).toHaveBeenCalledWith(900, 'FAILED');
     // Real qaRunArtifactKey, slugged from the project name.
-    expect(putObject.mock.calls.map((c) => c[0])).toEqual([
+    expect(putKeys()).toEqual([
       'qa-projects/1-shop-front/runs/500/trace.zip',
       'qa-projects/1-shop-front/runs/500/screenshot-1.png',
     ]);
@@ -235,13 +252,14 @@ describe('createQaProjectProcessor — failures and errors', () => {
 
     await handler(makeJob([TEST_A]) as never);
 
-    expect(putObject).not.toHaveBeenCalled();
+    expect(signedFetchRawMock.mock.calls.filter((c) => c[0] === 'PUT')).toHaveLength(0);
     const [, patch] = qaProjectRepo.updateExecution.mock.calls[0] as [number, Row];
     expect(patch).toMatchObject({ status: 'passed', traceUrl: null, screenshotUrls: null });
   });
 
   test('skips artifact upload when object storage is not configured', async () => {
-    objectStorageMock.configured.value = false;
+    clearObjectStorageEnv();
+    resetObjectStorageConfigCache();
     executePlaywrightTest.mockResolvedValue({
       success: false,
       error: 'nope',
@@ -253,7 +271,7 @@ describe('createQaProjectProcessor — failures and errors', () => {
 
     await handler(makeJob([TEST_A]) as never);
 
-    expect(putObject).not.toHaveBeenCalled();
+    expect(signedFetchRawMock.mock.calls.filter((c) => c[0] === 'PUT')).toHaveLength(0);
     const [, patch] = qaProjectRepo.updateExecution.mock.calls[0] as [number, Row];
     expect(patch).toMatchObject({ traceUrl: null, screenshotUrls: null });
   });
@@ -273,7 +291,7 @@ describe('createQaProjectProcessor — failures and errors', () => {
     const out = await handler(makeJob([TEST_A]) as never);
 
     expect(out).toMatchObject({ results: { failed: 1 } });
-    expect(putObject).not.toHaveBeenCalled();
+    expect(signedFetchRawMock.mock.calls.filter((c) => c[0] === 'PUT')).toHaveLength(0);
     const [, patch] = qaProjectRepo.updateExecution.mock.calls[0] as [number, Row];
     expect(patch).toMatchObject({ status: 'failed', traceUrl: null });
   });
@@ -369,7 +387,7 @@ describe('createQaProjectProcessor — resilience', () => {
 
     await handler(makeJob([TEST_A]) as never);
 
-    expect(putObject.mock.calls[0][0]).toBe('qa-projects/1-project-1/runs/500/trace.zip');
+    expect(putKeys()[0]).toBe('qa-projects/1-project-1/runs/500/trace.zip');
   });
 
   test('falls back to a synthetic project name when the lookup throws', async () => {

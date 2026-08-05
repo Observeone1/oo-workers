@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 
-import { signedFetchRaw } from './object-storage-signing.ts';
+import { __resetSignedFetchRawImpl } from './object-storage-signing.ts';
+
+__resetSignedFetchRawImpl();
+const { signedFetchRaw } = await import('./object-storage-signing.ts');
 
 // Regression guard for the S2871 fix: canonical header sorting must stay
 // byte-order (Sig-V4 contract). Locks the ordering so a future "cleanup" to
@@ -8,8 +11,19 @@ import { signedFetchRaw } from './object-storage-signing.ts';
 // would fail here instead of producing signatures the server rejects.
 describe('signedFetchRaw canonical header ordering', () => {
   const realFetch = globalThis.fetch;
+
+  beforeAll(() => {
+    __resetSignedFetchRawImpl();
+  });
+
   afterEach(() => {
     globalThis.fetch = realFetch;
+    __resetSignedFetchRawImpl();
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+    __resetSignedFetchRawImpl();
   });
 
   test('SignedHeaders is byte-order sorted, extra headers included', async () => {

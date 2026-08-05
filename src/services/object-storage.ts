@@ -85,6 +85,12 @@ function requireConfig(): Config {
   return cfg;
 }
 
+/** Test-only hook: resets the memoised config so specs can vary env safely. */
+export function resetObjectStorageConfigCache(): void {
+  cached = null;
+  cachedDisabled = false;
+}
+
 function buildUrl(cfg: Config, key: string): URL {
   const ep = new URL(cfg.endpoint);
   if (cfg.pathStyle) {

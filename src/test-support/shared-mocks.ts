@@ -13,14 +13,18 @@
  */
 
 import { mock } from 'bun:test';
-// Imported for its real pure helpers, which mockObjectStorage keeps intact.
-// This runs during the import phase, before any spec body registers a mock,
-// so it always binds the genuine module.
-import * as realObjectStorage from '../services/object-storage.ts';
 // Safe to import for real: it pulls only node builtins. transition-detector
 // is deliberately NOT imported here, because it reaches config/db.ts, which
 // throws at import time when DATABASE_URL is unset.
 import * as realPlaywrightService from '../services/playwright.service.ts';
+
+export {
+  mockObjectStorageSigning,
+  resetObjectStorageSigningMock,
+  signedFetchRawMock,
+  clearObjectStorageEnv,
+  setFullObjectStorageEnv,
+} from './object-storage-mock-helpers.ts';
 
 type AnyRow = Record<string, unknown>;
 
@@ -145,53 +149,6 @@ export function mockDb(): void {
     ),
     sql: (...args: unknown[]) => dbMock.sql(...args),
   }));
-}
-
-// ---- src/services/object-storage.ts ----
-/**
- * Only the I/O calls are stubbed. The pure key helpers (qaScriptKey,
- * qaRunArtifactKey, isLegacyQaScriptKey) stay real so specs assert the
- * keys actually written rather than a reimplementation of them.
- */
-export const objectStorageMock = {
-  /** isStorageConfigured()'s answer. */
-  configured: { value: true },
-  putObject: mock(async (_k: string, _b: unknown, _ct?: string): Promise<void> => {}),
-  getObjectResponse: mock(async (_k: string): Promise<Response> => new Response('')),
-  listObjects: mock(async (_p: string): Promise<string[]> => []),
-  listObjectsWithSize: mock(async (_p: string): Promise<{ key: string; size: number }[]> => []),
-  moveObject: mock(async (_from: string, _to: string): Promise<void> => {}),
-  deleteObject: mock(async (_k: string): Promise<void> => {}),
-};
-
-export function mockObjectStorage(): void {
-  mock.module('../services/object-storage.ts', () => ({
-    ...realObjectStorage,
-    isStorageConfigured: () => objectStorageMock.configured.value,
-    putObject: objectStorageMock.putObject,
-    getObjectResponse: objectStorageMock.getObjectResponse,
-    listObjects: objectStorageMock.listObjects,
-    listObjectsWithSize: objectStorageMock.listObjectsWithSize,
-    moveObject: objectStorageMock.moveObject,
-    deleteObject: objectStorageMock.deleteObject,
-  }));
-}
-
-/** Reset every object-storage stub to an inert default. */
-export function resetObjectStorageMock(): void {
-  objectStorageMock.configured.value = true;
-  objectStorageMock.putObject.mockReset();
-  objectStorageMock.getObjectResponse.mockReset();
-  objectStorageMock.listObjects.mockReset();
-  objectStorageMock.listObjectsWithSize.mockReset();
-  objectStorageMock.moveObject.mockReset();
-  objectStorageMock.deleteObject.mockReset();
-  objectStorageMock.putObject.mockResolvedValue(undefined);
-  objectStorageMock.getObjectResponse.mockResolvedValue(new Response(''));
-  objectStorageMock.listObjects.mockResolvedValue([]);
-  objectStorageMock.listObjectsWithSize.mockResolvedValue([]);
-  objectStorageMock.moveObject.mockResolvedValue(undefined);
-  objectStorageMock.deleteObject.mockResolvedValue(undefined);
 }
 
 // ---- src/services/playwright.service.ts ----

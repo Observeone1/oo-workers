@@ -46,11 +46,13 @@ export interface AgentConfig {
    * inject false SUCCESS, or steal the agent key) — see docs.
    */
   tlsInsecure: boolean;
+  /** Total timeout for each master long-poll request in ms. Default 35s. */
+  pollTimeoutMs?: number;
 }
 
 // Bun's fetch accepts a per-request `tls` option; the DOM fetch lib
 // typings don't. Scoped cast — applied to the master fetches only.
-function masterFetchInit(cfg: AgentConfig, init: RequestInit): RequestInit {
+export function masterFetchInit(cfg: AgentConfig, init: RequestInit): RequestInit {
   if (!cfg.tlsInsecure) return init;
   return { ...init, tls: { rejectUnauthorized: false } } as RequestInit & {
     tls: { rejectUnauthorized: boolean };
@@ -113,8 +115,8 @@ export async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
         'X-Agent-Version': packageVersion(),
       },
       // Slightly longer than server-side wait so the agent doesn't time out
-      // before master returns 204.
-      signal: AbortSignal.timeout((cfg.pollWaitSec + 5) * 1000),
+      // before master returns 204. Overrideable for tests.
+      signal: AbortSignal.timeout(cfg.pollTimeoutMs ?? (cfg.pollWaitSec + 5) * 1000),
     }),
   );
   if (res.status === 204) return null;
@@ -125,7 +127,7 @@ export async function pollJob(cfg: AgentConfig): Promise<JobPayload | null> {
   return (await res.json()) as JobPayload;
 }
 
-async function postResult(cfg: AgentConfig, body: AgentResultBody): Promise<void> {
+export async function postResult(cfg: AgentConfig, body: AgentResultBody): Promise<void> {
   const res = await fetch(
     `${cfg.masterUrl}/api/agent/results`,
     masterFetchInit(cfg, {
@@ -342,7 +344,7 @@ async function probeTls(job: JobPayload): Promise<AgentResultBody> {
   };
 }
 
-async function runProbe(job: JobPayload): Promise<AgentResultBody> {
+export async function runProbe(job: JobPayload): Promise<AgentResultBody> {
   switch (job.type) {
     case 'url':
       return probeUrl(job);
@@ -379,6 +381,10 @@ async function runProbe(job: JobPayload): Promise<AgentResultBody> {
 // agent-light image so light-mode is declared rather than probed, and doubles
 // as an operator escape hatch to disable QA on a known-capable agent.
 let _playwrightDetected: boolean | null = null;
+/** Test hook: reset the cached Playwright browser detection result. */
+export function _resetPlaywrightDetected(): void {
+  _playwrightDetected = null;
+}
 async function isPlaywrightAvailable(): Promise<boolean> {
   if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
@@ -510,7 +516,7 @@ function warnTlsInsecureIfDue(cfg: AgentConfig, lastWarnMs: number): number {
   return Date.now();
 }
 
-export async function runAgent(cfg: AgentConfig): Promise<void> {
+export async function runAgent(cfg: AgentConfig, signal?: AbortSignal): Promise<void> {
   logger.info(
     `🛰  agent starting: master=${cfg.masterUrl} region=${cfg.regionSlug} wait=${cfg.pollWaitSec}s`,
   );
@@ -540,13 +546,24 @@ export async function runAgent(cfg: AgentConfig): Promise<void> {
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  if (signal) {
+    if (signal.aborted) {
+      running = false;
+    } else {
+      signal.addEventListener('abort', () => shutdown('abort'));
+    }
+  }
 
   while (running) {
     try {
       lastInsecureWarn = warnTlsInsecureIfDue(cfg, lastInsecureWarn);
       const job = await pollJob(cfg);
       backoffMs = 1000;
-      if (!job) continue;
+      if (!job) {
+        // Yield the event loop so test harness timers get a chance to fire.
+        await new Promise((r) => setTimeout(r, 0));
+        continue;
+      }
       logger.info(`agent picked up exec=${job.executionId} type=${job.type} (jobId=${job.jobId})`);
       await handlePolledJob(cfg, job);
     } catch (err) {

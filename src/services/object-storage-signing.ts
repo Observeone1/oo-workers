@@ -31,7 +31,7 @@ function signingKey(secret: string, date: string, region: string, service: strin
  *   so we don't buffer the whole body to compute its hash. Required for the
  *   agent→master→RustFS artifact proxy where bodies can be 50+ MB.
  */
-export async function signedFetchRaw(
+async function _signedFetchRaw(
   method: 'GET' | 'PUT' | 'HEAD' | 'DELETE',
   url: URL,
   body: Buffer | ReadableStream<Uint8Array> | null,
@@ -121,4 +121,30 @@ export async function signedFetchRaw(
     headers: { ...baseHeaders, Authorization: authHeader },
     body: new Blob([new Uint8Array(buf).buffer]),
   });
+}
+
+type SignedFetchRawFn = typeof _signedFetchRaw;
+
+/**
+ * Test-only seam: the implementation behind signedFetchRaw.
+ * Replacing this lets specs intercept signed requests without module
+ * mocking, which avoids the load-order poison that breaks parallel runs.
+ */
+let signedFetchRawImpl: SignedFetchRawFn = _signedFetchRaw;
+
+/** Test-only: replace the implementation used for signedFetchRaw. */
+export function __setSignedFetchRawImpl(impl: SignedFetchRawFn): void {
+  signedFetchRawImpl = impl;
+}
+
+/** Test-only: restore the real signedFetchRaw implementation. */
+export function __resetSignedFetchRawImpl(): void {
+  signedFetchRawImpl = _signedFetchRaw;
+}
+
+/** Public entry point: sign + execute any S3 request given a pre-built URL. */
+export async function signedFetchRaw(
+  ...args: Parameters<SignedFetchRawFn>
+): ReturnType<SignedFetchRawFn> {
+  return signedFetchRawImpl(...args);
 }

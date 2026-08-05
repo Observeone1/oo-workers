@@ -4,19 +4,22 @@
  *
  * Dumps are built with real gzip/tar and fed in as bytes, so the
  * envelope sniffing, line splitting and tar walking all run for real.
- * Faked: the drizzle `db`/`sql` boundary, object storage, the
- * post-restore backfill, and schemaHead (so a dump can be declared
+ * Faked: the drizzle `db`/`sql` boundary, the S3 network boundary via
+ * the signedFetchRaw seam, and schemaHead (so a dump can be declared
  * matching or mismatching without a live migrations table).
  */
 
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   dbMock,
   mockDb,
-  mockObjectStorage,
-  objectStorageMock,
-  resetObjectStorageMock,
+  mockObjectStorageSigning,
+  resetObjectStorageSigningMock,
+  setFullObjectStorageEnv,
+  signedFetchRawMock,
+  clearObjectStorageEnv,
 } from '../test-support/shared-mocks.ts';
+import { resetObjectStorageConfigCache } from './object-storage.ts';
 import { gzipSync } from 'node:zlib';
 import { Readable } from 'node:stream';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -41,7 +44,7 @@ let probeCount = 0;
  * A drizzle query stand-in: a real Promise carrying the chain methods, so the
  * builder can be awaited directly without hand-rolling a `then`. `n` answers
  * targetIsEmpty's count probe; `total` answers the real runBackfill's count
- * probes with 0 so both of its passes are no-ops.
+ * probes with 0 so both of its passes exit immediately.
  */
 type Query = Promise<unknown> & {
   where: () => Query;
@@ -101,8 +104,7 @@ mock.module('./backup-shared.ts', () => ({
   schemaHead: async () => head,
 }));
 
-mockObjectStorage();
-const { putObject } = objectStorageMock;
+mockObjectStorageSigning();
 
 // storage-backfill is deliberately NOT mocked here. Registering a stub for
 // it would replace the module process-wide, and storage-backfill's own spec
@@ -142,6 +144,42 @@ async function tarDump(entries: [string, string | Buffer][]): Promise<Readable> 
   return Readable.from([gzipSync(Buffer.concat(chunks))]);
 }
 
+/** Extract the object key from a signed S3 URL pathname. */
+function keyOf(call: unknown[]): string {
+  const pathname = (call[1] as URL).pathname;
+  // Path-style URLs: /bucket/key
+  return decodeURIComponent(pathname.split('/').slice(2).join('/'));
+}
+
+/** All signedFetchRaw calls grouped by HTTP method. */
+function callsByMethod(): Record<string, unknown[][]> {
+  const out: Record<string, unknown[][]> = { GET: [], PUT: [], DELETE: [] };
+  for (const c of signedFetchRawMock.mock.calls) {
+    const method = c[0] as string;
+    (out[method] ??= []).push(c);
+  }
+  return out;
+}
+
+/** Keys passed to PUTObject, in call order. */
+function putKeys(): string[] {
+  return callsByMethod().PUT.map(keyOf);
+}
+
+/** List prefixes requested, in call order. */
+function listPrefixes(): string[] {
+  return callsByMethod()
+    .GET.filter((c) => (c[1] as URL).searchParams.get('list-type') === '2')
+    .map((c) => (c[1] as URL).searchParams.get('prefix') ?? '');
+}
+
+/** PUT call content types, in call order. */
+function putContentTypes(): (string | undefined)[] {
+  return callsByMethod().PUT.map(
+    (c) => (c[6] as Record<string, string> | undefined)?.['content-type'],
+  );
+}
+
 beforeEach(() => {
   inserts.length = 0;
   executed.length = 0;
@@ -154,7 +192,21 @@ beforeEach(() => {
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(makeTx()),
   };
   dbMock.sql = sqlMock;
-  resetObjectStorageMock();
+  setFullObjectStorageEnv();
+  resetObjectStorageConfigCache();
+  mockObjectStorageSigning();
+  signedFetchRawMock.mockImplementation(async (method, url) => {
+    const u = url as URL;
+    if (u.searchParams.get('list-type') === '2') {
+      return new Response('<ListBucketResult></ListBucketResult>');
+    }
+    if (method === 'GET') return new Response('artifact body');
+    return new Response('OK', { status: 200 });
+  });
+});
+
+afterEach(async () => {
+  resetObjectStorageSigningMock();
 });
 
 describe('restore — single-file NDJSON dump', () => {
@@ -290,18 +342,12 @@ describe('restore — tar.gz artifact dump', () => {
     );
 
     expect(res.counts).toEqual({ [REGIONS]: 1 });
-    expect(putObject.mock.calls.map((c) => [c[0], c[2]])).toEqual([
-      ['qa/trace.zip', 'application/zip'],
-      ['qa/shot.png', 'image/png'],
-      ['qa/t.spec.ts', 'text/typescript'],
-    ]);
-    expect(String(putObject.mock.calls[0][1])).toBe('ZIP');
+    expect(putKeys()).toEqual(['qa/trace.zip', 'qa/shot.png', 'qa/t.spec.ts']);
+    expect(putContentTypes()).toEqual(['application/zip', 'image/png', 'text/typescript']);
+    expect(String(callsByMethod().PUT[0][2])).toBe('ZIP');
     // The post-restore backfill ran: its orphan sweep is the only thing in
     // this path that lists the bucket.
-    expect(objectStorageMock.listObjects.mock.calls.map((c) => c[0])).toEqual([
-      'qa-scripts/',
-      'qa-projects/',
-    ]);
+    expect(listPrefixes()).toEqual(['qa-scripts/', 'qa-projects/']);
   });
 
   test('falls back to octet-stream for an unknown extension', async () => {
@@ -314,7 +360,7 @@ describe('restore — tar.gz artifact dump', () => {
       { force: false },
     );
 
-    expect(putObject.mock.calls[0][2]).toBe('application/octet-stream');
+    expect(putContentTypes()[0]).toBe('application/octet-stream');
   });
 
   test('tar-slip: refuses entries that escape the artifacts/ prefix', async () => {
@@ -330,11 +376,12 @@ describe('restore — tar.gz artifact dump', () => {
     );
 
     // Only the safe key reaches storage.
-    expect(putObject.mock.calls.map((c) => c[0])).toEqual(['ok.png']);
+    expect(putKeys()).toEqual(['ok.png']);
   });
 
   test('skips artifacts entirely when object storage is not configured', async () => {
-    objectStorageMock.configured.value = false;
+    clearObjectStorageEnv();
+    resetObjectStorageConfigCache();
 
     const res = await restore(
       await tarDump([
@@ -346,27 +393,37 @@ describe('restore — tar.gz artifact dump', () => {
     );
 
     expect(res.counts).toEqual({ [REGIONS]: 1 });
-    expect(putObject).not.toHaveBeenCalled();
+    expect(callsByMethod().PUT).toHaveLength(0);
     // No backfill either: it is gated on storage being configured.
-    expect(objectStorageMock.listObjects).not.toHaveBeenCalled();
+    expect(listPrefixes()).toHaveLength(0);
   });
 
   test('an upload failure is logged and does not fail the restore', async () => {
-    putObject.mockRejectedValueOnce(new Error('s3 down'));
+    signedFetchRawMock.mockImplementation(async (method, url) => {
+      const u = url as URL;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response('<ListBucketResult></ListBucketResult>');
+      }
+      if (method === 'PUT' && keyOf([method, u, null, '', '', '', {}]) === 'qa/a.png') {
+        throw new Error('s3 down');
+      }
+      if (method === 'GET') return new Response('artifact body');
+      return new Response('OK', { status: 200 });
+    });
 
     const res = await restore(
       await tarDump([
         ['meta.json', meta],
         ['dump.ndjson', dump],
-        ['artifacts/a.png', 'A'],
-        ['artifacts/b.png', 'B'],
+        ['artifacts/qa/a.png', 'A'],
+        ['artifacts/qa/b.png', 'B'],
       ]),
       { force: false },
     );
 
     // DB is the durability anchor — it still committed.
     expect(res.counts).toEqual({ [REGIONS]: 1 });
-    expect(putObject).toHaveBeenCalledTimes(2);
+    expect(callsByMethod().PUT).toHaveLength(2);
   });
 
   test('ignores tar entries that are neither meta, dump nor artifacts', async () => {
@@ -380,7 +437,7 @@ describe('restore — tar.gz artifact dump', () => {
     );
 
     expect(res.counts).toEqual({ [REGIONS]: 1 });
-    expect(putObject).not.toHaveBeenCalled();
+    expect(callsByMethod().PUT).toHaveLength(0);
   });
 
   test('rejects a tar envelope with no meta.json', async () => {
