@@ -75,9 +75,7 @@ const tmpDirs: string[] = [];
 
 /** Return calls that look like S3 list requests. */
 function listCalls(): unknown[][] {
-  return signedFetchRawMock.mock.calls.filter(
-    (c) => (c[1] as URL).searchParams.get('list-type') === '2',
-  );
+  return signedFetchRawMock.mock.calls.filter((c) => c[1].searchParams.get('list-type') === '2');
 }
 
 beforeEach(() => {
@@ -89,7 +87,7 @@ beforeEach(() => {
   resetObjectStorageConfigCache();
   mockObjectStorageSigning();
   signedFetchRawMock.mockImplementation(async (_method, url) => {
-    const u = url as URL;
+    const u = url;
     if (u.searchParams.get('list-type') === '2') {
       return new Response('<Contents></Contents>');
     }
@@ -213,7 +211,7 @@ describe('exportStream — tar.gz artifact envelope', () => {
   test('packs meta.json, the dump and one entry per artifact', async () => {
     rowsByTable[REGIONS] = [{ id: 1 }];
     signedFetchRawMock.mockImplementation(async (_method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         return new Response(
           listXml([
@@ -261,7 +259,7 @@ describe('exportStream — tar.gz artifact envelope', () => {
 
   test('a failing artifact fetch is skipped and reported in meta-actual', async () => {
     signedFetchRawMock.mockImplementation(async (_method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         return new Response(
           listXml([
@@ -291,7 +289,7 @@ describe('exportStream — tar.gz artifact envelope', () => {
 
   test('an artifact with no body counts as failed rather than throwing', async () => {
     signedFetchRawMock.mockImplementation(async (_method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         return new Response(listXml([{ key: 'empty.png', size: 0 }]));
       }
@@ -308,6 +306,36 @@ describe('exportStream — tar.gz artifact envelope', () => {
       artifactsFailed: 1,
       artifactsPlanned: 1,
     });
+  });
+
+  test('errors the stream instead of hanging when listing artifacts fails', async () => {
+    // Consumed via getReader() directly (as the real route's `new
+    // Response(stream)` does) rather than through the Readable.fromWeb
+    // round trip the other tests' readAll() uses — that round trip has its
+    // own quirks around mid-stream destroy() that are irrelevant here.
+    signedFetchRawMock.mockImplementation(async (_method, url) => {
+      const u = url;
+      if (u.searchParams.get('list-type') === '2') {
+        return new Response('boom', { status: 500 });
+      }
+      return new Response('abc');
+    });
+
+    const stream = exportStream({ scope: 'all', sinceDays: 90, includeArtifacts: true } as never);
+    const reader = stream.getReader();
+    let caught: Error | undefined;
+    try {
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } catch (e) {
+      caught = e as Error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    expect(caught?.message).toContain('LIST');
+    expect(caught?.message).toContain('HTTP 500');
   });
 
   test('still emits a valid envelope when object storage is not configured', async () => {
@@ -327,7 +355,7 @@ describe('exportStream — tar.gz artifact envelope', () => {
 describe('estimateArtifacts', () => {
   test('sums the object sizes when storage is configured', async () => {
     signedFetchRawMock.mockImplementation(async (_method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         return new Response(
           listXml([

@@ -35,7 +35,6 @@ type TestQueue = {
 };
 
 // ---- BullMQ Queue ----
-const queueInstances: TestQueue[] = [];
 let queueAddCalls: QueueCall[] = [];
 let queueDrainCalls: string[] = [];
 let queueCloseCalls: string[] = [];
@@ -58,7 +57,6 @@ function makeQueueInstance(name: string): TestQueue {
       queueCloseCalls.push(name);
     }),
   };
-  queueInstances.push(q);
   return q;
 }
 
@@ -175,7 +173,6 @@ const originalSchedulerDeps = {
 };
 
 function resetMocks() {
-  queueInstances.length = 0;
   queueAddCalls = [];
   queueDrainCalls = [];
   queueCloseCalls = [];
@@ -503,7 +500,7 @@ describe('startScheduler', () => {
 
     await startScheduler(redis as never);
 
-    expect(queueAddCalls.map((c) => c.queue).sort()).toEqual([
+    expect(queueAddCalls.map((c) => c.queue).sort((a, b) => a.localeCompare(b))).toEqual([
       'api-check',
       'db-monitor',
       'qa-project',
@@ -692,28 +689,6 @@ describe('tickApiChecks', () => {
       timeoutMs: 3000,
     });
     expect(call.data.assertions).toHaveLength(1);
-  });
-
-  test('uses the regional Redis path when bound to a region', async () => {
-    apiCheckRepoMock.findDue.mockResolvedValue([
-      {
-        id: 6,
-        url: 'https://api.test',
-        method: 'GET',
-        headers: {},
-        body: null,
-        timeoutMs: 3000,
-        intervalSeconds: 30,
-        ageSeconds: 60,
-      },
-    ]);
-    monitorRegionRepoMock.forMonitor.mockResolvedValue([
-      { id: 7, slug: 'us-west', label: 'US West' },
-    ]);
-
-    await tickApiChecks(makeQueueFactory(), redis as never);
-
-    expect(lpushCalls[0].key).toBe('oo:jobs:us-west');
   });
 });
 

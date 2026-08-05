@@ -63,7 +63,7 @@ function speaksProtocol(protocol: DbProtocol, buf: Buffer): boolean {
   return buf[0] === 0x52 || buf[0] === 0x45;
 }
 
-function mapErr(err: NodeJS.ErrnoException, o: DbProbeOptions): string {
+export function mapErr(err: NodeJS.ErrnoException, o: DbProbeOptions): string {
   const at = `${o.host}:${o.port}`;
   switch (err.code) {
     case 'ECONNREFUSED':

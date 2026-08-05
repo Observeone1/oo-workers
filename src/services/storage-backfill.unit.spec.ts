@@ -100,7 +100,8 @@ function callsByMethod(): Record<string, unknown[][]> {
   const out: Record<string, unknown[][]> = { GET: [], PUT: [], DELETE: [] };
   for (const c of signedFetchRawMock.mock.calls) {
     const method = c[0] as string;
-    (out[method] ??= []).push(c);
+    out[method] ??= [];
+    out[method].push(c);
   }
   return out;
 }
@@ -155,7 +156,7 @@ beforeEach(() => {
   resetObjectStorageConfigCache();
   mockObjectStorageSigning();
   signedFetchRawMock.mockImplementation(async (method, url) => {
-    const u = url as URL;
+    const u = url;
     if (u.searchParams.get('list-type') === '2') {
       return new Response('<ListBucketResult></ListBucketResult>');
     }
@@ -214,10 +215,9 @@ describe('runBackfill — upload pass', () => {
     ]);
     // The script body is uploaded verbatim.
     const putCalls = callsByMethod().PUT;
-    expect(putCalls.map((c) => (c[2] as Buffer | string).toString()).sort()).toEqual([
-      'await page.goto()',
-      'expect(1)',
-    ]);
+    expect(
+      putCalls.map((c) => (c[2] as Buffer | string).toString()).sort((a, b) => a.localeCompare(b)),
+    ).toEqual(['await page.goto()', 'expect(1)']);
     expect(putCalls.map((c) => (c[6] as Record<string, string>)['content-type'])).toEqual([
       'text/typescript',
       'text/typescript',
@@ -251,7 +251,7 @@ describe('runBackfill — upload pass', () => {
     queueMigrateEmpty();
     queueSweep();
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (method === 'PUT' && keyOf([method, u, null, '', '', '', {}]).includes('boom')) {
         throw new Error('s3 down');
       }
@@ -281,7 +281,7 @@ describe('runBackfill — upload pass', () => {
     queueMigrateEmpty();
     queueSweep();
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (method === 'PUT') throw new Error('s3 down');
       if (u.searchParams.get('list-type') === '2')
         return new Response('<ListBucketResult></ListBucketResult>');
@@ -364,7 +364,7 @@ describe('runBackfill — legacy migrate pass', () => {
     ]);
     queueSweep();
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (method === 'GET' && keyOf([method, u, null, '', '', '', {}]) === 'qa-scripts/9.spec.ts') {
         throw new Error('copy failed');
       }
@@ -391,7 +391,7 @@ describe('runBackfill — orphan sweep', () => {
       [{ traceUrl: 'qa-projects/1-p/trace.zip', screenshotUrls: ['qa-projects/1-p/shot.png'] }],
     );
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         const prefix = u.searchParams.get('prefix');
         if (prefix === 'qa-scripts/') {
@@ -416,7 +416,7 @@ describe('runBackfill — orphan sweep', () => {
 
     expect(out.orphansDeleted).toBe(2);
     expect(out.failed).toBe(0);
-    expect(deleteKeys().sort()).toEqual([
+    expect(deleteKeys().sort((a, b) => a.localeCompare(b))).toEqual([
       'qa-projects/1-p/stale.spec.ts',
       'qa-scripts/legacy-orphan.spec.ts',
     ]);
@@ -429,7 +429,7 @@ describe('runBackfill — orphan sweep', () => {
     queueSweep();
     const orphans = Array.from({ length: 25 }, (_, i) => `qa-projects/x/${i}.spec.ts`);
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         const prefix = u.searchParams.get('prefix');
         if (prefix === 'qa-projects/') {
@@ -449,7 +449,9 @@ describe('runBackfill — orphan sweep', () => {
 
     expect(out.orphansDeleted).toBe(25);
     // The pool must not double-delete or drop a key.
-    expect(deleteKeys().sort()).toEqual([...orphans].sort());
+    expect(deleteKeys().sort((a, b) => a.localeCompare(b))).toEqual(
+      [...orphans].sort((a, b) => a.localeCompare(b)),
+    );
   });
 
   test('counts a failed delete without aborting the rest of the sweep', async () => {
@@ -457,7 +459,7 @@ describe('runBackfill — orphan sweep', () => {
     queueMigrateEmpty();
     queueSweep();
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         const prefix = u.searchParams.get('prefix');
         if (prefix === 'qa-projects/') {
@@ -488,7 +490,7 @@ describe('runBackfill — orphan sweep', () => {
     queueMigrateEmpty();
     queueSweep([{ scriptUrl: 'qa-projects/1-p/live.spec.ts' }], []);
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         const prefix = u.searchParams.get('prefix');
         if (prefix === 'qa-projects/') {
@@ -522,7 +524,7 @@ describe('runBackfill — aggregate result', () => {
     // sweep: 1 orphan, fails
     queueSweep();
     signedFetchRawMock.mockImplementation(async (method, url) => {
-      const u = url as URL;
+      const u = url;
       if (u.searchParams.get('list-type') === '2') {
         const prefix = u.searchParams.get('prefix');
         if (prefix === 'qa-projects/') {

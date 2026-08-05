@@ -92,7 +92,7 @@ function setFullStorageEnv() {
 function lastSignedCall() {
   const calls = signedFetchRawMock.mock.calls;
   expect(calls.length).toBeGreaterThan(0);
-  return calls[calls.length - 1] as [
+  return calls.at(-1) as [
     'GET' | 'PUT' | 'HEAD' | 'DELETE',
     URL,
     Buffer | ReadableStream<Uint8Array> | null,
@@ -452,11 +452,11 @@ describe('listObjects', () => {
     expect(keys).toEqual(['a', 'b', 'c']);
     expect(signedFetchRawMock).toHaveBeenCalledTimes(2);
     const [, firstUrl] = signedFetchRawMock.mock.calls[0];
-    expect((firstUrl as URL).searchParams.get('list-type')).toBe('2');
-    expect((firstUrl as URL).searchParams.get('prefix')).toBe('qa-projects/');
-    expect((firstUrl as URL).searchParams.has('continuation-token')).toBe(false);
+    expect(firstUrl.searchParams.get('list-type')).toBe('2');
+    expect(firstUrl.searchParams.get('prefix')).toBe('qa-projects/');
+    expect(firstUrl.searchParams.has('continuation-token')).toBe(false);
     const [, secondUrl] = signedFetchRawMock.mock.calls[1];
-    expect((secondUrl as URL).searchParams.get('continuation-token')).toBe('tok2');
+    expect(secondUrl.searchParams.get('continuation-token')).toBe('tok2');
   });
 
   test('throws ObjectStorageError on list failure', async () => {

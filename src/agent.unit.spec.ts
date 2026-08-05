@@ -56,6 +56,19 @@ function makeJob(over: Partial<JobPayload> = {}): JobPayload {
   } as JobPayload;
 }
 
+function makeQaJob(over: Partial<JobPayload> = {}): JobPayload {
+  return makeJob({
+    type: 'qa',
+    projectId: 7,
+    targetUrl: 'https://shop.test',
+    credentials: { user: 'u' },
+    config: {},
+    tests: [{ id: 71, name: 'Login', script: 'test("login", () => {})' }],
+    monitor: undefined,
+    ...over,
+  });
+}
+
 // ---- Module mocks (registered before importing agent.ts) ----
 
 const probeMocks = {
@@ -80,9 +93,9 @@ const probeMocks = {
   })),
 };
 
-mock.module('./services/tcp-probe.ts', () => ({ tcpProbe: probeMocks.tcpProbe }));
-mock.module('./services/db-probe.ts', () => ({ dbProbe: probeMocks.dbProbe }));
-mock.module('./services/tls-probe.ts', () => ({ tlsProbe: probeMocks.tlsProbe }));
+// tcp/db/tls probes are stubbed via agentProbeDeps (wired in beforeEach),
+// not mock.module — that seam keeps the real probe modules loadable for
+// their own dedicated specs in the same shared bun test process.
 
 const loggerCalls = { info: [] as string[], warn: [] as string[], error: [] as string[] };
 const loggerMock = {
@@ -118,9 +131,10 @@ mock.module('./services/playwright.service.ts', () => ({
 // ---- Fetch mock (global, restored after each test) ----
 
 let fetchHandler: (url: string, init: RequestInit) => Response | Promise<Response>;
-const fetchMock = mock(async (url: URL | RequestInfo, init?: RequestInit | BunFetchRequestInit) => {
-  const urlStr = typeof url === 'string' ? url : url.toString();
-  return fetchHandler(urlStr, (init ?? {}) as RequestInit);
+// Every fetch() call site in agent.ts passes a string URL — narrower than
+// the global fetch signature, but this mock is installed via a full type-cast.
+const fetchMock = mock(async (url: string, init?: RequestInit) => {
+  return fetchHandler(url, init ?? {});
 });
 
 let originalFetch: typeof fetch;
@@ -143,7 +157,9 @@ const {
   runAgent,
   _resetPlaywrightDetected,
   masterFetchInit,
+  agentProbeDeps,
 } = agent;
+const originalAgentProbeDeps = { ...agentProbeDeps };
 
 beforeEach(() => {
   // Reset captured calls.
@@ -155,6 +171,9 @@ beforeEach(() => {
   probeMocks.tcpProbe.mockReset();
   probeMocks.dbProbe.mockReset();
   probeMocks.tlsProbe.mockReset();
+  agentProbeDeps.tcpProbe = probeMocks.tcpProbe as unknown as typeof agentProbeDeps.tcpProbe;
+  agentProbeDeps.dbProbe = probeMocks.dbProbe as unknown as typeof agentProbeDeps.dbProbe;
+  agentProbeDeps.tlsProbe = probeMocks.tlsProbe as unknown as typeof agentProbeDeps.tlsProbe;
   packageVersionMock.mockReset();
   executePlaywrightTestMock.mockReset();
   fetchMock.mockClear();
@@ -216,12 +235,13 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  Object.assign(agentProbeDeps, originalAgentProbeDeps);
   globalThis.fetch = originalFetch;
   process.on = originalProcessOn;
   globalThis.setTimeout = originalSetTimeout;
   Date.now = originalDateNow;
-  if (originalHome !== undefined) process.env.HOME = originalHome;
-  else delete process.env.HOME;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
   delete process.env.OO_AGENT_FORCE_LIGHT;
   delete process.env.PLAYWRIGHT_BROWSERS_PATH;
   await Promise.all(tempDirs.map((d) => rm(d, { recursive: true, force: true })));
@@ -234,9 +254,8 @@ function findFetchCall(
   predicate: (url: string, init: RequestInit) => boolean,
 ): [string, RequestInit] | undefined {
   for (const call of fetchMock.mock.calls) {
-    const [url, init] = call as [string | Request | URL, RequestInit | undefined];
-    const urlStr = typeof url === 'string' ? url : url.toString();
-    if (predicate(urlStr, init ?? {})) return [urlStr, init ?? {}];
+    const [url, init] = call as [string, RequestInit | undefined];
+    if (predicate(url, init ?? {})) return [url, init ?? {}];
   }
   return undefined;
 }
@@ -682,19 +701,6 @@ describe('runProbe', () => {
 // ==================== handleQaJob / QA helpers ====================
 
 describe('handleQaJob', () => {
-  function makeQaJob(over: Partial<JobPayload> = {}): JobPayload {
-    return makeJob({
-      type: 'qa',
-      projectId: 7,
-      targetUrl: 'https://shop.test',
-      credentials: { user: 'u' },
-      config: {},
-      tests: [{ id: 71, name: 'Login', script: 'test("login", () => {})' }],
-      monitor: undefined,
-      ...over,
-    });
-  }
-
   test('skips when projectId or tests are missing', async () => {
     await handleQaJob(
       baseCfg,
@@ -841,7 +847,7 @@ describe('handleQaJob', () => {
     await handleQaJob(baseCfg, makeQaJob());
 
     const artifactCalls = fetchMock.mock.calls.filter((c) =>
-      (typeof c[0] === 'string' ? c[0] : c[0].toString()).includes('/api/agent/qa/artifacts'),
+      c[0].includes('/api/agent/qa/artifacts'),
     );
     expect(artifactCalls).toHaveLength(2);
   });
@@ -1125,19 +1131,13 @@ describe('runAgent', () => {
     expect(messages[1]).toContain('retry in 2000ms');
   });
 
-  test('SIGTERM handler exits cleanly', async () => {
+  test.each([
+    ['SIGTERM', () => sigtermHandler],
+    ['SIGINT', () => sigintHandler],
+  ])('%s handler exits cleanly', async (_signal, getHandler) => {
     const runPromise = runAgent(baseCfg);
     await new Promise((r) => setTimeout(r, 10));
-    sigtermHandler?.();
-    await runPromise;
-
-    expect(loggerCalls.info.some((m) => m.includes('agent loop exited cleanly'))).toBe(true);
-  });
-
-  test('SIGINT handler exits cleanly', async () => {
-    const runPromise = runAgent(baseCfg);
-    await new Promise((r) => setTimeout(r, 10));
-    sigintHandler?.();
+    getHandler()?.();
     await runPromise;
 
     expect(loggerCalls.info.some((m) => m.includes('agent loop exited cleanly'))).toBe(true);
