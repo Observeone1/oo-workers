@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Docker Hub publishes every `v*` tag as `:<version>`, `:<major>.<minor>`, and `:latest`.
 
+## [1.30.0] - 2026-08-05
+
+### Fixed
+
+- `exportTarGz()` never forwarded the tar packer's `'error'` event to the gzip stream, so a failed S3 read mid-export hung the HTTP response forever instead of erroring it.
+- An integration spec referenced `qaTestExecutions` without importing it, leaving the integration suite red on `main`.
+
+### Changed
+
+- Test coverage raised to 95.3% (Sonar-measured) via real behavioral tests — real sockets/TLS for network probes, real Postgres testcontainers for DB repositories/routes/backup, no mocked-call assertions. Sonar: 0 bugs, 0 code smells, 0 vulnerabilities, 0 security hotspots.
+
 ## [1.28.8] - 2026-07-01
 
 ### Security
