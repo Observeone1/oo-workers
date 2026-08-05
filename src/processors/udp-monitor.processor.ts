@@ -5,6 +5,10 @@ import { parseHexPayload, udpProbe } from '../services/udp-probe.ts';
 import { emitExecution } from '../services/exec-events.ts';
 import { runProbeProcessor } from './_run-probe.ts';
 
+/** Dependency hook for tests — avoids process-wide mock.module poison
+ * (matches agentProbeDeps/schedulerDeps elsewhere in the codebase). */
+export const udpProcessorDeps = { udpProbe };
+
 export const udpMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
 
@@ -29,7 +33,7 @@ export const udpMonitorProcessor = async (job: Job) => {
     monitorId: monitor.id,
     repo: udpMonitorRepo,
     runProbe: () =>
-      udpProbe({
+      udpProcessorDeps.udpProbe({
         host: monitor.host,
         port: monitor.port,
         payload,

@@ -76,4 +76,55 @@ describe('incidentRepo', () => {
     expect(await incidentRepo.findById(-1)).toBeNull();
     expect(await incidentRepo.addUpdate(-1, { severity: 'monitoring', body: 'missing' })).toBeNull();
   });
+
+  test('findById returns the incident with its updates in chronological order', async () => {
+    const found = await incidentRepo.findById(activeId);
+    expect(found?.id).toBe(activeId);
+    expect(found?.updates.map((item) => item.severity)).toEqual(['investigating', 'identified']);
+  });
+
+  test('updateTitle renames the incident and deleteById removes it', async () => {
+    const throwaway = await incidentRepo.create({
+      statusPageId,
+      title: 'Throwaway incident',
+      severity: 'investigating',
+      body: 'Will be renamed then deleted.',
+    });
+
+    await incidentRepo.updateTitle(throwaway.id, 'Renamed incident');
+    expect((await incidentRepo.findById(throwaway.id))?.title).toBe('Renamed incident');
+
+    await incidentRepo.deleteById(throwaway.id);
+    expect(await incidentRepo.findById(throwaway.id)).toBeNull();
+  });
+
+  test('forPublic tie-breaks two active incidents by updatedAt and two recently-resolved by resolvedAt', async () => {
+    // A second active incident, updated after `active` — must sort ahead of it.
+    const activeB = await incidentRepo.create({
+      statusPageId,
+      title: 'Second active incident',
+      severity: 'investigating',
+      body: 'Also ongoing.',
+    });
+    await incidentRepo.addUpdate(activeB.id, { severity: 'monitoring', body: 'still watching' });
+
+    // A second incident resolved after `resolvedId` — must sort ahead of it.
+    const resolvedB = await incidentRepo.create({
+      statusPageId,
+      title: 'Second resolved incident',
+      severity: 'resolved',
+      body: 'Also resolved recently.',
+    });
+
+    const publicIncidents = await incidentRepo.forPublic(statusPageId);
+    const activeIds = publicIncidents.filter((i) => i.resolvedAt == null).map((i) => i.id);
+    const resolvedIds = publicIncidents.filter((i) => i.resolvedAt != null).map((i) => i.id);
+
+    // Most-recently-updated active incident first.
+    expect(activeIds[0]).toBe(activeB.id);
+    expect(activeIds).toContain(activeId);
+    // Most-recently-resolved incident first.
+    expect(resolvedIds[0]).toBe(resolvedB.id);
+    expect(resolvedIds).toContain(resolvedId);
+  });
 });

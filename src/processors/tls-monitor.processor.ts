@@ -4,6 +4,10 @@ import { tlsMonitorRepo } from '../db/repositories/tls-monitor.repo.ts';
 import { tlsProbe } from '../services/tls-probe.ts';
 import { runProbeProcessor } from './_run-probe.ts';
 
+/** Dependency hook for tests — avoids process-wide mock.module poison
+ * (matches agentProbeDeps/schedulerDeps elsewhere in the codebase). */
+export const tlsProcessorDeps = { tlsProbe };
+
 export const tlsMonitorProcessor = async (job: Job) => {
   const { executionId, monitor } = job.data;
   return runProbeProcessor({
@@ -13,7 +17,7 @@ export const tlsMonitorProcessor = async (job: Job) => {
     monitorId: monitor.id,
     repo: tlsMonitorRepo,
     runProbe: () =>
-      tlsProbe({
+      tlsProcessorDeps.tlsProbe({
         host: monitor.host,
         port: monitor.port,
         timeoutMs: monitor.timeoutMs || DEFAULTS.TCP_TIMEOUT_MS,
