@@ -209,7 +209,7 @@ describe('POST /api/monitors/tls', () => {
     });
     expect(r.status).toBe(201);
     const body = (await r.json()) as { expectCnRegex: string };
-    expect(body.expectCnRegex).toBe('^example\\.com$');
+    expect(body.expectCnRegex).toBe(String.raw`^example\.com$`);
   });
 });
 

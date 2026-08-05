@@ -76,8 +76,8 @@ describe('main() — CLI entry', () => {
       expect(logs.some((l) => l[0] === 'schema up to date')).toBe(true);
     } finally {
       console.log = originalLog;
-      if (originalUrl !== undefined) process.env.DATABASE_URL = originalUrl;
-      else delete (process.env as Record<string, string | undefined>).DATABASE_URL;
+      if (originalUrl === undefined) delete (process.env as Record<string, string | undefined>).DATABASE_URL;
+      else process.env.DATABASE_URL = originalUrl;
     }
   });
 });
