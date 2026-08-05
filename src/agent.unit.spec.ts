@@ -158,7 +158,9 @@ const {
   _resetPlaywrightDetected,
   masterFetchInit,
   agentProbeDeps,
+  playwrightDetectDeps,
 } = agent;
+const originalHomedir = playwrightDetectDeps.homedir;
 const originalAgentProbeDeps = { ...agentProbeDeps };
 
 beforeEach(() => {
@@ -236,6 +238,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   Object.assign(agentProbeDeps, originalAgentProbeDeps);
+  playwrightDetectDeps.homedir = originalHomedir;
   globalThis.fetch = originalFetch;
   process.on = originalProcessOn;
   globalThis.setTimeout = originalSetTimeout;
@@ -918,7 +921,9 @@ describe('isPlaywrightAvailable', () => {
     const home = await mkdtemp(join(tmpdir(), 'oo-agent-home-'));
     tempDirs.push(home);
     await mkdir(join(home, '.cache', 'ms-playwright', 'chromium-1234'), { recursive: true });
-    process.env.HOME = home;
+    // os.homedir() caches on first call and never re-reads process.env.HOME
+    // afterward (confirmed on Bun) — override the seam directly instead.
+    playwrightDetectDeps.homedir = () => home;
     fetchHandler = (url) => {
       if (url.includes('/api/agent/qa/executions')) {
         return new Response(JSON.stringify({ executions: [{ testId: 1, executionId: 702 }] }), {

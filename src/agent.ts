@@ -393,6 +393,10 @@ let _playwrightDetected: boolean | null = null;
 export function _resetPlaywrightDetected(): void {
   _playwrightDetected = null;
 }
+/** Dependency hook for tests — os.homedir() caches its result on first call
+ * and does not re-read process.env.HOME afterward, so tests must override
+ * this seam directly rather than mutating process.env.HOME at runtime. */
+export const playwrightDetectDeps = { homedir: () => os.homedir() };
 async function isPlaywrightAvailable(): Promise<boolean> {
   if (process.env.OO_AGENT_FORCE_LIGHT === '1') return false;
   if (_playwrightDetected !== null) return _playwrightDetected;
@@ -401,7 +405,8 @@ async function isPlaywrightAvailable(): Promise<boolean> {
     // images set /ms-playwright) or its default cache. An installed Chromium —
     // full build or headless shell — appears as a `chromium*` directory.
     const base =
-      process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache', 'ms-playwright');
+      process.env.PLAYWRIGHT_BROWSERS_PATH ||
+      path.join(playwrightDetectDeps.homedir(), '.cache', 'ms-playwright');
     const entries = await fs.readdir(base);
     _playwrightDetected = entries.some((d) => d.startsWith('chromium'));
   } catch {
