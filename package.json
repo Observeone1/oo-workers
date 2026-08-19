@@ -16,7 +16,7 @@
     "lint": "eslint src scripts",
     "lint:fix": "eslint src scripts --fix",
     "knip": "knip",
-    "sonar": "bash scripts/sonar.sh",
+    "sonar": "oo-sonar",
     "test:it": "bun test --preload ./tests/integration/setup.ts tests/integration/",
     "test:it:coverage": "bun test --preload ./tests/integration/setup.ts tests/integration/ --coverage --coverage-reporter=lcov --coverage-dir=coverage-it",
     "test:integration": "bun run test:it",

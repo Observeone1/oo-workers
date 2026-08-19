@@ -6,5 +6,6 @@
     "scripts/*.ts",
     "tests/multi-region-e2e/playwright.config.ts"
   ],
-  "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+  "ignoreBinaries": ["oo-sonar"]
 }
