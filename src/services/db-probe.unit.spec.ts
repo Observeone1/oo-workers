@@ -232,18 +232,20 @@ describe('dbProbe', () => {
     expect(received?.readInt32BE(4)).toBe(196608);
   });
 
-  test('tls: wraps the liveness exchange and still proves redis is up', async () => {
-    if (SKIP_TLS) return;
-    const result = await dbProbe({
-      host: '127.0.0.1',
-      port: tlsPort,
-      protocol: 'redis',
-      timeoutMs: 2000,
-      tls: true,
-    });
+  test.skipIf(SKIP_TLS)(
+    'tls: wraps the liveness exchange and still proves redis is up',
+    async () => {
+      const result = await dbProbe({
+        host: '127.0.0.1',
+        port: tlsPort,
+        protocol: 'redis',
+        timeoutMs: 2000,
+        tls: true,
+      });
 
-    expect(result.ok).toBe(true);
-  });
+      expect(result.ok).toBe(true);
+    },
+  );
 
   test('FAILs when the server closes before any response', async () => {
     await withServer(

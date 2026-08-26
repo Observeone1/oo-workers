@@ -68,8 +68,7 @@ afterAll(() => {
 });
 
 describe('tlsProbe', () => {
-  test('succeeds when the cert is well within warnDays', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('succeeds when the cert is well within warnDays', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -84,8 +83,7 @@ describe('tlsProbe', () => {
     expect(result.certSummary).toContain('CN=localhost');
   });
 
-  test('FAILs when the cert expires within warnDays', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('FAILs when the cert expires within warnDays', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -99,8 +97,7 @@ describe('tlsProbe', () => {
     expect(result.errorMessage).toContain('Certificate expires in');
   });
 
-  test('opt-in verifyHostname FAILs on a CN/SAN mismatch', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('opt-in verifyHostname FAILs on a CN/SAN mismatch', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -115,8 +112,7 @@ describe('tlsProbe', () => {
     expect(result.ok).toBe(true);
   });
 
-  test('opt-in expectCnRegex FAILs when no CN/SAN matches', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('opt-in expectCnRegex FAILs when no CN/SAN matches', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -130,8 +126,7 @@ describe('tlsProbe', () => {
     expect(result.errorMessage).toContain('No CN/SAN matches');
   });
 
-  test('opt-in expectCnRegex passes when the CN matches', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('opt-in expectCnRegex passes when the CN matches', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -144,8 +139,7 @@ describe('tlsProbe', () => {
     expect(result.ok).toBe(true);
   });
 
-  test('expectCnRegex FAILs cleanly on an invalid regex', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('expectCnRegex FAILs cleanly on an invalid regex', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
@@ -159,8 +153,7 @@ describe('tlsProbe', () => {
     expect(result.errorMessage).toContain('Invalid expect_cn_regex');
   });
 
-  test('opt-in verifyChain FAILs on our untrusted self-signed cert', async () => {
-    if (SKIP) return;
+  test.skipIf(SKIP)('opt-in verifyChain FAILs on our untrusted self-signed cert', async () => {
     const result = await tlsProbe({
       host: '127.0.0.1',
       port,
