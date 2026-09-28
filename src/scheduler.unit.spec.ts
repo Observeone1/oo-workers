@@ -64,13 +64,14 @@ mock.module('bullmq', () => ({
   Queue: mock((name: string, _opts: unknown) => makeQueueInstance(name)),
 }));
 
-// ---- Redis connection (regional LPUSH path) ----
+// ---- Redis connection (regional LPUSH path + SETNX dispatch slots) ----
 let lpushCalls: LpushCall[] = [];
 const redis = {
   lpush: mock(async (key: string, payload: string) => {
     lpushCalls.push({ key, payload: JSON.parse(payload) as Row });
     return 1;
   }),
+  set: mock(async (_key: string, ..._args: unknown[]): Promise<'OK' | null> => 'OK'),
 };
 
 // ---- Monitor repos ----
@@ -178,6 +179,15 @@ function resetMocks() {
   queueCloseCalls = [];
   drainFailures = new Set();
   lpushCalls = [];
+  redis.lpush.mockReset();
+  redis.lpush.mockImplementation(async (key: string, payload: string) => {
+    lpushCalls.push({ key, payload: JSON.parse(payload) as Row });
+    return 1;
+  });
+  redis.set.mockReset();
+  redis.set.mockImplementation(
+    async (_key: string, ..._args: unknown[]): Promise<'OK' | null> => 'OK',
+  );
 
   urlMonitorRepoMock.findDue.mockReset();
   urlMonitorRepoMock.createExecution.mockReset();
@@ -557,6 +567,42 @@ describe('startScheduler', () => {
     await stop();
   });
 
+  test('overlapping ticks do not run concurrently', async () => {
+    const stop = await startScheduler(redis as never);
+    expect(intervalCallback).not.toBeNull();
+
+    // Block the next tick mid-flight, keeping call history from the initial tick out.
+    urlMonitorRepoMock.findDue.mockClear();
+    let releaseTick!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseTick = resolve;
+    });
+    urlMonitorRepoMock.findDue.mockImplementation(async () => {
+      await gate;
+      return [];
+    });
+
+    intervalCallback?.();
+    await new Promise((r) => setTimeout(r, 10));
+    expect((urlMonitorRepoMock.findDue.mock.calls as unknown[]).length).toBe(1);
+
+    // Two interval fires while that tick is still in flight: both skip.
+    intervalCallback?.();
+    intervalCallback?.();
+    await new Promise((r) => setTimeout(r, 10));
+    expect((urlMonitorRepoMock.findDue.mock.calls as unknown[]).length).toBe(1);
+    expect(loggerMock.warn).toHaveBeenCalledWith(expect.stringContaining('still in flight'));
+
+    releaseTick();
+    await new Promise((r) => setTimeout(r, 10));
+    // After the in-flight tick finishes, the next interval tick runs normally.
+    intervalCallback?.();
+    await new Promise((r) => setTimeout(r, 10));
+    expect((urlMonitorRepoMock.findDue.mock.calls as unknown[]).length).toBe(2);
+
+    await stop();
+  });
+
   test('recovery resets the consecutive failure counter', async () => {
     urlMonitorRepoMock.findDue.mockRejectedValueOnce(new Error('db down'));
 
@@ -655,6 +701,52 @@ describe('tickUrlMonitors', () => {
     expect(loggerMock.error).toHaveBeenCalledWith(
       expect.stringContaining('could not mark exec #1 FAILED'),
     );
+  });
+});
+
+describe('dispatch dedup (SETNX slot)', () => {
+  // Real SET NX semantics: first claimant wins, the rest see null.
+  function mockSetNx() {
+    const claimed = new Set<string>();
+    redis.set.mockImplementation(async (key: string, ..._args: unknown[]): Promise<'OK' | null> => {
+      if (claimed.has(key)) return null;
+      claimed.add(key);
+      return 'OK';
+    });
+  }
+
+  test('concurrent double dispatch on the BullMQ path creates one execution', async () => {
+    mockSetNx();
+    urlMonitorRepoMock.findDue.mockResolvedValue([
+      { id: 1, url: 'https://a.test', timeoutMs: 5000, intervalSeconds: 3600, ageSeconds: 7200 },
+    ]);
+
+    const factory = makeQueueFactory();
+    await Promise.all([
+      tickUrlMonitors(factory, redis as never),
+      tickUrlMonitors(factory, redis as never),
+    ]);
+
+    expect(urlMonitorRepoMock.createExecution).toHaveBeenCalledTimes(1);
+    expect(queueAddCalls).toHaveLength(1);
+  });
+
+  test('concurrent double dispatch on the regional path pushes once', async () => {
+    mockSetNx();
+    urlMonitorRepoMock.findDue.mockResolvedValue([
+      { id: 2, url: 'https://b.test', timeoutMs: 5000, intervalSeconds: 3600, ageSeconds: 7200 },
+    ]);
+    monitorRegionRepoMock.forMonitor.mockResolvedValue([{ id: 3, slug: 'east', label: 'East' }]);
+
+    const factory = makeQueueFactory();
+    await Promise.all([
+      tickUrlMonitors(factory, redis as never),
+      tickUrlMonitors(factory, redis as never),
+    ]);
+
+    expect(urlMonitorRepoMock.createExecution).toHaveBeenCalledTimes(1);
+    expect(lpushCalls).toHaveLength(1);
+    expect(queueAddCalls).toHaveLength(0);
   });
 });
 
