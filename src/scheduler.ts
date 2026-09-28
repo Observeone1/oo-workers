@@ -22,11 +22,12 @@
  * The two systems are isolated by Redis key namespace; no code path reasons
  * about both at once.
  *
- * Known gap (defer to M2): plain Redis lists have no jobId dedup. With a
- * single scheduler this is fine — findDue() filters by ageSeconds so the
- * same monitor won't re-enqueue within a bucket. If you ever run HA
- * schedulers, wrap the LPUSH in `SETNX oo:scheduled:<bucket>:<m>:<r> 1
- * EX <interval>` for parity with BullMQ's jobId guarantee.
+ * Dispatch dedup: every tick claims a per-bucket slot
+ * (`oo:scheduled:<type>:<id>:<bucket>:r<regionId>`) via Redis SET NX
+ * EX <intervalSeconds> before creating the execution row. The first
+ * claimant dispatches; overlapping ticks or HA schedulers see the
+ * taken slot and skip. BullMQ's jobId dedup stays as a second layer
+ * on the master path.
  */
 
 import { Queue } from 'bullmq';
@@ -94,6 +95,34 @@ interface JobPayload {
   executionId: number;
   regionId: number | null;
   [k: string]: unknown;
+}
+
+// First claimant wins; concurrent ticks (or HA schedulers) see the
+// taken slot and skip before any execution row exists. Fail-open on
+// Redis errors so a SET blip degrades to the old dispatch behavior.
+function dispatchSlotKey(
+  type: string,
+  id: number,
+  bucket: number,
+  regionId: number | null,
+): string {
+  return `oo:scheduled:${type}:${id}:${bucket}:r${regionId ?? 0}`;
+}
+
+async function claimDispatchSlot(
+  connection: Redis,
+  key: string,
+  ttlSeconds: number,
+): Promise<boolean> {
+  try {
+    const res = await connection.set(key, '1', 'EX', Math.max(1, Math.floor(ttlSeconds)), 'NX');
+    return res === 'OK';
+  } catch (err) {
+    logger.warn(
+      `dispatch slot claim failed for ${key}, proceeding: ${err instanceof Error ? err.message : err}`,
+    );
+    return true;
+  }
 }
 
 async function dispatch(
@@ -175,7 +204,16 @@ export async function startScheduler(connection: Redis) {
   let consecutiveFailures = 0;
   let lastEscalation = 0;
 
+  // Slow ticks (DB/Redis stall) can outlast TICK_MS; without this,
+  // setInterval fires the next tick while the previous is still
+  // awaiting, double-dispatching every due monitor.
+  let isTicking = false;
   const tick = async () => {
+    if (isTicking) {
+      logger.warn('scheduler tick skipped: previous tick still in flight');
+      return;
+    }
+    isTicking = true;
     try {
       await Promise.all([
         tickUrlMonitors(getQueue, connection),
@@ -224,6 +262,8 @@ export async function startScheduler(connection: Redis) {
           lastEscalation = consecutiveFailures;
         }
       }
+    } finally {
+      isTicking = false;
     }
   };
 
@@ -275,6 +315,14 @@ export async function tickUrlMonitors(getQueue: QueueFactory, connection: Redis)
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('url', m.id, bucket, target.regionId),
+          m.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await urlMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -323,6 +371,14 @@ export async function tickApiChecks(getQueue: QueueFactory, connection: Redis) {
     const bucket = Math.floor(Date.now() / (c.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('api', c.id, bucket, target.regionId),
+          c.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await apiCheckRepo.createExecution(c.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -377,6 +433,14 @@ export async function tickTcpMonitors(getQueue: QueueFactory, connection: Redis)
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('tcp', m.id, bucket, target.regionId),
+          m.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await tcpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -430,6 +494,14 @@ export async function tickUdpMonitors(getQueue: QueueFactory, connection: Redis)
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('udp', m.id, bucket, target.regionId),
+          m.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await udpMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -483,6 +555,14 @@ export async function tickDbMonitors(getQueue: QueueFactory, connection: Redis) 
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('db', m.id, bucket, target.regionId),
+          m.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await dbMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -535,6 +615,14 @@ export async function tickTlsMonitors(getQueue: QueueFactory, connection: Redis)
     const bucket = Math.floor(Date.now() / (m.intervalSeconds * 1000));
 
     for (const target of targets) {
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('tls', m.id, bucket, target.regionId),
+          m.intervalSeconds,
+        ))
+      )
+        continue;
       const [exec] = await tlsMonitorRepo.createExecution(m.id, 'PENDING', target.regionId);
       const ok = await dispatchOrMarkFailed(
         exec.id,
@@ -596,6 +684,14 @@ export async function tickQaProjects(getQueue: QueueFactory, connection: Redis) 
     for (const target of targets) {
       // QA project doesn't pre-create an exec row in the scheduler — the
       // processor does, per test. So no createExecution() here.
+      if (
+        !(await claimDispatchSlot(
+          connection,
+          dispatchSlotKey('qa', p.id, bucket, target.regionId),
+          p.intervalSeconds,
+        ))
+      )
+        continue;
       await dispatch(
         'qa-project',
         target,

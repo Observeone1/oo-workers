@@ -87,30 +87,32 @@ export const heartbeatRepo = {
    *  DB with SELECT+UPDATE pairs. The 1s window is far below any
    *  legitimate cadence (real heartbeats fire every 30s+).
    *
-   *  Race: the peek-then-update pattern is the same as before.
-   *  Worst case (scheduler ticks the row OVERDUE between our peek
-   *  and update) is a missed recovery alert — acceptable, no data
-   *  loss. */
+   *  Peek and update run in one transaction under SELECT ... FOR
+   *  UPDATE, so concurrent pings serialize: exactly one observes
+   *  OVERDUE and reports wasOverdue=true (one recovery alert). */
   async recordPing(token: string): Promise<{ row: HeartbeatRow; wasOverdue: boolean } | null> {
-    const [prior] = await db
-      .select()
-      .from(heartbeatMonitors)
-      .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
-      .limit(1);
-    if (!prior) return null;
+    return db.transaction(async (tx) => {
+      const [prior] = await tx
+        .select()
+        .from(heartbeatMonitors)
+        .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
+        .limit(1)
+        .for('update');
+      if (!prior) return null;
 
-    // Debounce: <1s since last ping → no-op, return existing row.
-    if (prior.lastPingAt && Date.now() - prior.lastPingAt.getTime() < 1000) {
-      return { row: prior, wasOverdue: false };
-    }
+      // Debounce: <1s since last ping → no-op, return existing row.
+      if (prior.lastPingAt && Date.now() - prior.lastPingAt.getTime() < 1000) {
+        return { row: prior, wasOverdue: false };
+      }
 
-    const rows = await db
-      .update(heartbeatMonitors)
-      .set({ lastPingAt: new Date(), status: 'UP', updatedAt: new Date() })
-      .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
-      .returning();
-    if (rows.length === 0) return null;
-    return { row: rows[0], wasOverdue: prior.status === 'OVERDUE' };
+      const rows = await tx
+        .update(heartbeatMonitors)
+        .set({ lastPingAt: new Date(), status: 'UP', updatedAt: new Date() })
+        .where(and(eq(heartbeatMonitors.token, token), eq(heartbeatMonitors.enabled, true)))
+        .returning();
+      if (rows.length === 0) return null;
+      return { row: rows[0], wasOverdue: prior.status === 'OVERDUE' };
+    });
   },
 
   /** Read-only lookup used by GET /heartbeat/:token. Same
