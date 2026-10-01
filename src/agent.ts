@@ -18,7 +18,7 @@
 
 import { DEFAULTS } from './constants.ts';
 import { tcpProbe as realTcpProbe } from './services/tcp-probe.ts';
-import { parseHexPayload, udpProbe } from './services/udp-probe.ts';
+import { parseHexPayload, udpProbe as realUdpProbe } from './services/udp-probe.ts';
 import { dbProbe as realDbProbe, type DbProtocol } from './services/db-probe.ts';
 import { tlsProbe as realTlsProbe } from './services/tls-probe.ts';
 import { evaluateUrlMonitorAssertions } from './services/url-assertion.ts';
@@ -245,6 +245,7 @@ async function probeApi(job: JobPayload): Promise<AgentResultBody> {
  * (matches schedulerDeps/channelRouteDeps elsewhere in the codebase). */
 export const agentProbeDeps = {
   tcpProbe: realTcpProbe,
+  udpProbe: realUdpProbe,
   dbProbe: realDbProbe,
   tlsProbe: realTlsProbe,
 };
@@ -294,7 +295,7 @@ async function probeUdp(job: JobPayload): Promise<AgentResultBody> {
       errorMessage: err instanceof Error ? err.message : String(err),
     };
   }
-  const result = await udpProbe({
+  const result = await agentProbeDeps.udpProbe({
     host: m.host!,
     port: m.port!,
     payload,

@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createSocket, type Socket } from 'node:dgram';
-import { parseHexPayload, udpProbe } from './udp-probe.ts';
+import { parseHexPayload, mapSocketError, udpProbe } from './udp-probe.ts';
 
 let echoServer: Socket;
 let echoPort: number;
@@ -144,6 +144,32 @@ describe('udpProbe', () => {
     expect(result.ok).toBe(false);
     expect(result.errorMessage).toContain('DNS resolution failed');
   }, 15_000);
+});
+
+describe('mapSocketError', () => {
+  const err = (code: string, message?: string): NodeJS.ErrnoException =>
+    Object.assign(new Error(message ?? code), { code });
+
+  test.each([
+    ['ENOTFOUND', 'DNS resolution failed: Host not found (dns.test)'],
+    ['EAI_AGAIN', 'DNS resolution failed: temporary failure (dns.test)'],
+    ['EHOSTUNREACH', 'Host unreachable (dns.test)'],
+    ['ENETUNREACH', 'Network unreachable (dns.test)'],
+    ['EACCES', 'Permission denied sending to dns.test:53 (port likely privileged)'],
+  ])('%s maps to an operator-facing message', (code, expected) => {
+    expect(mapSocketError(err(code), 'dns.test', 53)).toBe(expected);
+  });
+
+  test('unknown codes fall through to the system message', () => {
+    expect(mapSocketError(err('EPERM', 'operation not permitted'), 'dns.test', 53)).toBe(
+      'operation not permitted',
+    );
+  });
+
+  test('an errno without any message degrades to the generic fallback', () => {
+    const bare = { code: 'EWOULDBLOCK' } as NodeJS.ErrnoException;
+    expect(mapSocketError(bare, 'dns.test', 53)).toBe('Unknown socket error');
+  });
 });
 
 describe('parseHexPayload', () => {

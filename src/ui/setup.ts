@@ -42,8 +42,8 @@ export function renderSetup(opts: { error?: string } = {}) {
         </div>
       </div>
       <div class="auth-form-wrap">
-        <div class="auth-card">
-          <p class="lead">Create your account</p>
+        <div class="auth-card" data-testid="setup-card">
+          <p class="lead" data-testid="setup-heading">Create your account</p>
           <p class="lead-sub">Set up the first admin for this oo-workers instance.</p>
           <form id="setup-form">
             <div class="auth-field">
@@ -58,8 +58,8 @@ export function renderSetup(opts: { error?: string } = {}) {
               <label>Password</label>
               <input name="password" type="password" autocomplete="new-password" placeholder="Min 8 characters" minlength="8" required />
             </div>
-            ${opts.error ? `<div class="banner err" style="margin-bottom:12px">${esc(opts.error)}</div>` : ''}
-            <button type="submit" class="btn primary submit">
+            ${opts.error ? `<div class="banner err" data-testid="setup-error" style="margin-bottom:12px">${esc(opts.error)}</div>` : ''}
+            <button type="submit" class="btn primary submit" data-testid="setup-submit">
               Create account
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="m9 18 6-6-6-6"/></svg>
             </button>

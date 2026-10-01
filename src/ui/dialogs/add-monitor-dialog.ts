@@ -132,9 +132,10 @@ function syncDialogChrome(type: MonType, dlg: HTMLElement): void {
   if (nameInput) nameInput.placeholder = NAME_PLACEHOLDER[type];
 }
 
-function showFieldsForType(type: MonType): void {
-  const dlg = document.getElementById('add-dialog');
-  if (!dlg) return;
+// Single derived-state render for the type-driven field visibility. Both
+// the create flow (syncFields) and the edit flow (showFieldsForType) funnel
+// through here so the panes can't drift apart again.
+function renderTypeFields(dlg: HTMLElement, type: MonType): void {
   (['url-fields', 'api-fields', 'qa-fields', 'udp-fields'] as const).forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.hidden = !id.startsWith(type + '-');
@@ -145,6 +146,12 @@ function showFieldsForType(type: MonType): void {
   applyTargetRowVisibility(type);
   syncDialogChrome(type, dlg);
   syncRegionsRow();
+}
+
+function showFieldsForType(type: MonType): void {
+  const dlg = document.getElementById('add-dialog');
+  if (!dlg) return;
+  renderTypeFields(dlg, type);
 }
 
 function addAssertionRow(
@@ -209,21 +216,9 @@ export function initAddDialog(): void {
   });
 
   const syncFields = (t: MonType = 'url') => {
-    // Show/hide type-specific check panes
-    $('#url-fields').hidden = t !== 'url';
-    $('#api-fields').hidden = t !== 'api';
-    $('#qa-fields').hidden = t !== 'qa';
-    $('#udp-fields').hidden = t !== 'udp';
-    // Hide check panes via data-for; hide basics rows by type
-    addDialog.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
-      el.hidden = el.dataset.for !== t;
-    });
-    applyTargetRowVisibility(t);
-    // Update type pill, check section title, and name placeholder.
-    syncDialogChrome(t, addDialog);
+    renderTypeFields(addDialog, t);
     // Update rail active step
     syncRailToSection(addDialog, 'type');
-    syncRegionsRow();
   };
 
   wireAddDialogRail(

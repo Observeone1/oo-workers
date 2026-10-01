@@ -126,7 +126,8 @@ export function udpProbe(opts: UdpProbeOptions): Promise<UdpProbeResult> {
   });
 }
 
-function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number): string {
+/** Exported for unit tests — maps errno codes to operator-facing messages. */
+export function mapSocketError(err: NodeJS.ErrnoException, host: string, port: number): string {
   switch (err.code) {
     case 'ENOTFOUND':
       return `DNS resolution failed: Host not found (${host})`;

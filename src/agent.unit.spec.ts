@@ -78,6 +78,19 @@ const probeMocks = {
     banner: 'SSH-2.0-test',
     errorMessage: null as string | null,
   })),
+  udpProbe: mock(
+    async (): Promise<{
+      ok: boolean;
+      latencyMs: number;
+      responseBytes?: number;
+      errorMessage: string | null;
+    }> => ({
+      ok: true,
+      latencyMs: 8,
+      responseBytes: 4,
+      errorMessage: null as string | null,
+    }),
+  ),
   dbProbe: mock(async () => ({
     ok: true,
     latencyMs: 9,
@@ -171,9 +184,11 @@ beforeEach(() => {
 
   // Reset mock behaviors.
   probeMocks.tcpProbe.mockReset();
+  probeMocks.udpProbe.mockReset();
   probeMocks.dbProbe.mockReset();
   probeMocks.tlsProbe.mockReset();
   agentProbeDeps.tcpProbe = probeMocks.tcpProbe as unknown as typeof agentProbeDeps.tcpProbe;
+  agentProbeDeps.udpProbe = probeMocks.udpProbe as unknown as typeof agentProbeDeps.udpProbe;
   agentProbeDeps.dbProbe = probeMocks.dbProbe as unknown as typeof agentProbeDeps.dbProbe;
   agentProbeDeps.tlsProbe = probeMocks.tlsProbe as unknown as typeof agentProbeDeps.tlsProbe;
   packageVersionMock.mockReset();
@@ -185,6 +200,12 @@ beforeEach(() => {
     ok: true,
     latencyMs: 12,
     banner: 'SSH-2.0-test',
+    errorMessage: null,
+  });
+  probeMocks.udpProbe.mockResolvedValue({
+    ok: true,
+    latencyMs: 8,
+    responseBytes: 4,
     errorMessage: null,
   });
   probeMocks.dbProbe.mockResolvedValue({ ok: true, latencyMs: 9, errorMessage: null });
@@ -591,6 +612,73 @@ describe('runProbe', () => {
       type: 'tcp',
       status: 'FAILED',
       errorMessage: 'connection refused',
+    });
+  });
+
+  test('udp probe: SUCCESS forwards payload wiring and response bytes', async () => {
+    const result = await runProbe(
+      makeJob({
+        type: 'udp',
+        monitor: {
+          id: 4,
+          host: 'dns.test',
+          port: 53,
+          payloadHex: 'deadbeef',
+          expectResponse: true,
+          timeoutMs: 1000,
+        },
+      }),
+    );
+
+    expect(probeMocks.udpProbe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        host: 'dns.test',
+        port: 53,
+        payload: Buffer.from([0xde, 0xad, 0xbe, 0xef]),
+        expectResponse: true,
+        timeoutMs: 1000,
+      }),
+    );
+    expect(result).toMatchObject({
+      type: 'udp',
+      status: 'SUCCESS',
+      latencyMs: 8,
+      responseBytes: 4,
+      errorMessage: null,
+    });
+  });
+
+  test('udp probe: FAILED on invalid hex payload without calling the probe', async () => {
+    const result = await runProbe(
+      makeJob({
+        type: 'udp',
+        monitor: { id: 4, host: 'dns.test', port: 53, payloadHex: 'abc', timeoutMs: 1000 },
+      }),
+    );
+
+    expect(probeMocks.udpProbe).not.toHaveBeenCalled();
+    expect(result.status).toBe('FAILED');
+    expect(result.errorMessage).toContain('even-length');
+  });
+
+  test('udp probe: FAILED when udpProbe reports failure', async () => {
+    probeMocks.udpProbe.mockResolvedValue({
+      ok: false,
+      latencyMs: 5,
+      errorMessage: 'No response within 1000ms (dns.test:53)',
+    });
+
+    const result = await runProbe(
+      makeJob({
+        type: 'udp',
+        monitor: { id: 4, host: 'dns.test', port: 53, expectResponse: true, timeoutMs: 1000 },
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: 'udp',
+      status: 'FAILED',
+      errorMessage: 'No response within 1000ms (dns.test:53)',
     });
   });
 
