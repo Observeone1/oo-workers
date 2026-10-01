@@ -13,7 +13,11 @@ import { test, expect, waitForList, E2E_USER } from './fixtures';
 // specs that run after can simply log in.
 async function needsFreshSetup(request: import('@playwright/test').APIRequestContext) {
   const res = await request.get('/api/auth/setup-status');
-  if (!res.ok()) return false;
+  // An unreachable or erroring stack is a broken environment, not "an admin
+  // already exists". Reporting it as such would skip these tests silently on
+  // exactly the run that needs them.
+  if (!res.ok())
+    throw new Error(`setup-status probe failed: ${res.status()} ${res.statusText()}`);
   return ((await res.json()) as { needsSetup: boolean }).needsSetup;
 }
 
@@ -36,9 +40,14 @@ test('setup wizard rejects a short password without leaving the screen', async (
     await page.locator('#setup-form input[name="password"]').fill('abc');
     await page.getByTestId('setup-submit').click();
 
-    // Native minlength validation blocks the submit — no admin is created
-    // and the wizard stays on screen for the next (happy-path) test.
+    // Native minlength validation blocks the submit, so the button's own
+    // handler never runs and no server error banner appears. Asserting the
+    // banner's ABSENCE is what distinguishes client-side blocking from the
+    // server rejecting the same password (which does re-render the card,
+    // with setup-error visible) — assert it is present and this test fails.
     await expect(page.getByTestId('setup-card')).toBeVisible();
+    await expect(page.getByTestId('setup-error')).toHaveCount(0);
+    // No admin was created, so the next (happy-path) test still sees a fresh stack.
     expect(await needsFreshSetup(request)).toBe(true);
   } finally {
     await ctx.close();

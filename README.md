@@ -77,9 +77,14 @@ Keys follow `qa-projects/<projectId>-<slug>/...` - scripts at the root, run arti
 
 The default storage backend went through three picks:
 
-- **MinIO** was the obvious choice for years. Relicensed to AGPL-3.0 in February 2026 and archived the community repo. AGPL on a bundled binary is a deal-breaker for enterprises that ban copyleft in their stack, even when shipped unmodified.
-- **Garage** (Deuxfleurs) was next. Lightweight, geo-distributed, Rust. Also AGPL-3.0. Same problem.
-- **RustFS** (Apache-2.0) shipped. Drop-in MinIO replacement, single Rust binary, actively maintained. License matches oo-workers' own Apache-2.0 so the whole stack stays permissive.
+- **MinIO** was the incumbent for years. Relicensed to AGPL-3.0 in February 2026 and archived the community repo. AGPL on a bundled binary is a deal-breaker for enterprises that ban copyleft in their stack, even when shipped unmodified.
+- **Garage** (Deuxfleurs) was next. Geo-distributed, Rust. Also AGPL-3.0. Same problem.
+- **RustFS** (Apache-2.0) shipped. Single Rust binary, S3-compatible. License matches oo-workers' own Apache-2.0 so the whole stack stays permissive.
+
+What we take on by choosing it:
+
+- It is a young project with a much smaller user base and release history than MinIO had. The bundled stack is pinned to its release cadence.
+- Our S3 client is hand-rolled against the AWS signature spec rather than an AWS SDK, and list pagination is parsed with a regex (`listObjectsWithSize` in `src/services/object-storage.ts`). That is fine against AWS and RustFS; it is the most likely place a non-AWS, non-RustFS implementation will break. `docs/backup-restore.md` notes the same caveat for large buckets.
 
 ### Bring your own S3
 
@@ -159,7 +164,7 @@ For a single-operator self-host where you write your own scripts, this is fine: 
 
 ## Documentation
 
-The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) - [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), [TLS certificate checks](docs/tls-checks.md), [alerts](docs/alerts.md), and [status-page incidents](docs/incidents.md).
+The dashboard ships a built-in reference at **http://localhost:3001/docs** covering the API assertion matrix, JSONPath quick reference, Playwright skeletons (login flow, checkout flow), and the bulk JSON import schema. Deeper guides live in [`docs/`](docs/) - [multi-region](docs/multi-region.md), [database checks](docs/db-checks.md), [backup & restore](docs/backup-restore.md), [import from SaaS](docs/import-from-saas.md), [TCP banner checks](docs/tcp-checks.md), [TLS certificate checks](docs/tls-checks.md), [alerts](docs/alerts.md), [status-page incidents](docs/incidents.md), and [build-vs-buy decisions](docs/decisions.md) - which records what we hand-rolled instead of taking a dependency, and what that costs.
 
 ## Configuration
 

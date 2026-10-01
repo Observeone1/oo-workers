@@ -13,7 +13,7 @@ The format roughly follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
-- Test coverage raised to 95.3% (Sonar-measured) via real behavioral tests — real sockets/TLS for network probes, real Postgres testcontainers for DB repositories/routes/backup, no mocked-call assertions. Sonar: 0 bugs, 0 code smells, 0 vulnerabilities, 0 security hotspots.
+- Test coverage raised to 95.3% (Sonar-measured at the time of writing) by adding behavioural tests at the seam that matters for each feature: real sockets/TLS for the network probes, real Postgres testcontainers for the DB repositories/routes/backup paths. Unit tests still stub the I/O boundary and assert on call arguments — that is what makes them fast; the point of the change was that the probe and repository behaviour is now exercised for real rather than mocked. Sonar at that point: 0 bugs, 0 code smells, 0 vulnerabilities, 0 security hotspots.
 
 ## [1.28.8] - 2026-07-01
 

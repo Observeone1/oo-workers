@@ -68,110 +68,107 @@ afterAll(() => {
 });
 
 describe('tlsProbe', () => {
-  test('succeeds when the cert is well within warnDays', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      // Cert is valid for 2 days — a 0-day warn window never trips.
-      warnDays: 0,
+  // These need the openssl-generated self-signed server. Skipped (reported as
+  // skipped, not silently passed) when openssl is unavailable.
+  describe.skipIf(SKIP)('cert assertions', () => {
+    test('succeeds when the cert is well within warnDays', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        // Cert is valid for 2 days — a 0-day warn window never trips.
+        warnDays: 0,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.daysRemaining).toBeGreaterThanOrEqual(1);
+      expect(result.certSummary).toContain('CN=localhost');
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.daysRemaining).toBeGreaterThanOrEqual(1);
-    expect(result.certSummary).toContain('CN=localhost');
-  });
+    test('FAILs when the cert expires within warnDays', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        // Cert is valid for 2 days — a 30-day warn window always trips.
+        warnDays: 30,
+      });
 
-  test('FAILs when the cert expires within warnDays', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      // Cert is valid for 2 days — a 30-day warn window always trips.
-      warnDays: 30,
+      expect(result.ok).toBe(false);
+      expect(result.errorMessage).toContain('Certificate expires in');
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errorMessage).toContain('Certificate expires in');
-  });
+    test('opt-in verifyHostname FAILs on a CN/SAN mismatch', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        warnDays: 0,
+        verifyHostname: true,
+      });
 
-  test('opt-in verifyHostname FAILs on a CN/SAN mismatch', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      warnDays: 0,
-      verifyHostname: true,
+      // servername 'localhost' is in the SAN list, so hostname verification
+      // itself passes; this proves the opt-in path runs without erroring.
+      expect(result.ok).toBe(true);
     });
 
-    // servername 'localhost' is in the SAN list, so hostname verification
-    // itself passes; this proves the opt-in path runs without erroring.
-    expect(result.ok).toBe(true);
-  });
+    test('opt-in expectCnRegex FAILs when no CN/SAN matches', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        warnDays: 0,
+        expectCnRegex: '^nomatch$',
+      });
 
-  test('opt-in expectCnRegex FAILs when no CN/SAN matches', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      warnDays: 0,
-      expectCnRegex: '^nomatch$',
+      expect(result.ok).toBe(false);
+      expect(result.errorMessage).toContain('No CN/SAN matches');
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errorMessage).toContain('No CN/SAN matches');
-  });
+    test('opt-in expectCnRegex passes when the CN matches', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        warnDays: 0,
+        expectCnRegex: '^local',
+      });
 
-  test('opt-in expectCnRegex passes when the CN matches', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      warnDays: 0,
-      expectCnRegex: '^local',
+      expect(result.ok).toBe(true);
     });
 
-    expect(result.ok).toBe(true);
-  });
+    test('expectCnRegex FAILs cleanly on an invalid regex', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        warnDays: 0,
+        expectCnRegex: '(unterminated',
+      });
 
-  test('expectCnRegex FAILs cleanly on an invalid regex', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      warnDays: 0,
-      expectCnRegex: '(unterminated',
+      expect(result.ok).toBe(false);
+      expect(result.errorMessage).toContain('Invalid expect_cn_regex');
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.errorMessage).toContain('Invalid expect_cn_regex');
-  });
+    test('opt-in verifyChain FAILs on our untrusted self-signed cert', async () => {
+      const result = await tlsProbe({
+        host: '127.0.0.1',
+        port,
+        servername: 'localhost',
+        timeoutMs: 2000,
+        warnDays: 0,
+        verifyChain: true,
+      });
 
-  test('opt-in verifyChain FAILs on our untrusted self-signed cert', async () => {
-    if (SKIP) return;
-    const result = await tlsProbe({
-      host: '127.0.0.1',
-      port,
-      servername: 'localhost',
-      timeoutMs: 2000,
-      warnDays: 0,
-      verifyChain: true,
+      expect(result.ok).toBe(false);
+      expect(result.errorMessage).toContain('Certificate chain not trusted');
     });
-
-    expect(result.ok).toBe(false);
-    expect(result.errorMessage).toContain('Certificate chain not trusted');
   });
 
   test('FAILs with no peer certificate when the server drops before the handshake', async () => {
