@@ -84,7 +84,7 @@ The default storage backend went through three picks:
 What we take on by choosing it:
 
 - It is a young project with a much smaller user base and release history than MinIO had. The bundled stack is pinned to its release cadence.
-- Our S3 client is hand-rolled against the AWS signature spec rather than an AWS SDK, and list pagination is parsed with a regex (`listObjectsWithSize` in `src/services/object-storage.ts`). That is fine against AWS and RustFS; it is the most likely place a non-AWS, non-RustFS implementation will break. `docs/backup-restore.md` notes the same caveat for large buckets.
+- Our S3 client is hand-rolled against the AWS signature spec rather than an AWS SDK, and list pagination is parsed with a regex (`listObjectsWithSize` in `src/services/object-storage.ts`). That is fine against AWS and RustFS; it is the most likely place a non-AWS, non-RustFS implementation will break. The pattern pairs each `<Key>` with the next `<Size>`, skipping flat leaf elements in between — correct only for the shape AWS emits, where every object sits in a `<Contents>` block that ends the skip-run. A deviating endpoint fails silently in one of three ways, each pinned by a unit test in `object-storage.unit.spec.ts`: a nested block between `<Key>` and `<Size>` (an `<Owner>`) makes the object vanish from the export; omitting `<Contents>` lets the skip-run walk past one object's `<Size>` into the next, so two objects collapse into one entry carrying the wrong size and the reported `artifactBytes` is wrong; and an XML-escaped key (`foo&lt;bar.png`) matches but is never decoded, so the entry is written to a path that does not match the object it came from. None of these throw. Point a real bucket at it before you trust it with one. `docs/decisions.md` records the rest of the cost.
 
 ### Bring your own S3
 
@@ -97,7 +97,7 @@ OO_OBJECT_STORAGE_ACCESS_KEY=AKIA...
 OO_OBJECT_STORAGE_SECRET_KEY=...
 ```
 
-Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph - anything that speaks the S3 protocol. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
+Works with AWS S3, Cloudflare R2, Backblaze B2, on-prem MinIO/Ceph - anything that speaks the S3 protocol. The CI suite exercises this against the bundled RustFS only, so the others are untested here; the regex list parser above is where a mismatch would surface first, and a suspiciously short artifact list or an odd `artifactBytes` in `meta.json` is the signal to look there. The bundled RustFS container still starts but sits idle; comment out the `rustfs:` block in `docker-compose.yml` if you want to free the disk.
 
 ## Backup & restore
 

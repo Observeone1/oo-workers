@@ -35,8 +35,10 @@ the only genuinely fiddly part and it is small enough to read in one sitting.
   time and we do not track that.
 
 **If this becomes a problem:** the seam is `signedFetchRaw`
-(`object-storage-signing.ts:134`, `__setSignedFetchRawImpl`) — one function pointer. Every test in the
-repo already substitutes it, so replacing the signer wholesale is contained.
+(`object-storage-signing.ts:136`, `__setSignedFetchRawImpl`) — one function pointer.
+The unit specs substitute it via `src/test-support/object-storage-mock-helpers.ts`;
+the integration and UI tiers deliberately sign for real against the bundled RustFS,
+so those exercise the signer itself end to end rather than a stand-in.
 
 ## Hand-rolled Postgres / MySQL / Redis liveness probes
 
@@ -68,7 +70,7 @@ restore refuses rather than half-applying a dump taken on a different schema.
 That check is only possible because we own the format.
 
 **What it costs:** correctness of the FK-safe table order is ours to maintain
-(`TABLES` in `backup-shared.ts:79` — "do not reorder without re-checking
+(`TABLES` in `backup-shared.ts:80` — "do not reorder without re-checking
 schema.ts"), and a mistake there fails the restore rather than degrading it.
 
 ## `jsonpath` for API assertions, with a paren guard
@@ -93,11 +95,18 @@ then it is load-bearing, not belt-and-braces.
 
 ## RustFS as the bundled object store
 
-`README.md` covers the licensing history. The risk we take on: it is a young
-project with a far smaller user base and release history than MinIO had, and
-the bundled stack is pinned to its release cadence. Operators who want a
-different posture point `OO_OBJECT_STORAGE_*` at AWS S3, R2, B2 or any
-S3-compatible endpoint.
+**Why:** the three alternatives were all AGPL-3.0, which a corporate policy
+banning copyleft cannot accept even when shipped unmodified. RustFS is
+Apache-2.0, so the whole stack stays permissive. `README.md` has the full
+picking history.
+
+**What it costs:** it is a young project with a far smaller user base and
+release history than MinIO had, and the bundled stack is pinned to its release
+cadence. The S3 surface is not only RustFS's either — the hand-rolled list
+parser above is the fragile part, and the CI suite only exercises RustFS. Operators
+who want a different posture point `OO_OBJECT_STORAGE_*` at AWS S3, R2, B2 or any
+S3-compatible endpoint, and should expect to be the first to find that parser's
+limits.
 
 ## Hand-rolled UI
 
@@ -125,3 +134,65 @@ operator".
 
 A React/TanStack migration was evaluated and deferred; this section is the
 "what we gave up" half of that decision.
+
+## Per-type monitor repositories — `BaseMonitorRepo<T>` declined
+
+The seven monitor repos under `src/db/repositories/` repeat each other, and the
+obvious fix — one generic base class parameterised by monitor type — was
+evaluated and **rejected as the wrong shape**. What was extracted instead is
+`projectLatest` (`_with-latest.ts`), and the remaining duplication is recorded
+here rather than left to look like an oversight.
+
+**Why the full base class is the wrong shape.** Each repo binds a different
+Drizzle table pair, and the _projected row shape_ genuinely differs per type:
+`url_monitor_executions` / `api_executions` expose `responseTimeMs`, the four
+latency tables (`tcp` / `udp` / `db` / `tls`) expose `latencyMs`, and
+`qa_test_executions` exposes neither — it has `durationMs`, and its timestamp is
+`startedAt` rather than `startTime` (which is why `findExecutionsByProjectId`
+renames it on the way out). `statusCode` is a third variant again: `url` reads it
+straight off, `api` reads `responseStatus` and aliases it, and the latency
+monitors have no such column at all.
+
+So the method with the most duplication — `findAllWithLatest` — is the one that
+cannot be shared without either a callback escape hatch (which is exactly what
+`projectLatest` is) or a generic signature carrying two latency column names and
+two timestamp column names, at which point the call site reads
+`repo.findAllWithLatest<LatencyCol, TimeCol>()`. And a base class parameterised on
+the table (`BaseMonitorRepo<T extends PgTable>`) buys no safety for the string
+column names anyway: `db.select().from(T)` will happily accept a column object
+from the wrong table. It also forces the type parameter through every consumer —
+`monitor-route-detail-handlers.ts` and the route modules annotate concrete row
+types today and would each have to carry `<TMonitors>` for no gain.
+
+The duplication that _can_ be removed (below) does not need generics at all: a
+plain factory taking the table objects and column keys infers the concrete row
+type per call site and needs no type parameter anywhere.
+
+**What is left, honestly.** Two methods are still duplicated verbatim:
+
+- `findById(id)` — identical in all seven repos apart from the table identifier.
+- the execution-history query — named `findExecutionsByMonitorId` (url / tls /
+  tcp / udp / db), `findExecutionsByCheckId` (api) and
+  `findExecutionsByProjectId` (qa). Six of the seven are identical apart from the
+  table, the FK column name, and the local variable name (`m` vs `c`). QA is the
+  outlier: it selects twelve explicit columns and renames `startedAt` →
+  `startTime`.
+
+Both could collapse into a factory taking `(monitorTable, executionsTable,
+fkColumn, timeColumn)` — roughly 20 lines plus seven one-line registrations
+against ~110 duplicated lines. That is a genuine remaining dedupe and is **not**
+blocked; it was left undone because it is a behaviour-preserving refactor of six
+files with no bug motivating it, and the audit it came from had a smaller budget.
+Doing it as part of a change that actually touches those repos is the cheaper
+moment.
+
+`findAllWithLatest` is only partly duplicated: the `selectDistinctOn` +
+`leftJoin` scaffolding repeats, but the column list plus the projection callback
+— 20-25 lines per type — are specific to each one. `projectLatest` already owns
+the part that was genuinely identical.
+
+One inconsistency this section does not fix: `monitor-route-detail-handlers.ts`
+already factors the four latency detail handlers (tcp / udp / db / tls) through a
+`LATENCY_REPOS` record, while url, api and qa still hand-write theirs. Widening
+that to all seven is the same trade-off as the repo factory above and is likewise
+left for a change that touches those routes.

@@ -110,7 +110,7 @@ describe('exec-events bridge failure paths', () => {
     execEvents.off('execution', listener as never);
   });
 
-  test('resetEventBus allows re-wiring against a fresh connection', () => {
+  test('resetEventBus disconnects the old subscriber before re-wiring', () => {
     const first = makeSubscriber();
     const second = makeSubscriber();
     initEventBus(makeConnection(first) as never);
@@ -119,7 +119,16 @@ describe('exec-events bridge failure paths', () => {
     expect(second.subscribe).not.toHaveBeenCalled();
 
     resetEventBus();
+    // Leaving the old subscriber connected would keep a Redis connection per
+    // test file alive and deliver stale messages into the re-wired bus.
+    expect(first.disconnect).toHaveBeenCalledTimes(1);
+    expect(second.disconnect).not.toHaveBeenCalled();
+
     initEventBus(makeConnection(second) as never);
     expect(second.subscribe).toHaveBeenCalledWith(EVENT_CHANNEL);
+
+    // Resetting when nothing is wired is a no-op, not a throw.
+    resetEventBus();
+    expect(second.disconnect).toHaveBeenCalledTimes(1);
   });
 });

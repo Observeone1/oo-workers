@@ -186,7 +186,9 @@ Set `OO_AGENT_FORCE_LIGHT=1` on an agent that has Playwright installed. The agen
 
 ## Multiple agents per region
 
-Running more than one agent for the same region is safe. Redis `BRPOP` guarantees only one agent receives each job, and master's result write is idempotent on `executionId`. You get parallel probe throughput for free.
+Running more than one agent for the same region is safe. Redis `BRPOP` guarantees only one agent receives each job, and master's result write is idempotent on `executionId`.
+
+What that buys you is throughput **across monitors**, not within one. `fanOutTargets` enqueues one job per region a monitor is bound to, and BullMQ/Redis then hands each job to exactly one agent in that region — so the agents sharing a region never race for the same run, and one monitor bound to one region is still checked by one agent at a time. Spreading a single monitor's checks across several boxes would need scheduler-level load balancing inside a region; it is not what happens today.
 
 Each agent box uses its own clone of the agent key bound to the region — the same key file. To deploy: copy the `.env` to each agent box, run the agent compose on each.
 
@@ -250,7 +252,7 @@ Reads `OO_MASTER_URL` / `OO_AGENT_KEY` / `OO_REGION_SLUG` from the agent's env (
 ## Known gaps
 
 - **Self-signed TLS** now has an escape hatch — `OO_AGENT_TLS_INSECURE=1`, scoped to the agent→master link with loud warnings (see **Prerequisite**). A trusted cert / tunnel is still strongly preferred.
-- **No automated agent-version-skew warning yet** — if a master upgrade adds a required job-payload field, an un-pulled agent could mis-handle it. Mitigation today is the post-upgrade `pull` (see Troubleshooting). A master-side "region N versions behind" indicator is a tracked follow-up.
+- **Version skew is flagged, not enforced** — the master compares each agent's reported build against its own (`versionSkew` on `GET /api/regions`) and the Regions page shows a banner for anything behind, including a long-offline agent that came back. What it does not do is refuse the job: if a master upgrade adds a required job-payload field, a stale agent still accepts and mis-handles it. A hard gate on the reported agent version is a tracked follow-up; until then the post-upgrade `pull` (see Troubleshooting) is the mitigation.
 - **No header badge** showing online region count — open the Regions page to see status. On the polish backlog.
 - **Slim "agent-only" image not yet shipped** — agents pull the same `observeone/oo-workers` image as master, which includes Playwright/Chromium (~1 GB). HTTP-only operators wanting a tiny agent image will get one in a future release; runtime detection is already in place so the swap is forward-compatible.
 - **No per-region latency series** on the monitor detail page yet — all runs are listed flat. On the polish backlog.

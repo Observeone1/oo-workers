@@ -1,7 +1,8 @@
 import { test, expect, waitForList, E2E_USER } from './fixtures';
 
-// First-run setup wizard (src/ui/setup.ts, hash #/setup). The screen only
-// renders when the DB has zero users, and the suite's global-setup
+// First-run setup wizard (src/ui/setup.ts). It has no route of its own:
+// boot() renders it at "/" when the DB reports zero users. The screen only
+// renders then, and the suite's global-setup
 // deliberately preserves auth — so on a lived-in stack there is nothing to
 // drive and these skip visibly. On a fresh stack they exercise the real
 // browser flow: validate → create the first admin → dashboard. Order

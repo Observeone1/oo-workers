@@ -486,6 +486,85 @@ describe('listObjectsWithSize', () => {
     ]);
   });
 
+  test('pages through ListObjectsV2 results, keeping the key+size pairing per page', async () => {
+    setFullStorageEnv();
+    let calls = 0;
+    signedFetchRawMock.mockImplementation(async () => {
+      calls++;
+      if (calls === 1) {
+        return new Response(
+          '<Contents><Key>a</Key><LastModified>2024-01-01</LastModified><Size>10</Size></Contents>' +
+            '<Contents><Key>b</Key><LastModified>2024-01-01</LastModified><Size>20</Size></Contents>' +
+            '<NextContinuationToken>tok2</NextContinuationToken>',
+        );
+      }
+      return new Response(
+        '<Contents><Key>c</Key><LastModified>2024-01-01</LastModified><Size>30</Size></Contents>',
+      );
+    });
+
+    const result = await os.listObjectsWithSize('qa-projects/');
+
+    expect(result).toEqual([
+      { key: 'a', size: 10 },
+      { key: 'b', size: 20 },
+      { key: 'c', size: 30 },
+    ]);
+    expect(signedFetchRawMock).toHaveBeenCalledTimes(2);
+    const [, secondUrl] = signedFetchRawMock.mock.calls[1];
+    expect(secondUrl.searchParams.get('continuation-token')).toBe('tok2');
+  });
+
+  // The regex pairs each <Key> with the next <Size>, skipping flat leaf
+  // elements in between, which is exactly the shape AWS returns. The two tests
+  // below pin what happens when an S3 implementation deviates — both fail
+  // silently rather than throwing, which is why README.md calls this the most
+  // likely place a third-party endpoint breaks.
+  test('drops a Contents block whose <Size> is not preceded by a flat leaf run', async () => {
+    setFullStorageEnv();
+    const xml =
+      '<Contents><Key>flat.png</Key><LastModified>2024-01-01</LastModified><Size>10</Size></Contents>' +
+      // <Owner> nests <ID>/<DisplayName>, so the "flat leaf" run does not match
+      // and this block silently vanishes from the export.
+      '<Contents><Key>nested.png</Key><Owner><ID>abc</ID><DisplayName>x</DisplayName></Owner><Size>20</Size></Contents>';
+    signedFetchRawMock.mockResolvedValueOnce(new Response(xml));
+
+    const result = await os.listObjectsWithSize('');
+
+    expect(result).toEqual([{ key: 'flat.png', size: 10 }]);
+  });
+
+  test('pairs a key with a later key’s size when <Contents> elements are absent', async () => {
+    setFullStorageEnv();
+    // Without the <Contents> wrapper the skip-run is free to walk past
+    // <Size>10</Size> and <Key>b.png</Key> and match <Size>20</Size>, so two
+    // objects collapse into one entry carrying the wrong size. AWS always
+    // wraps each object, so this needs a non-AWS endpoint to hit — but it
+    // fails silently and corrupts the reported artifactBytes either way.
+    const xml =
+      '<Key>a.png</Key><LastModified>2024-01-01</LastModified><Size>10</Size>' +
+      '<Key>b.png</Key><LastModified>2024-01-01</LastModified><Size>20</Size>';
+    signedFetchRawMock.mockResolvedValueOnce(new Response(xml));
+
+    const result = await os.listObjectsWithSize('');
+
+    expect(result).toEqual([{ key: 'a.png', size: 20 }]);
+  });
+
+  test('does not XML-decode an escaped key, so the entry names a path the object does not have', async () => {
+    setFullStorageEnv();
+    signedFetchRawMock.mockResolvedValueOnce(
+      new Response('<Contents><Key>foo&lt;bar.png</Key><Size>10</Size></Contents>'),
+    );
+
+    const result = await os.listObjectsWithSize('');
+
+    // Documents the behaviour rather than endorsing it: nothing in the regex
+    // path decodes entities, so `&lt;` survives into the key used to build the
+    // `artifacts/...` entry path in the backup tarball.
+    expect(result).toEqual([{ key: 'foo&lt;bar.png', size: 10 }]);
+  });
+
   test('throws ObjectStorageError on list failure', async () => {
     setFullStorageEnv();
     signedFetchRawMock.mockResolvedValueOnce(new Response('down', { status: 503 }));

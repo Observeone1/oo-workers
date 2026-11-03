@@ -579,7 +579,7 @@ export async function runAgent(cfg: AgentConfig, signal?: AbortSignal): Promise<
         continue;
       }
       logger.info(`agent picked up exec=${job.executionId} type=${job.type} (jobId=${job.jobId})`);
-      await handlePolledJob(cfg, job);
+      void handlePolledJob(cfg, job);
     } catch (err) {
       logger.error(
         `agent loop error: ${err instanceof Error ? err.message : String(err)}; retry in ${

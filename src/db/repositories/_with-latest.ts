@@ -15,6 +15,13 @@
  *
  * Returns `null` when there is no execution yet (the leftJoin produced
  * `l.id === null`), matching the previous per-repo behavior.
+ *
+ * This is the whole of the extraction: a `BaseMonitorRepo<T>` covering the
+ * remaining duplicated methods was evaluated and declined — sharing
+ * `findAllWithLatest` would mean a generic signature over the per-type column
+ * names, and a base class over the table type buys no safety for them anyway.
+ * The rationale, and the dedupe that is still available, are in
+ * `docs/decisions.md`.
  */
 import { projectStalled } from '../../services/exec-projection.ts';
 

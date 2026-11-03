@@ -30,7 +30,16 @@
  *     runs if the DB write rejects. The call sites themselves (149, 214,
  *     221) are exercised by every successful authenticated request in this
  *     suite; forcing the awaited DB call to actually reject would mean
- *     breaking the shared DB connection mid-suite.
+ *     breaking the shared DB connection mid-suite. To be clear about the
+ *     scope of that: these branches are reachable, not unreachable — a unit
+ *     spec for auth.ts could stub `touchLastUsed` to reject. None exists:
+ *     src/middleware/ has no unit tier, and adding one means giving
+ *     auth.ts a dependency hook for apiKeyRepo/regionRepo/authService,
+ *     because mock.module would poison the rest of the unit run (the same
+ *     reason agent.ts and scheduler.ts carry deps objects). That refactor
+ *     was judged bigger than the two log lines are worth; if a unit spec
+ *     for the middleware is ever written for other reasons, these are the
+ *     first two branches it should pick up.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';

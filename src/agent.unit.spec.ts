@@ -1227,12 +1227,81 @@ describe('runAgent', () => {
   test.each([
     ['SIGTERM', () => sigtermHandler],
     ['SIGINT', () => sigintHandler],
-  ])('%s handler exits cleanly', async (_signal, getHandler) => {
+  ])('%s handler exits cleanly', async (signal, getHandler) => {
     const runPromise = runAgent(baseCfg);
     await new Promise((r) => setTimeout(r, 10));
     getHandler()?.();
     await runPromise;
 
+    // The signal name is what tells an operator which stop was requested.
+    expect(loggerCalls.info).toContain(`agent received ${signal}, stopping after current job`);
     expect(loggerCalls.info.some((m) => m.includes('agent loop exited cleanly'))).toBe(true);
+  });
+
+  test('an already-aborted signal never enters the poll loop', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await runAgent(baseCfg, controller.signal);
+
+    expect(findFetchCall((u) => u.includes('/api/agent/jobs'))).toBeUndefined();
+    expect(loggerCalls.info.some((m) => m.includes('agent loop exited cleanly'))).toBe(true);
+    // Pre-aborted is not the same as an abort event: no shutdown log, because
+    // the loop was never running to be stopped.
+    expect(loggerCalls.info.some((m) => m.includes('agent received'))).toBe(false);
+  });
+
+  test('aborting mid-run stops after the current job', async () => {
+    const controller = new AbortController();
+    const runPromise = runAgent(baseCfg, controller.signal);
+    await new Promise((r) => setTimeout(r, 10));
+
+    controller.abort();
+    await runPromise;
+
+    expect(loggerCalls.info).toContain('agent received abort, stopping after current job');
+    expect(loggerCalls.info.some((m) => m.includes('agent loop exited cleanly'))).toBe(true);
+  });
+
+  test('a shutdown signal does not abandon the job already in flight', async () => {
+    let releaseResultPost: (() => void) | undefined;
+    const resultPostStarted = new Promise<void>((resolve) => {
+      releaseResultPost = resolve;
+    });
+    let jobReturned = false;
+    fetchHandler = (url) => {
+      if (url.includes('/api/agent/jobs') && !jobReturned) {
+        jobReturned = true;
+        return new Response(
+          JSON.stringify(
+            makeJob({ type: 'url', monitor: { id: 1, url: 'https://run.test', timeoutMs: 1000 } }),
+          ),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/api/agent/results')) {
+        // Hold the result POST open so the signal lands mid-job.
+        releaseResultPost?.();
+        return new Promise<Response>((r) => {
+          setTimeout(() => r(new Response(null, { status: 204 })), 50);
+        });
+      }
+      return new Response(null, { status: 204 });
+    };
+
+    const runPromise = runAgent(baseCfg);
+    await resultPostStarted;
+
+    sigtermHandler?.();
+    // The signal only clears the loop flag; handlePolledJob is already awaited.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(loggerCalls.info.some((m) => m.includes('agent reported'))).toBe(false);
+
+    await runPromise;
+
+    expect(findFetchCall((u) => u.includes('/api/agent/results'))).toBeDefined();
+    expect(loggerCalls.info.some((m) => m.includes('agent reported exec=1 status=SUCCESS'))).toBe(
+      true,
+    );
   });
 });
